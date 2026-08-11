@@ -15,7 +15,11 @@ classifiers = [
     "Topic :: Education",
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
-dependencies = []
+dependencies = [
+    "alembic>=1.19.1",
+    "pydantic>=2.13.4",
+    "sqlalchemy>=2.0",
+]
 
 [project.scripts]
 tessera = "tessera.cli:main"
@@ -28,6 +32,7 @@ dev = [
     "ruff>=0.9",
     "import-linter>=2.1",
     "pre-commit>=4.0",
+    "hypothesis>=6.165.3",
 ]
 
 [build-system]
@@ -44,6 +49,9 @@ packages = ["tessera"]
 target-version = "py313"
 line-length = 100
 src = ["tessera", "tests"]
+# Alembic writes these itself and its formatting is not ours to argue with. env.py is
+# hand-written and stays linted.
+extend-exclude = ["tessera/repository/migrations/versions"]
 
 [tool.ruff.lint]
 select = [
@@ -73,11 +81,17 @@ ignore = [
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
+[tool.ruff.lint.isort]
+# Without this our own package sorts in with third-party dependencies, which makes it
+# harder to see at a glance what a module actually depends on.
+known-first-party = ["tessera"]
+
 # ---------------------------------------------------------------------------
 # mypy
 # ---------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.13"
+exclude = ["tessera/repository/migrations/versions/"]
 strict = true
 warn_unreachable = true
 warn_no_return = true
