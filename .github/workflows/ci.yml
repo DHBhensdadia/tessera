@@ -11,11 +11,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Deterministic installs. --locked below fails the build if uv.lock is stale rather
-  # than silently resolving something different from what was committed.
-  UV_FROZEN: "1"
-
 jobs:
   quality:
     name: lint, types, boundaries
@@ -28,6 +23,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      # --locked asserts the lockfile matches pyproject.toml and fails if it is
+      # stale, rather than silently resolving something other than what was
+      # committed. It is mutually exclusive with UV_FROZEN, which means the
+      # opposite: trust the lockfile without checking it.
       - run: uv sync --locked --all-groups
 
       - name: ruff (lint)
