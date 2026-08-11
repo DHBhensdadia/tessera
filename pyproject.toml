@@ -17,12 +17,17 @@ classifiers = [
 ]
 dependencies = [
     "alembic>=1.19.1",
+    "fastapi>=0.141.1",
     "pydantic>=2.13.4",
+    "python-multipart>=0.0.32",
     "sqlalchemy>=2.0",
+    "structlog>=26.1.0",
+    "uvicorn>=0.52.1",
 ]
 
 [project.scripts]
 tessera = "tessera.cli:main"
+tessera-openapi = "tessera.cli.openapi:main"
 
 [dependency-groups]
 dev = [
@@ -33,6 +38,7 @@ dev = [
     "import-linter>=2.1",
     "pre-commit>=4.0",
     "hypothesis>=6.165.3",
+    "httpx>=0.28.1",
 ]
 
 [build-system]
