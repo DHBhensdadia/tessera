@@ -1,0 +1,142 @@
+"""Wire models.
+
+Separate from ``tessera.domain`` on purpose. The published contract is a stability
+guarantee: it must be free to differ from the in-memory shape, to omit fields, and to
+change on a different schedule from the database. Collapsing the two was the one thing
+Decision #14 set out to avoid, and doing it here would give that up at the first
+opportunity.
+
+The visible cost is that adding a field means touching two places. The invisible benefit
+is that a storage change cannot silently become a breaking API change.
+"""
+
+from tessera.api.schemas.common import Page, Reference
+from tessera.api.schemas.constraints import ConstraintCreate, ConstraintRead, ConstraintUpdate
+from tessera.api.schemas.groups import (
+    StudentGroupCreate,
+    StudentGroupRead,
+    StudentGroupTree,
+    StudentGroupUpdate,
+)
+from tessera.api.schemas.solving import (
+    InfeasibilityReport,
+    PreflightReport,
+    SolveRequest,
+    SolveStatus,
+)
+from tessera.api.schemas.structure import (
+    BuildingCreate,
+    BuildingRead,
+    CourseCreate,
+    CourseRead,
+    CourseUpdate,
+    DepartmentCreate,
+    DepartmentRead,
+    FeatureCreate,
+    FeatureRead,
+    InstitutionCreate,
+    InstitutionRead,
+    InstructorCreate,
+    InstructorRead,
+    InstructorUpdate,
+    ProgramCreate,
+    ProgramRead,
+    RoomCreate,
+    RoomRead,
+    RoomUpdate,
+)
+from tessera.api.schemas.teaching import (
+    OfferingCreate,
+    OfferingRead,
+    SessionRead,
+    SessionTemplateCreate,
+    SessionTemplateRead,
+    SessionUpdate,
+    TermCreate,
+    TermDuplicate,
+    TermRead,
+    TermUpdate,
+    TimeGridCreate,
+    TimeGridRead,
+    UnavailabilityCreate,
+    UnavailabilityRead,
+)
+from tessera.api.schemas.timetables import (
+    AssignmentCreate,
+    AssignmentRead,
+    AssignmentUpdate,
+    CommandRead,
+    ComparisonReport,
+    GridView,
+    MoveCheck,
+    MoveVerdict,
+    TimetableCreate,
+    TimetableRead,
+    TimetableUpdate,
+    ViewportCheck,
+    ViewportVerdict,
+    ViolationReport,
+)
+
+__all__ = [
+    "AssignmentCreate",
+    "AssignmentRead",
+    "AssignmentUpdate",
+    "BuildingCreate",
+    "BuildingRead",
+    "CommandRead",
+    "ComparisonReport",
+    "ConstraintCreate",
+    "ConstraintRead",
+    "ConstraintUpdate",
+    "CourseCreate",
+    "CourseRead",
+    "CourseUpdate",
+    "DepartmentCreate",
+    "DepartmentRead",
+    "FeatureCreate",
+    "FeatureRead",
+    "GridView",
+    "InfeasibilityReport",
+    "InstitutionCreate",
+    "InstitutionRead",
+    "InstructorCreate",
+    "InstructorRead",
+    "InstructorUpdate",
+    "MoveCheck",
+    "MoveVerdict",
+    "OfferingCreate",
+    "OfferingRead",
+    "Page",
+    "PreflightReport",
+    "ProgramCreate",
+    "ProgramRead",
+    "Reference",
+    "RoomCreate",
+    "RoomRead",
+    "RoomUpdate",
+    "SessionRead",
+    "SessionTemplateCreate",
+    "SessionTemplateRead",
+    "SessionUpdate",
+    "SolveRequest",
+    "SolveStatus",
+    "StudentGroupCreate",
+    "StudentGroupRead",
+    "StudentGroupTree",
+    "StudentGroupUpdate",
+    "TermCreate",
+    "TermDuplicate",
+    "TermRead",
+    "TermUpdate",
+    "TimeGridCreate",
+    "TimeGridRead",
+    "TimetableCreate",
+    "TimetableRead",
+    "TimetableUpdate",
+    "UnavailabilityCreate",
+    "UnavailabilityRead",
+    "ViewportCheck",
+    "ViewportVerdict",
+    "ViolationReport",
+]
