@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 # A new push to a PR makes the previous run irrelevant. Cancelling it keeps feedback
@@ -15,6 +14,12 @@ jobs:
   quality:
     name: lint, types, boundaries
     runs-on: ubuntu-latest
+    # Every push runs. Pull requests also run, but only from forks: a pull request
+    # from a branch in this repository has already triggered a push event, and running
+    # both would double every check for no extra signal.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@v4
 
@@ -44,6 +49,12 @@ jobs:
   test:
     name: tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Every push runs. Pull requests also run, but only from forks: a pull request
+    # from a branch in this repository has already triggered a push event, and running
+    # both would double every check for no extra signal.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       # The engine ships to Linux as a Docker image and to macOS inside the .app, so
