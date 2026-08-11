@@ -1,5 +1,9 @@
 # Tessera — university timetable scheduling
 
+[![CI](https://github.com/DHBhensdadia/tessera/actions/workflows/ci.yml/badge.svg)](https://github.com/DHBhensdadia/tessera/actions/workflows/ci.yml)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/licence-MIT-green.svg)](LICENSE)
+
 Generate conflict-free university timetables, refine them by hand, and find out *why*
 when no valid timetable exists.
 
