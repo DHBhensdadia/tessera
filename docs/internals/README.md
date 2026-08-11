@@ -11,6 +11,6 @@ document links to the ADRs that constrain it.
 |---|---|
 | [Project layout](project-layout.md) | Package structure, the architectural layers, and the tooling that enforces them |
 | [Continuous integration](continuous-integration.md) | What runs on every push, and how to read a red build |
+| [Domain model](domain-model.md) | The entities, the time grid, the group tree, and how migrations work |
 
-More arrive as the engine is built: the domain model, the solver, the API contract, the
-exporters.
+More arrive as the engine is built: the solver, the API contract, the exporters.
