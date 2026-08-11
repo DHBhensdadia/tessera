@@ -10,9 +10,12 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session as DbSession
 
+from tessera.api import create_app
 from tessera.repository import create_all, create_memory_engine, session_factory
 from tessera.repository import models as m
 
@@ -81,3 +84,20 @@ def features(db: DbSession, institution: m.Institution) -> dict[str, m.Feature]:
     db.add_all(rows.values())
     db.commit()
     return rows
+
+
+@pytest.fixture
+def app(engine: Engine) -> FastAPI:
+    return create_app(engine=engine, configure_logs=False)
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
+    """A client with the lifespan actually run, so app.state.project exists.
+
+    Instantiating TestClient without the context manager skips startup, which would
+    leave every request failing on a missing project rather than on what is being
+    tested.
+    """
+    with TestClient(app) as test_client:
+        yield test_client
