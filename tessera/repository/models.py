@@ -16,10 +16,12 @@ from datetime import date, datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     MetaData,
     String,
@@ -186,7 +188,7 @@ class Program(Base):
 class StudentGroup(Base):
     __tablename__ = "student_group"
     program_id: Mapped[int | None] = mapped_column(
-        ForeignKey("program.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("program.id", ondelete="SET NULL"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(200), index=True)
     kind: Mapped[str] = mapped_column(String(20), default="structural")
@@ -262,7 +264,13 @@ class Term(Base):
 
 class Offering(Base):
     __tablename__ = "offering"
-    __table_args__ = (UniqueConstraint("term_id", "course_id"),)
+    __table_args__ = (
+        UniqueConstraint("term_id", "course_id"),
+        # Redundant on its own — id is already unique — but required as the target of
+        # session's composite key, which is what stops a session drifting to another
+        # term's offering.
+        UniqueConstraint("id", "term_id", name="uq_offering_id_term"),
+    )
     term_id: Mapped[int] = mapped_column(ForeignKey("term.id", ondelete="CASCADE"), index=True)
     course_id: Mapped[int] = mapped_column(ForeignKey("course.id", ondelete="CASCADE"))
 
@@ -288,14 +296,29 @@ class SessionTemplate(Base):
 
 
 class Session(Base):
-    """The atom the solver places."""
+    """The atom the solver places.
+
+    ``term_id`` is denormalised from the offering on purpose. Without it the database
+    cannot express "an assignment's session and timetable belong to the same term", and
+    that rule would rest on every caller remembering it. The composite key below keeps
+    the copy honest.
+    """
 
     __tablename__ = "session"
-    offering_id: Mapped[int] = mapped_column(
-        ForeignKey("offering.id", ondelete="CASCADE"), index=True
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["offering_id", "term_id"],
+            ["offering.id", "offering.term_id"],
+            ondelete="CASCADE",
+            name="fk_session_offering_term",
+        ),
+        UniqueConstraint("id", "term_id", name="uq_session_id_term"),
     )
+
+    offering_id: Mapped[int] = mapped_column(Integer, index=True)
+    term_id: Mapped[int] = mapped_column(Integer, index=True)
     template_id: Mapped[int | None] = mapped_column(
-        ForeignKey("session_template.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("session_template.id", ondelete="SET NULL"), nullable=True, index=True
     )
     kind: Mapped[str] = mapped_column(String(20), default="lecture")
     duration_slots: Mapped[int] = mapped_column(Integer)
@@ -312,11 +335,30 @@ class Session(Base):
 
 
 class Unavailability(Base):
+    """A slot in which one instructor or one room may not be used.
+
+    Two nullable foreign keys with a check that exactly one is set — the exclusive-arc
+    pattern. The obvious alternative, a `kind` discriminator beside an untyped
+    `subject_id`, cannot be given a foreign key at all: deleting an instructor would
+    leave their unavailability behind, and a later instructor reusing that id would
+    silently inherit it.
+    """
+
     __tablename__ = "unavailability"
-    __table_args__ = (UniqueConstraint("term_id", "kind", "subject_id", "slot"),)
+    __table_args__ = (
+        UniqueConstraint("term_id", "instructor_id", "room_id", "slot"),
+        CheckConstraint(
+            "(instructor_id IS NOT NULL) + (room_id IS NOT NULL) = 1",
+            name="exactly_one_subject",
+        ),
+    )
     term_id: Mapped[int] = mapped_column(ForeignKey("term.id", ondelete="CASCADE"), index=True)
-    kind: Mapped[str] = mapped_column(String(20))
-    subject_id: Mapped[int] = mapped_column(Integer)
+    instructor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("instructor.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    room_id: Mapped[int | None] = mapped_column(
+        ForeignKey("room.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     slot: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String(200), default="")
 
@@ -339,6 +381,8 @@ class Constraint(Base):
 
 class Timetable(Base):
     __tablename__ = "timetable"
+    __table_args__ = (UniqueConstraint("id", "term_id", name="uq_timetable_id_term"),)
+
     term_id: Mapped[int] = mapped_column(ForeignKey("term.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(100), default="Draft")
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
@@ -352,14 +396,34 @@ class Timetable(Base):
 
 
 class Assignment(Base):
+    """One session placed at a time and in a room.
+
+    ``term_id`` exists so the composite keys below can refuse a timetable holding a
+    session from a different term. Without them the database accepts the mismatch
+    silently, and term duplication is exactly where it would occur.
+    """
+
     __tablename__ = "assignment"
-    __table_args__ = (UniqueConstraint("timetable_id", "session_id"),)
-    timetable_id: Mapped[int] = mapped_column(
-        ForeignKey("timetable.id", ondelete="CASCADE"), index=True
+    __table_args__ = (
+        UniqueConstraint("timetable_id", "session_id"),
+        ForeignKeyConstraint(
+            ["timetable_id", "term_id"],
+            ["timetable.id", "timetable.term_id"],
+            ondelete="CASCADE",
+            name="fk_assignment_timetable_term",
+        ),
+        ForeignKeyConstraint(
+            ["session_id", "term_id"],
+            ["session.id", "session.term_id"],
+            ondelete="CASCADE",
+            name="fk_assignment_session_term",
+        ),
     )
-    session_id: Mapped[int] = mapped_column(ForeignKey("session.id", ondelete="CASCADE"))
+    timetable_id: Mapped[int] = mapped_column(Integer, index=True)
+    session_id: Mapped[int] = mapped_column(Integer, index=True)
+    term_id: Mapped[int] = mapped_column(Integer, index=True)
     start_slot: Mapped[int] = mapped_column(Integer)
-    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="RESTRICT"))
+    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="RESTRICT"), index=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 

@@ -231,10 +231,38 @@ class Unavailability(_Entity):
     One row per slot rather than a packed bitmask: the volume is small — a busy week is
     a few dozen rows — and rows can be queried, explained in the interface, and given a
     reason, none of which a blob allows.
+
+    The subject is two optional references rather than a kind plus an untyped id, so the
+    database can enforce it. ``kind`` and ``subject_id`` remain available as derived
+    properties, since that is the shape the interface and the wire format use.
     """
 
     term_id: TermId | None = None
-    kind: UnavailabilityKind
-    subject_id: int
+    instructor_id: InstructorId | None = None
+    room_id: RoomId | None = None
     slot: Slot
     reason: str = ""
+
+    @model_validator(mode="after")
+    def _exactly_one_subject(self) -> Unavailability:
+        named = [x for x in (self.instructor_id, self.room_id) if x is not None]
+        if len(named) != 1:
+            raise ValueError(
+                "unavailability applies to exactly one instructor or one room, "
+                f"but {len(named)} were named"
+            )
+        return self
+
+    @property
+    def kind(self) -> UnavailabilityKind:
+        return (
+            UnavailabilityKind.INSTRUCTOR
+            if self.instructor_id is not None
+            else UnavailabilityKind.ROOM
+        )
+
+    @property
+    def subject_id(self) -> int:
+        subject = self.instructor_id if self.instructor_id is not None else self.room_id
+        assert subject is not None  # guaranteed by the validator above
+        return subject

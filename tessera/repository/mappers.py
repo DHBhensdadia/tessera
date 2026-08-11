@@ -178,6 +178,26 @@ def assignment_to_domain(row: m.Assignment) -> dt.Assignment:
     )
 
 
+def unavailability_to_domain(row: m.Unavailability) -> d.Unavailability:
+    return d.Unavailability(
+        term_id=TermId(row.term_id),
+        instructor_id=InstructorId(row.instructor_id) if row.instructor_id is not None else None,
+        room_id=RoomId(row.room_id) if row.room_id is not None else None,
+        slot=row.slot,
+        reason=row.reason,
+    )
+
+
+def unavailability_to_orm(item: d.Unavailability) -> m.Unavailability:
+    return m.Unavailability(
+        term_id=item.term_id,
+        instructor_id=item.instructor_id,
+        room_id=item.room_id,
+        slot=item.slot,
+        reason=item.reason,
+    )
+
+
 def command_to_domain(row: m.Command) -> dt.Command:
     return dt.Command(
         id=CommandId(row.id),
@@ -228,9 +248,15 @@ def group_to_orm(session: DbSession, group: dg.StudentGroup) -> m.StudentGroup:
     return row
 
 
-def session_to_orm(session: DbSession, item: d.Session) -> m.Session:
+def session_to_orm(session: DbSession, item: d.Session, term_id: int) -> m.Session:
+    """``term_id`` is passed rather than derived.
+
+    It is denormalised storage detail that the domain has no reason to carry, and the
+    caller always knows it — it comes from the offering being expanded.
+    """
     row = m.Session(
         offering_id=item.offering_id,
+        term_id=term_id,
         template_id=item.template_id,
         kind=item.kind.value,
         duration_slots=item.duration_slots,
@@ -269,9 +295,11 @@ def constraint_to_orm(session: DbSession, item: Constraint) -> m.Constraint:
     return row
 
 
-def assignment_to_orm(item: dt.Assignment) -> m.Assignment:
+def assignment_to_orm(item: dt.Assignment, term_id: int) -> m.Assignment:
+    """``term_id`` is what lets the composite keys refuse a cross-term placement."""
     return m.Assignment(
         timetable_id=item.timetable_id,
+        term_id=term_id,
         session_id=item.session_id,
         start_slot=item.start_slot,
         room_id=item.room_id,

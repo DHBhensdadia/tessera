@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -109,6 +110,11 @@ class Command(BaseModel):
     ``before`` and ``after`` hold the payload each direction needs; redo replays
     ``after``, undo replays ``before``. Storing both means neither operation has to
     recompute state that may since have changed.
+
+    The payloads are free-form JSON because they must be. A MOVE carries two integers; a
+    SOLVE replaces every placement in the timetable and carries a list of them. Typing
+    these as ``dict[str, int]`` made ``CommandKind.SOLVE`` impossible to record, which
+    would have surfaced at Phase 5.6 as "undo does not work after solving".
     """
 
     model_config = ConfigDict(frozen=True)
@@ -123,8 +129,8 @@ class Command(BaseModel):
     """Human-readable, written when the command is created. Shown in the history panel,
     so it is recorded rather than reconstructed later from the payload."""
 
-    before: dict[str, int] = Field(default_factory=dict)
-    after: dict[str, int] = Field(default_factory=dict)
+    before: dict[str, Any] = Field(default_factory=dict)
+    after: dict[str, Any] = Field(default_factory=dict)
 
     created_at: datetime | None = None
     undone_at: datetime | None = None

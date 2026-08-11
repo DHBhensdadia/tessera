@@ -176,7 +176,7 @@ class TestSession:
             instructor_ids=frozenset({InstructorId(instructor.id)}),
             required_features=frozenset({FeatureId(features["computers"].id)}),
         )
-        row = mappers.session_to_orm(db, original)
+        row = mappers.session_to_orm(db, original, term.id)
         db.add(row)
         db.commit()
 
@@ -204,7 +204,7 @@ class TestSession:
             attendee_ids=frozenset({StudentGroupId(4242)}),
         )
         try:
-            mappers.session_to_orm(db, ghost)
+            mappers.session_to_orm(db, ghost, term.id)
         except LookupError as error:
             assert "4242" in str(error)
         else:
@@ -246,6 +246,7 @@ class TestConstraint:
                     occurrence=i,
                     attendee_ids=frozenset({StudentGroupId(group.id)}),
                 ),
+                term.id,
             )
             db.add(session_row)
             sessions.append(session_row)
@@ -312,6 +313,7 @@ class TestTimetableAndAssignment:
                 duration_slots=2,
                 attendee_ids=frozenset({StudentGroupId(group.id)}),
             ),
+            term.id,
         )
         timetable = m.Timetable(term_id=term.id, name="Draft")
         db.add_all([session_row, timetable])
@@ -324,7 +326,7 @@ class TestTimetableAndAssignment:
             room_id=RoomId(room.id),
             is_pinned=True,
         )
-        row = mappers.assignment_to_orm(original)
+        row = mappers.assignment_to_orm(original, term.id)
         db.add(row)
         db.commit()
 
