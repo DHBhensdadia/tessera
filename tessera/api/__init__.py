@@ -1,5 +1,9 @@
-"""The HTTP surface the macOS client talks to over loopback.
+"""The HTTP surface.
 
-Bound to 127.0.0.1 behind a per-launch token: an institution's staffing and room data
-never leaves the machine (ADR-001).
+Contract frozen in Phase 1.4 ahead of the handlers, so later phases plug into a known
+shape and the client can be built against it. See docs/internals/api-contract.md.
 """
+
+from tessera.api.app import create_app
+
+__all__ = ["create_app"]
