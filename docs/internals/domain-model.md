@@ -124,6 +124,32 @@ the audit trail and "what changed since we published" all fall out of the same r
 `before` and `after` are both stored so neither direction recomputes state that may
 since have changed.
 
+## Integrity the database enforces
+
+Three rules are held by constraints rather than by convention, because all three were
+demonstrated breakable while they rested on convention alone. `tests/repository/
+test_integrity.py` re-checks each.
+
+**A timetable cannot hold a session from another term.** `session` and `assignment`
+both carry `term_id`, and composite foreign keys tie an assignment's session and
+timetable to the same one. `session.term_id` is itself tied to its offering's term, so
+the denormalised copy cannot drift. Term duplication is where the mismatch would
+otherwise occur, and the solver would then produce nonsense from data that looked valid.
+
+**Unavailability names a real subject.** Two nullable foreign keys — `instructor_id`
+and `room_id` — with a check constraint that exactly one is set. The obvious
+alternative, a `kind` discriminator beside an untyped `subject_id`, cannot be given a
+foreign key at all: deleting an instructor left their unavailability behind, and a later
+instructor reusing that primary key would have silently inherited it.
+
+The wire format still exposes `kind` and `subject_id`, derived. That the storage could
+change without touching the published contract is exactly what separate wire models buy.
+
+**A solve can record what it replaced.** `Command.before` and `after` are free-form
+JSON. They were briefly typed `dict[str, int]`, which made `CommandKind.SOLVE` —
+documented as undoable — impossible to record, since a solve replaces every placement in
+the timetable. The domain was narrower than the column storing it.
+
 ## Working with migrations
 
 ```bash
