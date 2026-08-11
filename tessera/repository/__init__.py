@@ -1,4 +1,20 @@
-"""Persistence. SQLAlchemy 2.0 over SQLite locally, PostgreSQL in server mode.
+"""Persistence: SQLAlchemy mapping, migrations, and translation to and from the domain.
 
-The same mapped classes serve both; only the connection string differs (ADR-006).
+Knows about the domain; the domain knows nothing about it (ADR-0003).
 """
+
+from tessera.repository.database import (
+    create_all,
+    create_memory_engine,
+    create_project_engine,
+    session_factory,
+    session_scope,
+)
+
+__all__ = [
+    "create_all",
+    "create_memory_engine",
+    "create_project_engine",
+    "session_factory",
+    "session_scope",
+]
