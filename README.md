@@ -1,0 +1,68 @@
+# Tessera — university timetable scheduling
+
+Generate conflict-free university timetables, refine them by hand, and find out *why*
+when no valid timetable exists.
+
+> **Status: early development.** The architecture is validated and the repository
+> skeleton is in place; features are being built in order. Nothing here is usable yet.
+
+## What it is
+
+A native macOS application for building university course timetables. Enter rooms,
+instructors, courses and student groups; a constraint solver produces a conflict-free
+schedule optimised against preferences you control; then drag sessions around and watch
+conflicts light up before you drop.
+
+The solver is an OR-Tools CP-SAT model driven by a Fix-and-Optimize loop, the family of
+approach that won the International Timetabling Competition 2019.
+
+## Planned capabilities
+
+- **Explains infeasibility.** When no valid timetable exists, it names the smallest set
+  of constraints that cannot coexist, rather than reporting "no solution found".
+- **Pin and re-optimise.** Fix the placements you care about; the solver rebuilds the
+  rest around them.
+- **Live conflict validation.** Conflicts highlight while dragging, before the drop.
+- **Scenario comparison.** Generate several timetables, compare them on gaps, load
+  balance and room utilisation, publish one.
+- **Exports** to PDF, self-contained HTML, CSV and calendar subscriptions.
+
+Quality is measured, not asserted: the solver is benchmarked in CI against published
+best-known results for the ITC-2007 curriculum-based course timetabling instances.
+
+## Architecture
+
+A thin SwiftUI client talks over loopback to a Python engine bundled inside the app as a
+sidecar process. The engine is the entire product and ships three ways from one
+codebase — inside the macOS app, as a Docker image, and as a command-line tool — so it
+is useful on Linux and Windows even though the editor is macOS-only.
+
+```
+tessera/
+├── domain/       pure model and constraint validation, no framework imports
+├── solver/       CP-SAT model and Fix-and-Optimize search
+├── repository/   persistence
+├── api/          HTTP surface
+├── export/       PDF, HTML, CSV, ICS
+├── importers/    spreadsheets and competition formats
+└── cli/          command line and benchmark runner
+```
+
+Architectural boundaries between these are enforced in CI, not by convention. Decisions
+and their reasoning are recorded in [`docs/adr/`](docs/adr/).
+
+## Development
+
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.13.
+
+```bash
+uv sync
+uv run pytest
+uv run ruff check
+uv run mypy
+uv run lint-imports
+```
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).

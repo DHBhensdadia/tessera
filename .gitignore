@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Swift / Xcode
+client/.build/
+client/.swiftpm/
+client/DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Packaging
+*.dmg
+*.app/
+
+# macOS
+.DS_Store
+
+# Local environment
+.env
+.env.local
+
+# Editor and assistant tooling — this repository is the work product, not a
+# record of what produced it. See workspace/WORKING-AGREEMENT.md Part 4.
+CLAUDE.md
+.claude/
+.cursor/
+.cursorrules
+.aider*
+.github/copilot-instructions.md
+.windsurfrules
+.idea/
+.vscode/
