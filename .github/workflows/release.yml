@@ -12,10 +12,19 @@ jobs:
   dmg:
     name: build and verify the disk image
     # Apple Silicon only (ADR-0011): PyInstaller cannot cross-compile, so the runner
-    # architecture is the artefact's architecture.
-    runs-on: macos-14
+    # architecture is the artefact's architecture. macos-15 rather than macos-14
+    # because the client is Swift 6 and macos-14 ships Swift 5.10.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
+
+      # Pinned rather than left to the runner default, so a change to the image cannot
+      # silently move the language version the client is built against.
+      - name: select xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: report toolchain
+        run: swift --version
 
       - uses: astral-sh/setup-uv@v7
         with:
