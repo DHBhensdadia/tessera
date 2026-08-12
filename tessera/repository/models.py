@@ -131,11 +131,17 @@ constraint_target = Table(
 
 class Institution(Base):
     __tablename__ = "institution"
+    __table_args__ = (UniqueConstraint("name", name="uq_institution_name"),)
+
     name: Mapped[str] = mapped_column(String(200))
 
 
 class Department(Base):
     __tablename__ = "department"
+    __table_args__ = (
+        UniqueConstraint("institution_id", "name", name="uq_department_institution_name"),
+    )
+
     institution_id: Mapped[int] = mapped_column(ForeignKey("institution.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     code: Mapped[str] = mapped_column(String(32), default="")
@@ -143,6 +149,10 @@ class Department(Base):
 
 class Building(Base):
     __tablename__ = "building"
+    __table_args__ = (
+        UniqueConstraint("institution_id", "name", name="uq_building_institution_name"),
+    )
+
     institution_id: Mapped[int] = mapped_column(ForeignKey("institution.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
 
@@ -156,6 +166,13 @@ class Feature(Base):
 
 class Room(Base):
     __tablename__ = "room"
+    # Scoped to the building, not global: two buildings routinely each have a "Room 101".
+    # building_id is nullable and SQL treats NULL as distinct from NULL, so rooms with no
+    # building can still share a name — accepted rather than worked around, since the
+    # alternatives are a sentinel building or forcing every room to have one. Import
+    # warns on duplicates instead.
+    __table_args__ = (UniqueConstraint("building_id", "name", name="uq_room_building_name"),)
+
     building_id: Mapped[int | None] = mapped_column(
         ForeignKey("building.id", ondelete="SET NULL"), nullable=True
     )
