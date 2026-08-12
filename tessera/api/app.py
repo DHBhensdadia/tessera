@@ -7,6 +7,7 @@ file the user opened.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -18,7 +19,7 @@ from sqlalchemy import Engine
 
 import tessera
 from tessera.api.deps import ProjectState
-from tessera.api.errors import register_error_handlers
+from tessera.api.errors import ERROR_BASE, Problem, problem_response, register_error_handlers
 from tessera.api.logging import bind_request, configure_logging
 from tessera.api.routers import (
     groups,
@@ -48,12 +49,27 @@ Errors follow RFC 9457 Problem Details, on every route including framework failu
 """.strip()
 
 
+#: Reachable without the token. The API surface is public knowledge — this is an open
+#: source project — and the developer browsing it needs no credential. Everything that
+#: touches the project's data does.
+OPEN_PATHS = frozenset({"/docs", "/openapi.json", "/docs/oauth2-redirect"})
+
+
 def create_app(
     *,
     engine: Engine | None = None,
     project_path: Path | None = None,
+    token: str | None = None,
     configure_logs: bool = True,
 ) -> FastAPI:
+    """Build the application.
+
+    ``token``, when given, is required on every request that is not in
+    :data:`OPEN_PATHS`. The engine generates one per launch and announces it in its
+    handshake, so only the process that read the handshake can reach the data — any
+    other program on the machine can open the loopback port and gets nowhere. Passing
+    ``None`` disables the check, which is what tests and local development want.
+    """
     if configure_logs:
         configure_logging()
 
@@ -100,6 +116,32 @@ def create_app(
         response = await call_next(request)
         response.headers["x-request-id"] = request_id
         return response
+
+    if token is not None:
+
+        @app.middleware("http")
+        async def require_token(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ) -> Response:
+            if request.url.path in OPEN_PATHS:
+                return await call_next(request)
+
+            supplied = request.headers.get("x-tessera-token", "")
+            # Constant-time: a plain == returns as soon as it finds a difference, so how
+            # long it takes leaks how much of the token was right. Overkill for a
+            # loopback socket, and the correct habit.
+            if not secrets.compare_digest(supplied, token):
+                logger.warning("rejected_unauthenticated", path=request.url.path)
+                return problem_response(
+                    Problem(
+                        type=f"{ERROR_BASE}/unauthenticated",
+                        title="Missing or invalid engine token",
+                        status=401,
+                        detail="Requests must carry the token from the engine handshake.",
+                        instance=request.url.path,
+                    )
+                )
+            return await call_next(request)
 
     register_error_handlers(app)
 
