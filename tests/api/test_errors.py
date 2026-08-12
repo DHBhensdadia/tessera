@@ -50,13 +50,15 @@ def test_unimplemented_routes_name_the_phase(client: TestClient) -> None:
     assert "5.5" in response.json()["detail"]
 
 
-def test_problem_documents_always_carry_the_same_keys(client: TestClient) -> None:
+def test_problem_documents_always_carry_the_same_keys(
+    client: TestClient, unimplemented_route: str
+) -> None:
     """One shape to decode, whatever went wrong."""
     required = {"type", "title", "status", "detail", "instance", "errors"}
 
     for method, path, payload in [
         ("get", "/api/v1/nope", None),
-        ("get", "/api/v1/instructors", None),
+        ("get", unimplemented_route, None),
         ("post", "/api/v1/timetables/1/validate-move", {"session_id": "not-an-int"}),
     ]:
         response = getattr(client, method)(path, **({"json": payload} if payload else {}))

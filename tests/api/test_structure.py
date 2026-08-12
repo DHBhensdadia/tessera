@@ -161,12 +161,9 @@ class TestDeleting:
         assert "1" in problem["errors"][0]["message"]
 
 
-def test_unimplemented_neighbours_still_answer_501(client: TestClient) -> None:
-    """Rooms are real now; instructors and courses are not.
-
-    Worth asserting: turning some stubs into handlers must not disturb the ones left,
-    or the frozen contract stops meaning what it says.
-    """
-    assert client.get("/api/v1/instructors").status_code == 501
-    assert client.get("/api/v1/courses").status_code == 501
-    assert client.get("/api/v1/programs").status_code == 501
+def test_unimplemented_neighbours_still_answer_501(
+    client: TestClient, unimplemented_route: str
+) -> None:
+    """Turning some stubs into handlers must not disturb the ones left, or the frozen
+    contract stops meaning what it says."""
+    assert client.get(unimplemented_route).status_code == 501

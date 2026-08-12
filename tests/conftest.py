@@ -8,6 +8,7 @@ exercises the real upgrade path — see ``tests/repository/test_migrations.py``.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -101,3 +102,21 @@ def client(app: FastAPI) -> Iterator[TestClient]:
     """
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def unimplemented_route(client: TestClient) -> str:
+    """A route that still answers 501, discovered rather than named.
+
+    Tests needing *an* unimplemented endpoint kept hardcoding whichever one was handy,
+    so every phase that implemented something broke unrelated tests — three in 2.1, two
+    more in 2.2. Discovery makes them outlive the stubs.
+    """
+    spec: dict[str, Any] = client.get("/openapi.json").json()
+    for path, operations in spec["paths"].items():
+        route = str(path)
+        if "get" not in operations or "{" in route:
+            continue
+        if client.get(route).status_code == 501:
+            return route
+    raise AssertionError("no unimplemented GET route remains; these tests need updating")
