@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    name: build and verify the disk image
+    # Apple Silicon only (ADR-0011): PyInstaller cannot cross-compile, so the runner
+    # architecture is the artefact's architecture.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv sync --locked --all-groups
+
+      - name: build
+        run: ./packaging/build.sh
+
+      # The unit suite spawns the engine from Python and passes whether or not a shipped
+      # bundle leaks a process. This is the only place that failure is observable, so a
+      # release that skipped it would be a release nobody had actually run.
+      - name: smoke test the disk image
+        run: ./packaging/smoke-test.sh
+
+      - name: checksum
+        run: shasum -a 256 packaging/out/*.dmg | tee packaging/out/SHA256SUMS
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dmg
+          path: |
+            packaging/out/*.dmg
+            packaging/out/SHA256SUMS
+
+      - name: publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            packaging/out/*.dmg packaging/out/SHA256SUMS \
+            --title "Tessera ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --notes "
+          Apple Silicon only. Requires macOS 14 or later.
+
+          This build is signed but **not notarized**, so macOS will refuse it on first
+          launch. Right-click the app and choose Open, or run:
+
+              xattr -dr com.apple.quarantine /Applications/Tessera.app
+          "
