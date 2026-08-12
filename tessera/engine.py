@@ -123,6 +123,12 @@ def serve(project_path: Path, *, host: str = "127.0.0.1", port: int = 0) -> None
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((host, port))
+    # Listen before announcing, not after. Binding alone does not accept connections,
+    # so a client that dialled the moment it read the handshake was refused until
+    # uvicorn got around to listening — a race wide enough to fail reliably on a Linux
+    # runner and never once on this machine. With the socket listening, the kernel
+    # queues the connection and uvicorn serves it when it starts.
+    sock.listen(128)
     chosen = sock.getsockname()[1]
 
     token = secrets.token_urlsafe(32)
