@@ -66,6 +66,43 @@ def test_the_surface_has_not_changed(app: FastAPI, snapshot: dict[str, Any]) -> 
     )
 
 
+def parameters(spec: dict[str, Any]) -> dict[str, set[str]]:
+    """Every operation mapped to the names of the parameters it accepts."""
+    found: dict[str, set[str]] = {}
+    for path, methods in spec["paths"].items():
+        for method, operation in methods.items():
+            if method in METHODS:
+                found[f"{method.upper()} {path}"] = {
+                    str(p["name"]) for p in operation.get("parameters", [])
+                }
+    return found
+
+
+def test_no_parameter_has_been_removed(app: FastAPI, snapshot: dict[str, Any]) -> None:
+    """Routes can keep their path and method and still break a client.
+
+    Added in 2.2 after noticing the surface test compared only paths, methods and
+    operation ids — so dropping a required query parameter, which is unambiguously
+    breaking, passed silently. The guard had been trusted since 1.4 and covered less
+    than it appeared to.
+
+    Only *removals* fail. Adding a parameter is additive and safe, and that is how the
+    selective unavailability delete arrived.
+    """
+    live = parameters(app.openapi())
+    committed = parameters(snapshot)
+
+    lost = {
+        route: sorted(names - live.get(route, set()))
+        for route, names in committed.items()
+        if route in live and names - live[route]
+    }
+    assert not lost, (
+        f"parameters removed from the contract: {lost}\n"
+        "If intended, regenerate the snapshot: uv run tessera-openapi"
+    )
+
+
 def test_request_and_response_models_have_not_changed(
     app: FastAPI, snapshot: dict[str, Any]
 ) -> None:
@@ -117,30 +154,15 @@ def test_no_unscoped_validation_endpoint_exists(app: FastAPI) -> None:
     )
 
 
-def any_unimplemented_route(client: TestClient) -> str:
-    """A route that still answers 501, found rather than hardcoded.
-
-    These tests need *an* unimplemented endpoint, not a specific one. Naming
-    `/api/v1/rooms` meant that implementing rooms broke three unrelated tests — and it
-    would have happened again at every phase. Discovery makes them outlive the stubs.
-    """
-    spec: dict[str, Any] = client.get("/openapi.json").json()
-    for path, operations in spec["paths"].items():
-        route = str(path)
-        if "get" not in operations or "{" in route:
-            continue
-        if client.get(route).status_code == 501:
-            return route
-    raise AssertionError("no unimplemented GET route remains; update these tests")
-
-
-def test_stubs_answer_501_and_name_their_phase(client: TestClient) -> None:
+def test_stubs_answer_501_and_name_their_phase(
+    client: TestClient, unimplemented_route: str
+) -> None:
     """Declared-but-unimplemented routes say so, and say when.
 
     404 would claim the endpoint does not exist, when the entire point of this phase is
     that it does and its shape is already agreed.
     """
-    response = client.get(any_unimplemented_route(client))
+    response = client.get(unimplemented_route)
     assert response.status_code == 501
 
     problem = response.json()
