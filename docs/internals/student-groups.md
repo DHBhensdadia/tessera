@@ -40,7 +40,7 @@ resolution, cycle rejection, `conflicts`, `conflict_map`, `headcount`.
 `GroupSet` — the world as it would be after the change — and lets the domain object:
 
 ```python
-_validated([*_load_all(session), candidate])   # raises → 409
+_validated([*_load_all(session), candidate])  # raises → 409
 ```
 
 Re-parenting a group onto its own descendant is refused because `GroupSet.__init__`
