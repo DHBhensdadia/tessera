@@ -117,13 +117,30 @@ def test_no_unscoped_validation_endpoint_exists(app: FastAPI) -> None:
     )
 
 
+def any_unimplemented_route(client: TestClient) -> str:
+    """A route that still answers 501, found rather than hardcoded.
+
+    These tests need *an* unimplemented endpoint, not a specific one. Naming
+    `/api/v1/rooms` meant that implementing rooms broke three unrelated tests — and it
+    would have happened again at every phase. Discovery makes them outlive the stubs.
+    """
+    spec: dict[str, Any] = client.get("/openapi.json").json()
+    for path, operations in spec["paths"].items():
+        route = str(path)
+        if "get" not in operations or "{" in route:
+            continue
+        if client.get(route).status_code == 501:
+            return route
+    raise AssertionError("no unimplemented GET route remains; update these tests")
+
+
 def test_stubs_answer_501_and_name_their_phase(client: TestClient) -> None:
     """Declared-but-unimplemented routes say so, and say when.
 
     404 would claim the endpoint does not exist, when the entire point of this phase is
     that it does and its shape is already agreed.
     """
-    response = client.get("/api/v1/rooms")
+    response = client.get(any_unimplemented_route(client))
     assert response.status_code == 501
 
     problem = response.json()

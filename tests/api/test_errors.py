@@ -56,7 +56,7 @@ def test_problem_documents_always_carry_the_same_keys(client: TestClient) -> Non
 
     for method, path, payload in [
         ("get", "/api/v1/nope", None),
-        ("get", "/api/v1/rooms", None),
+        ("get", "/api/v1/instructors", None),
         ("post", "/api/v1/timetables/1/validate-move", {"session_id": "not-an-int"}),
     ]:
         response = getattr(client, method)(path, **({"json": payload} if payload else {}))

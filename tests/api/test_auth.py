@@ -54,5 +54,8 @@ def test_the_documentation_stays_open(guarded: TestClient) -> None:
 def test_data_endpoints_are_guarded(guarded: TestClient) -> None:
     """A stub answering 501 must still refuse an unauthenticated caller — otherwise the
     guard would appear only once handlers exist."""
+    # An implemented route and an unimplemented one: both must refuse an
+    # unauthenticated caller, or the guard would appear only once handlers exist.
     assert guarded.get("/api/v1/rooms").status_code == 401
-    assert guarded.get("/api/v1/rooms", headers={"x-tessera-token": TOKEN}).status_code == 501
+    assert guarded.get("/api/v1/instructors").status_code == 401
+    assert guarded.get("/api/v1/rooms", headers={"x-tessera-token": TOKEN}).status_code == 200
