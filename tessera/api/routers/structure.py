@@ -41,6 +41,7 @@ from tessera.api.schemas import (
 )
 from tessera.domain import entities as d
 from tessera.repository import models as m
+from tessera.repository import people as people_repo
 from tessera.repository import structure as repo
 
 router = APIRouter(prefix="/api/v1", tags=["structure"])
@@ -255,8 +256,13 @@ def delete_building(building_id: int, db: Db) -> None:
 
 
 @router.get("/instructors", response_model=Page[InstructorRead], responses=ERRORS)
-def list_instructors(department_id: int | None = None) -> Page[InstructorRead]:
-    pending("2.2")
+def list_instructors(db: Db, department_id: int | None = None) -> Page[InstructorRead]:
+    return _page(
+        [
+            InstructorRead.model_validate(x)
+            for x in people_repo.list_instructors(db, department_id=department_id)
+        ]
+    )
 
 
 @router.post(
@@ -265,25 +271,39 @@ def list_instructors(department_id: int | None = None) -> Page[InstructorRead]:
     status_code=status.HTTP_201_CREATED,
     responses=ERRORS,
 )
-def create_instructor(payload: InstructorCreate) -> InstructorRead:
-    pending("2.2")
+def create_instructor(payload: InstructorCreate, db: Db) -> InstructorRead:
+    return InstructorRead.model_validate(
+        people_repo.create_instructor(
+            db,
+            name=payload.name,
+            email=payload.email,
+            department_id=payload.department_id,
+            max_slots_per_day=payload.max_slots_per_day,
+            max_slots_per_week=payload.max_slots_per_week,
+            max_consecutive_slots=payload.max_consecutive_slots,
+        )
+    )
 
 
 @router.get("/instructors/{instructor_id}", response_model=InstructorRead, responses=ERRORS)
-def get_instructor(instructor_id: int) -> InstructorRead:
-    pending("2.2")
+def get_instructor(instructor_id: int, db: Db) -> InstructorRead:
+    return InstructorRead.model_validate(people_repo.get_instructor(db, instructor_id))
 
 
 @router.patch("/instructors/{instructor_id}", response_model=InstructorRead, responses=ERRORS)
-def update_instructor(instructor_id: int, payload: InstructorUpdate) -> InstructorRead:
-    pending("2.2")
+def update_instructor(instructor_id: int, payload: InstructorUpdate, db: Db) -> InstructorRead:
+    return InstructorRead.model_validate(
+        people_repo.update_instructor(
+            db, instructor_id, changes=payload.model_dump(exclude_unset=True)
+        )
+    )
 
 
 @router.delete(
     "/instructors/{instructor_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS
 )
-def delete_instructor(instructor_id: int) -> None:
-    pending("2.2")
+def delete_instructor(instructor_id: int, db: Db) -> None:
+    people_repo.delete_instructor(db, instructor_id)
 
 
 # -- courses (2.4) ---------------------------------------------------------------
