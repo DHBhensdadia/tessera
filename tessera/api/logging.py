@@ -21,10 +21,16 @@ import structlog
 def configure_logging(*, level: str = "INFO", force_json: bool = False) -> None:
     """Set up logging for the process. Call once, at startup.
 
-    Renders JSON when stdout is not a terminal, which is exactly the case when the
-    Swift client has spawned the engine and is capturing its output.
+    **Everything is written to stderr.** stdout carries exactly one thing — the engine's
+    startup handshake — and anything else printed there corrupts it. Alembic in
+    particular logs during migration, which happens moments before the handshake is
+    emitted; with logging on stdout the client reads a log line where it expects JSON
+    and concludes the engine is broken.
+
+    Renders JSON when stderr is not a terminal, which is the case whenever the desktop
+    application has spawned the engine and is capturing its output.
     """
-    as_json = force_json or not sys.stdout.isatty()
+    as_json = force_json or not sys.stderr.isatty()
 
     shared: list[Any] = [
         structlog.contextvars.merge_contextvars,
@@ -43,16 +49,17 @@ def configure_logging(*, level: str = "INFO", force_json: bool = False) -> None:
                 else structlog.dev.ConsoleRenderer(colors=True)
             ),
         ],
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
         wrapper_class=structlog.make_filtering_bound_logger(
             logging.getLevelNamesMapping()[level.upper()]
         ),
         cache_logger_on_first_use=True,
     )
 
-    # Uvicorn and SQLAlchemy log through the standard library. Without this their
-    # output would be interleaved in a different format, which defeats the point of
-    # structured logs the moment anything goes wrong at startup.
-    logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level.upper())
+    # Uvicorn, SQLAlchemy and Alembic log through the standard library. Routed to
+    # stderr alongside our own, both so the format is consistent and so none of them can
+    # write to the stdout channel the handshake owns.
+    logging.basicConfig(format="%(message)s", stream=sys.stderr, level=level.upper(), force=True)
 
 
 def bind_request(request_id: str, path: str, method: str) -> None:
