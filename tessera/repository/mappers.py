@@ -103,6 +103,15 @@ def feature_to_domain(row: m.Feature) -> d.Feature:
     )
 
 
+def program_to_domain(row: m.Program) -> d.Program:
+    return d.Program(
+        id=ProgramId(row.id),
+        department_id=DepartmentId(row.department_id) if row.department_id is not None else None,
+        name=row.name,
+        code=row.code,
+    )
+
+
 def room_to_domain(row: m.Room) -> d.Room:
     return d.Room(
         id=RoomId(row.id),
