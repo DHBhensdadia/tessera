@@ -39,6 +39,7 @@ dev = [
     "pre-commit>=4.0",
     "hypothesis>=6.165.3",
     "httpx>=0.28.1",
+    "pyinstaller>=6.22.0",
 ]
 
 [build-system]
@@ -123,6 +124,12 @@ markers = [
 [tool.coverage.run]
 source = ["tessera"]
 branch = true
+omit = [
+    # Exercised end to end by tests/test_engine.py, which spawns it as a subprocess.
+    # Coverage cannot follow across that boundary, so leaving it in reported 0% for
+    # code that has eight tests — a number that misleads is worse than none.
+    "tessera/engine.py",
+]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
