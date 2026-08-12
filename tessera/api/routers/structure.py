@@ -40,6 +40,7 @@ from tessera.api.schemas import (
     RoomUpdate,
 )
 from tessera.domain import entities as d
+from tessera.repository import groups as groups_repo
 from tessera.repository import models as m
 from tessera.repository import people as people_repo
 from tessera.repository import structure as repo
@@ -168,8 +169,13 @@ def create_feature(payload: FeatureCreate, db: Db) -> FeatureRead:
 
 
 @router.get("/programs", response_model=Page[ProgramRead], responses=ERRORS)
-def list_programs() -> Page[ProgramRead]:
-    pending("2.3")
+def list_programs(db: Db, department_id: int | None = None) -> Page[ProgramRead]:
+    return _page(
+        [
+            ProgramRead.model_validate(x)
+            for x in groups_repo.list_programs(db, department_id=department_id)
+        ]
+    )
 
 
 @router.post(
@@ -178,8 +184,19 @@ def list_programs() -> Page[ProgramRead]:
     status_code=status.HTTP_201_CREATED,
     responses=ERRORS,
 )
-def create_program(payload: ProgramCreate) -> ProgramRead:
-    pending("2.3")
+def create_program(payload: ProgramCreate, db: Db) -> ProgramRead:
+    return ProgramRead.model_validate(
+        groups_repo.create_program(
+            db, name=payload.name, code=payload.code, department_id=payload.department_id
+        )
+    )
+
+
+@router.delete("/programs/{program_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
+def delete_program(program_id: int, db: Db) -> None:
+    """Added in 2.3. The frozen contract could create programmes and never remove one —
+    the same gap fixed for buildings and features in 2.1."""
+    groups_repo.delete_program(db, program_id)
 
 
 # -- rooms -----------------------------------------------------------------------
