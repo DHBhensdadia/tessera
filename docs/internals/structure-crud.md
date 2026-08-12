@@ -1,4 +1,4 @@
-# Structural data: rooms and their scaffolding
+# Structural data: rooms, instructors and their scaffolding
 
 Institutions, departments, buildings, features and rooms — the records that outlive a
 term. Also the phase that sets the shape every other Stage 2 repository copies.
@@ -114,3 +114,59 @@ That last one is deliberate. `room.building_id` is `ON DELETE SET NULL`, so remo
 building leaves its rooms without an address rather than deleting them. Losing a hundred
 rooms because a building was removed is a far worse outcome than a hundred rooms briefly
 lacking a location.
+
+
+## Instructors
+
+The same pattern as rooms, with one difference worth knowing: **names are unique per
+department, not per institution.** Two departments can each employ a different
+A. Sharma, and refusing the second would be wrong.
+
+Deleting an instructor who is still assigned to sessions is refused, naming the count.
+Their availability is *not* — those rows describe the instructor and mean nothing
+without them, so they cascade.
+
+Load limits (`max_slots_per_day`, `per_week`, `max_consecutive_slots`) are stored here
+and consumed by the solver in Stage 4. `None` means unlimited. They are soft: an
+over-committed instructor should produce a warning, not an unsolvable term.
+
+## Availability
+
+Blocked slots live one row per slot. A busy week is a few dozen rows, and rows can carry
+a reason and be explained in the interface — neither of which a packed bitmask allows.
+
+**The interaction drives the design.** Availability is edited by dragging across a grid,
+so the real operations are *block a range* and *unblock a range*:
+
+```
+POST   /terms/{id}/unavailability          {"kind", "subject_id", "slots": [...]}
+DELETE /terms/{id}/unavailability?kind&subject_id[&slot&slot…]
+```
+
+One request per cell would mean dozens per gesture.
+
+Three rules follow from that:
+
+**Blocking an already-blocked slot is a no-op**, not a conflict. Dragging across a
+partly-blocked range is ordinary use, and failing halfway through a gesture would be
+worse than useless. The unique constraint stays as the backstop.
+
+**`slot` on the DELETE is optional.** Omitted, it clears everything for the subject —
+the endpoint's original meaning. Given, it frees only those, which is what dragging over
+blocked cells to release them actually needs. Added in 2.2; the contract had no way to
+express it, so the grid could block and never unblock.
+
+**Slots are checked against the term's grid.** Blocking slot 9999 in a fifty-slot week
+would otherwise be stored, ignored by the solver and displayed nowhere — a silent no-op
+with nothing for the user to debug.
+
+### The wire shape outlived the storage
+
+The API still speaks `kind` + `subject_id`. Underneath, the 1.3 corrective pass replaced
+those with two nullable foreign keys under a check constraint, because a `kind`
+discriminator beside an untyped id cannot be given a foreign key at all.
+
+`kind` and `subject_id` are now **derived**, and the published contract never moved.
+That is the concrete payoff of keeping wire models separate from domain models
+([ADR-0006](../adr/0006-sqlalchemy-over-sqlmodel.md)): a storage change did not become a
+breaking API change.
