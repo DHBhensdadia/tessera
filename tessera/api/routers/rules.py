@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
+from tessera.api.deps import Db
 from tessera.api.errors import problem_responses
 from tessera.api.routers._stubs import pending
 from tessera.api.schemas import (
@@ -14,6 +15,7 @@ from tessera.api.schemas import (
     UnavailabilityCreate,
     UnavailabilityRead,
 )
+from tessera.repository import people as people_repo
 
 router = APIRouter(prefix="/api/v1", tags=["rules"])
 ERRORS = problem_responses(404, 422, 501)
@@ -25,9 +27,13 @@ ERRORS = problem_responses(404, 422, 501)
     responses=ERRORS,
 )
 def list_unavailability(
-    term_id: int, kind: str | None = None, subject_id: int | None = None
+    term_id: int, db: Db, kind: str | None = None, subject_id: int | None = None
 ) -> Page[UnavailabilityRead]:
-    pending("2.2")
+    items = [
+        UnavailabilityRead(kind=x.kind, subject_id=x.subject_id, slot=x.slot, reason=x.reason)
+        for x in people_repo.list_unavailability(db, term_id, kind=kind, subject_id=subject_id)
+    ]
+    return Page(items=items, total=len(items))
 
 
 @router.post(
@@ -36,13 +42,30 @@ def list_unavailability(
     status_code=status.HTTP_201_CREATED,
     responses=ERRORS,
 )
-def add_unavailability(term_id: int, payload: UnavailabilityCreate) -> Page[UnavailabilityRead]:
+def add_unavailability(
+    term_id: int, payload: UnavailabilityCreate, db: Db
+) -> Page[UnavailabilityRead]:
     """Takes a list of slots rather than one.
 
     Availability is edited by dragging across a grid, so a single interaction produces
     a range; one request per slot would mean dozens per gesture.
+
+    Blocking an already-blocked slot is a no-op rather than a conflict: dragging across
+    a partly-blocked range is ordinary use.
     """
-    pending("2.2")
+    rows = people_repo.block_slots(
+        db,
+        term_id,
+        kind=payload.kind,
+        subject_id=payload.subject_id,
+        slots=payload.slots,
+        reason=payload.reason,
+    )
+    items = [
+        UnavailabilityRead(kind=x.kind, subject_id=x.subject_id, slot=x.slot, reason=x.reason)
+        for x in rows
+    ]
+    return Page(items=items, total=len(items))
 
 
 @router.delete(
@@ -50,8 +73,23 @@ def add_unavailability(term_id: int, payload: UnavailabilityCreate) -> Page[Unav
     status_code=status.HTTP_204_NO_CONTENT,
     responses=ERRORS,
 )
-def clear_unavailability(term_id: int, kind: str, subject_id: int) -> None:
-    pending("2.2")
+def clear_unavailability(
+    term_id: int,
+    db: Db,
+    kind: str,
+    subject_id: int,
+    slot: list[int] | None = Query(
+        default=None,
+        description="Repeat to free specific slots. Omit to clear the whole subject.",
+    ),
+) -> None:
+    """Free slots again.
+
+    Without `slot` this clears everything for the subject, which is what it always did.
+    With it, only those slots are freed — which is what dragging across blocked cells to
+    release them actually needs.
+    """
+    people_repo.unblock_slots(db, term_id, kind=kind, subject_id=subject_id, slots=slot)
 
 
 @router.get("/terms/{term_id}/constraints", response_model=Page[ConstraintRead], responses=ERRORS)

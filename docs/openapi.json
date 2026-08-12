@@ -8799,6 +8799,7 @@
     },
     "/api/v1/terms/{term_id}/unavailability": {
       "delete": {
+        "description": "Free slots again.\n\nWithout `slot` this clears everything for the subject, which is what it always did.\nWith it, only those slots are freed \u2014 which is what dragging across blocked cells to\nrelease them actually needs.",
         "operationId": "clear_unavailability_api_v1_terms__term_id__unavailability_delete",
         "parameters": [
           {
@@ -8826,6 +8827,27 @@
             "schema": {
               "title": "Subject Id",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Repeat to free specific slots. Omit to clear the whole subject.",
+            "in": "query",
+            "name": "slot",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat to free specific slots. Omit to clear the whole subject.",
+              "title": "Slot"
             }
           }
         ],
@@ -8968,7 +8990,7 @@
         ]
       },
       "post": {
-        "description": "Takes a list of slots rather than one.\n\nAvailability is edited by dragging across a grid, so a single interaction produces\na range; one request per slot would mean dozens per gesture.",
+        "description": "Takes a list of slots rather than one.\n\nAvailability is edited by dragging across a grid, so a single interaction produces\na range; one request per slot would mean dozens per gesture.\n\nBlocking an already-blocked slot is a no-op rather than a conflict: dragging across\na partly-blocked range is ordinary use.",
         "operationId": "add_unavailability_api_v1_terms__term_id__unavailability_post",
         "parameters": [
           {
