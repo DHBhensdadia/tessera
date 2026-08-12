@@ -27,6 +27,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+          python-version-file: .python-version
 
       # --locked asserts the lockfile matches pyproject.toml and fails if it is
       # stale, rather than silently resolving something other than what was
@@ -68,6 +69,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+          python-version-file: .python-version
 
       - run: uv sync --locked --all-groups
 
