@@ -42,3 +42,9 @@ CLAUDE.md
 .windsurfrules
 .idea/
 .vscode/
+
+# Build output
+packaging/out/
+packaging/dist/
+packaging/build/
+client/.build/
