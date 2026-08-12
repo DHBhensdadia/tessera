@@ -42,8 +42,11 @@ jobs:
       - name: smoke test the disk image
         run: ./packaging/smoke-test.sh
 
+      # Filenames only, no build path: the published file has to be usable where a
+      # user downloads it, and `shasum -c` resolves paths relative to the cwd.
       - name: checksum
-        run: shasum -a 256 packaging/out/*.dmg | tee packaging/out/SHA256SUMS
+        working-directory: packaging/out
+        run: shasum -a 256 *.dmg | tee SHA256SUMS
 
       - uses: actions/upload-artifact@v7
         with:
