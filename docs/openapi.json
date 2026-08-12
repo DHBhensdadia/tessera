@@ -3617,7 +3617,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -3702,7 +3702,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -3736,6 +3736,24 @@
     "/api/v1/buildings": {
       "get": {
         "operationId": "list_buildings_api_v1_buildings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "institution_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Institution Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3757,6 +3775,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -3820,6 +3849,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3844,6 +3884,75 @@
           }
         },
         "summary": "Create Building",
+        "tags": [
+          "structure"
+        ]
+      }
+    },
+    "/api/v1/buildings/{building_id}": {
+      "delete": {
+        "operationId": "delete_building_api_v1_buildings__building_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "building_id",
+            "required": true,
+            "schema": {
+              "title": "Building Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Validation failed"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not implemented yet"
+          }
+        },
+        "summary": "Delete Building",
         "tags": [
           "structure"
         ]
@@ -4024,6 +4133,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4086,6 +4206,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4143,6 +4274,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -4206,6 +4348,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -4280,6 +4433,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4312,6 +4476,24 @@
     "/api/v1/departments": {
       "get": {
         "operationId": "list_departments_api_v1_departments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "institution_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Institution Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4333,6 +4515,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -4396,6 +4589,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4428,6 +4632,24 @@
     "/api/v1/features": {
       "get": {
         "operationId": "list_features_api_v1_features_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "institution_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Institution Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4449,6 +4671,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -4512,6 +4745,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4536,6 +4780,75 @@
           }
         },
         "summary": "Create Feature",
+        "tags": [
+          "structure"
+        ]
+      }
+    },
+    "/api/v1/features/{feature_id}": {
+      "delete": {
+        "operationId": "delete_feature_api_v1_features__feature_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feature_id",
+            "required": true,
+            "schema": {
+              "title": "Feature Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Validation failed"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not implemented yet"
+          }
+        },
+        "summary": "Delete Feature",
         "tags": [
           "structure"
         ]
@@ -4828,6 +5141,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4889,6 +5213,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -4962,6 +5297,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5024,6 +5370,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5081,6 +5438,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5144,6 +5512,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5217,6 +5596,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5306,7 +5696,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5383,7 +5773,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5459,7 +5849,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5543,7 +5933,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5598,6 +5988,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5661,6 +6062,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5692,7 +6104,7 @@
     },
     "/api/v1/rooms": {
       "get": {
-        "description": "Filters exist so the solver and the room picker can ask for candidates directly\nrather than fetching every room and narrowing client-side.",
+        "description": "Filtered so the solver and the room picker can ask for candidates directly\nrather than fetching every room and narrowing client-side.",
         "operationId": "list_rooms_api_v1_rooms_get",
         "parameters": [
           {
@@ -5728,18 +6140,23 @@
             }
           },
           {
+            "description": "Repeat to require several. Matches rooms providing *at least* these.",
             "in": "query",
             "name": "feature_id",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Repeat to require several. Matches rooms providing *at least* these.",
               "title": "Feature Id"
             }
           }
@@ -5765,6 +6182,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5828,6 +6256,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5885,6 +6324,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -5949,6 +6399,17 @@
             },
             "description": "Not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5978,6 +6439,7 @@
         ]
       },
       "patch": {
+        "description": "``exclude_unset`` is what makes this a PATCH rather than a replace.\n\nIt reports only the fields the client actually sent, so an absent field is left\nalone while a field explicitly set to null is cleared. Checking for None instead\nwould make those two indistinguishable.",
         "operationId": "update_room_api_v1_rooms__room_id__patch",
         "parameters": [
           {
@@ -6021,6 +6483,17 @@
               "application/problem+json": {}
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6096,7 +6569,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6180,7 +6653,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6256,7 +6729,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6325,7 +6798,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6402,7 +6875,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6542,7 +7015,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6615,7 +7088,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6703,7 +7176,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6772,7 +7245,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6846,7 +7319,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -6930,7 +7403,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7011,7 +7484,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7080,7 +7553,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7145,7 +7618,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7218,7 +7691,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7287,7 +7760,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7361,7 +7834,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7445,7 +7918,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7670,7 +8143,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7746,7 +8219,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7830,7 +8303,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -7907,7 +8380,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8031,7 +8504,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8117,7 +8590,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8209,7 +8682,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8293,7 +8766,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8603,7 +9076,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8676,7 +9149,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8752,7 +9225,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8837,7 +9310,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8906,7 +9379,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -8980,7 +9453,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9064,7 +9537,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9188,7 +9661,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9272,7 +9745,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9349,7 +9822,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9436,7 +9909,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9616,7 +10089,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9693,7 +10166,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9769,7 +10242,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9845,7 +10318,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -9932,7 +10405,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -10019,7 +10492,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
@@ -10095,7 +10568,7 @@
               },
               "application/problem+json": {}
             },
-            "description": "Conflict"
+            "description": "ConflictError"
           },
           "422": {
             "content": {
