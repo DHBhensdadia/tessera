@@ -13,6 +13,7 @@ document links to the ADRs that constrain it.
 | [Continuous integration](continuous-integration.md) | What runs on every push, and how to read a red build |
 | [Domain model](domain-model.md) | The entities, the time grid, the group tree, and how migrations work |
 | [API contract](api-contract.md) | The published surface, the error envelope, and the snapshot guard |
+| [Structural data](structure-crud.md) | Rooms and their scaffolding — the repository pattern, filtering, and the deletion rules |
 | [Packaging and the sidecar](packaging.md) | How the engine and client become one `.dmg`, and how they find each other |
 
 More arrive as the engine is built: the solver and the exporters.
