@@ -14,6 +14,7 @@ document links to the ADRs that constrain it.
 | [Domain model](domain-model.md) | The entities, the time grid, the group tree, and how migrations work |
 | [API contract](api-contract.md) | The published surface, the error envelope, and the snapshot guard |
 | [Structural data](structure-crud.md) | Rooms and their scaffolding — the repository pattern, filtering, and the deletion rules |
+| [Student groups](student-groups.md) | The tree, cohorts, and the conflict relation the solver depends on |
 | [Packaging and the sidecar](packaging.md) | How the engine and client become one `.dmg`, and how they find each other |
 
 More arrive as the engine is built: the solver and the exporters.
