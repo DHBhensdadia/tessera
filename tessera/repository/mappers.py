@@ -78,6 +78,31 @@ def time_grid_to_domain(row: m.TimeGrid) -> TimeGrid:
     )
 
 
+def institution_to_domain(row: m.Institution) -> d.Institution:
+    return d.Institution(id=InstitutionId(row.id), name=row.name)
+
+
+def department_to_domain(row: m.Department) -> d.Department:
+    return d.Department(
+        id=DepartmentId(row.id),
+        institution_id=InstitutionId(row.institution_id),
+        name=row.name,
+        code=row.code,
+    )
+
+
+def building_to_domain(row: m.Building) -> d.Building:
+    return d.Building(
+        id=BuildingId(row.id), institution_id=InstitutionId(row.institution_id), name=row.name
+    )
+
+
+def feature_to_domain(row: m.Feature) -> d.Feature:
+    return d.Feature(
+        id=FeatureId(row.id), institution_id=InstitutionId(row.institution_id), name=row.name
+    )
+
+
 def room_to_domain(row: m.Room) -> d.Room:
     return d.Room(
         id=RoomId(row.id),
