@@ -28,7 +28,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from tessera.repository.errors import ConflictError, InvalidReferenceError, NotFoundError
 
 logger = structlog.get_logger(__name__)
 
@@ -159,6 +162,74 @@ def register_error_handlers(app: FastAPI) -> None:
             )
         )
 
+    @app.exception_handler(NotFoundError)
+    async def _handle_not_found(request: Request, exc: NotFoundError) -> JSONResponse:
+        return problem_response(
+            Problem(
+                type=f"{ERROR_BASE}/not-found",
+                title="Not found",
+                status=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                instance=request.url.path,
+            )
+        )
+
+    @app.exception_handler(ConflictError)
+    async def _handle_conflict(request: Request, exc: ConflictError) -> JSONResponse:
+        return problem_response(
+            Problem(
+                type=f"{ERROR_BASE}/conflict",
+                title="ConflictError",
+                status=status.HTTP_409_CONFLICT,
+                detail=exc.message,
+                instance=request.url.path,
+                errors=[
+                    ErrorDetail(pointer=kind, message=f"{count} still depend on it")
+                    for kind, count in exc.blockers.items()
+                    if count
+                ],
+            )
+        )
+
+    @app.exception_handler(InvalidReferenceError)
+    async def _handle_invalid_reference(
+        request: Request, exc: InvalidReferenceError
+    ) -> JSONResponse:
+        return problem_response(
+            Problem(
+                type=f"{ERROR_BASE}/invalid-reference",
+                title="Unknown reference",
+                status=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(exc),
+                instance=request.url.path,
+                errors=[
+                    ErrorDetail(pointer=f"body/{exc.field}", message=f"no record with id {i}")
+                    for i in exc.missing
+                ],
+            )
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def _handle_integrity(request: Request, exc: IntegrityError) -> JSONResponse:
+        """A constraint the repository did not check first.
+
+        The repository checks the common cases so it can answer in sentences, but the
+        constraints are the real guarantee and can still fire — a race, or a path that
+        forgot to look. Either way it is the caller's request that cannot be satisfied,
+        not the engine failing, so it is a 409 rather than the 500 the catch-all below
+        would otherwise produce.
+        """
+        logger.warning("integrity_error", path=request.url.path, error=str(exc.orig))
+        return problem_response(
+            Problem(
+                type=f"{ERROR_BASE}/conflict",
+                title="ConflictError",
+                status=status.HTTP_409_CONFLICT,
+                detail="This would break a rule the database enforces.",
+                instance=request.url.path,
+            )
+        )
+
     @app.exception_handler(Exception)
     async def _handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
         # The message is deliberately not echoed to the client: an unexpected exception
@@ -190,7 +261,7 @@ def problem_responses(*codes: int) -> dict[int | str, dict[str, Any]]:
 _TITLES = {
     400: "Bad request",
     404: "Not found",
-    409: "Conflict",
+    409: "ConflictError",
     422: "Validation failed",
     500: "Internal error",
     501: "Not implemented yet",
