@@ -5967,6 +5967,24 @@
     "/api/v1/programs": {
       "get": {
         "operationId": "list_programs_api_v1_programs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "department_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6097,6 +6115,76 @@
           }
         },
         "summary": "Create Program",
+        "tags": [
+          "structure"
+        ]
+      }
+    },
+    "/api/v1/programs/{program_id}": {
+      "delete": {
+        "description": "Added in 2.3. The frozen contract could create programmes and never remove one \u2014\nthe same gap fixed for buildings and features in 2.1.",
+        "operationId": "delete_program_api_v1_programs__program_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "program_id",
+            "required": true,
+            "schema": {
+              "title": "Program Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Validation failed"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not implemented yet"
+          }
+        },
+        "summary": "Delete Program",
         "tags": [
           "structure"
         ]
@@ -7121,7 +7209,7 @@
     },
     "/api/v1/student-groups/tree": {
       "get": {
-        "description": "The hierarchy already resolved, for the outline view.\n\nSeparate from the flat listing because the client would otherwise rebuild the tree\nitself \u2014 a second implementation of the parent/child rules, and a second place for\nthem to be wrong.",
+        "description": "The hierarchy already resolved, for the outline view.\n\nSeparate from the flat listing because the client would otherwise rebuild the tree\nitself \u2014 a second implementation of the parent/child rules, and a second place for\nthem to be wrong.\n\nCohorts appear as additional roots with no children. They have no parent by\ndefinition \u2014 an elective drawing from three intakes is nobody's child \u2014 and omitting\nthem would hide exactly the groups most likely to cause conflicts. `kind` tells the\ntwo apart so the interface can render electives in their own section.",
         "operationId": "group_tree_api_v1_student_groups_tree_get",
         "parameters": [
           {
@@ -7436,7 +7524,7 @@
     },
     "/api/v1/student-groups/{group_id}/conflicts": {
       "get": {
-        "description": "Groups that share students with this one and so cannot be taught opposite it.",
+        "description": "Groups that share students with this one and so cannot be taught opposite it.\n\nAnswered by the domain rather than by a query \u2014 the solver reads the same relation\nfrom the same place, which is what stops the two disagreeing.",
         "operationId": "group_conflicts_api_v1_student_groups__group_id__conflicts_get",
         "parameters": [
           {
