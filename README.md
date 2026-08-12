@@ -7,6 +7,23 @@
 Generate conflict-free university timetables, refine them by hand, and find out *why*
 when no valid timetable exists.
 
+## Install
+
+Download the latest `.dmg` from [Releases](https://github.com/DHBhensdadia/tessera/releases)
+and drag Tessera to Applications. Apple Silicon, macOS 14 or later. No runtime to
+install, no server to configure, no account, and nothing leaves your machine.
+
+Builds are signed but **not yet notarized**, so macOS refuses them on first launch.
+Right-click the app and choose Open, or:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Tessera.app
+```
+
+> **v0.1.0 is a walking skeleton.** It starts, opens a project, and reports that its
+> engine is running — one thin slice through every layer. Data entry, solving and the
+> timetable editor arrive in later releases.
+
 > **Status: early development.** The architecture is validated and the repository
 > skeleton is in place; features are being built in order. Nothing here is usable yet.
 
