@@ -101,6 +101,9 @@ SECTIONS: tuple[Section, ...] = (
     Section("instructors", "Instructors", "Teaching staff, and when they cannot teach"),
     Section("programs", "Programmes", "Degrees, and the intakes beneath them"),
     Section("student-groups", "Student groups", "Intakes, lab batches and electives"),
+    Section("courses", "Courses", "The catalogue, independent of any term"),
+    Section("time-grids", "Teaching weeks", "How long a week is, and where the breaks are"),
+    Section("terms", "Terms", "A schedulable period, and what is offered in it"),
 )
 
 
