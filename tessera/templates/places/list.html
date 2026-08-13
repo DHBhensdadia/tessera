@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ kind.title }} · Tessera console{% endblock %}
+{% block body %}
+<h1>{{ kind.title }}</h1>
+<p class="lede">{{ kind.lede }}</p>
+
+<table>
+  <tr>
+    <th>Name</th>
+    {% if kind.has_code %}<th>Code</th>{% endif %}
+    <th></th>
+  </tr>
+  {% for row in rows %}
+  <tr>
+    {# Rename is an inline form rather than a separate page: a console is for correcting
+       twenty typos in a row, and a round trip per correction is what makes people give up
+       and edit the database by hand. #}
+    <td>
+      <form class="inline" method="post" action="/console/{{ kind.slug }}/{{ row.id }}/rename">
+        <input name="name" value="{{ row.name }}" required>
+        {% if kind.has_code %}<input name="code" value="{{ row.code }}" size="8">{% endif %}
+        <button type="submit">Rename</button>
+      </form>
+    </td>
+    {% if kind.has_code %}<td>{{ row.code or '—' }}</td>{% endif %}
+    <td>
+      <form class="inline" method="post" action="/console/{{ kind.slug }}/{{ row.id }}/delete">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="empty">Nothing here yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem">Add</h1>
+<form method="post" action="/console/{{ kind.slug }}">
+  <fieldset>
+    <legend>New {{ kind.title[:-1]|lower }}</legend>
+
+    <label for="name">Name</label>
+    <input id="name" name="name" required value="{{ submitted.name if submitted else '' }}">
+
+    {% if kind.has_code %}
+    <label for="code">Code</label>
+    <input id="code" name="code" value="{{ submitted.code if submitted else '' }}">
+    {% endif %}
+
+    {% if kind.parent_field %}
+    <label for="parent_id">{{ kind.parent_label }}</label>
+    <select id="parent_id" name="parent_id" {{ 'required' if kind.parent_required else '' }}>
+      {% if not kind.parent_required %}<option value="">— none —</option>{% endif %}
+      {% for parent in parents %}
+      <option value="{{ parent.id }}">{{ parent.name }}</option>
+      {% endfor %}
+    </select>
+    {% if not parents %}
+    <p class="empty">No {{ kind.parent_label|lower }}s exist yet — create one first.</p>
+    {% endif %}
+    {% endif %}
+
+    <p><button type="submit">Add</button></p>
+  </fieldset>
+</form>
+{% endblock %}
