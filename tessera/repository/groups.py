@@ -109,6 +109,34 @@ def _load_all(session: DbSession) -> list[dg.StudentGroup]:
     ]
 
 
+def _group(**fields: Any) -> dg.StudentGroup:
+    """One group, with its own rules enforced as a conflict rather than a crash.
+
+    `StudentGroup` rejects a structural group carrying `member_ids`, because members are
+    how a *cohort* names what it draws from and a tree node takes its students through
+    its parent. Pydantic raises `ValidationError` for that — a `ValueError` subclass, but
+    not a `RepositoryError`, so it escaped every caller and became a 500.
+    """
+    try:
+        return dg.StudentGroup(**fields)
+    except ValueError as error:
+        raise ConflictError(_first_message(error)) from error
+
+
+def _first_message(error: ValueError) -> str:
+    """Pydantic's own text, without the type and documentation link around it.
+
+    `str(ValidationError)` is four lines of machine detail. What a person needs is the
+    sentence the domain wrote.
+    """
+    errors = getattr(error, "errors", None)
+    if callable(errors):
+        found = errors()
+        if found:
+            return str(found[0].get("msg", "")).removeprefix("Value error, ")
+    return str(error)
+
+
 def _validated(groups: Sequence[dg.StudentGroup]) -> dg.GroupSet:
     """Hand the prospective world to the domain and let it object.
 
@@ -158,7 +186,12 @@ def create_group(
         scope_value=parent_id,
     )
 
-    candidate = dg.StudentGroup(
+    # Built through `_group` rather than directly, because `StudentGroup` has rules of
+    # its own — a structural group may not carry `member_ids` — and constructing it here
+    # raw let pydantic's ValidationError escape the repository entirely. The API answered
+    # that with a 500 until the console reached the same rule through a form and made it
+    # visible. Every path out of this module is a RepositoryError.
+    candidate = _group(
         id=StudentGroupId(-1),  # placeholder: the set only needs an id to be present
         name=name,
         kind=kind,
@@ -215,21 +248,25 @@ def update_group(
 
     prospective = {g.id: g for g in _load_all(session) if g.id is not None}
     current = prospective[StudentGroupId(group_id)]
-    prospective[StudentGroupId(group_id)] = current.model_copy(
-        update={
-            "name": changes.get("name", current.name),
-            "size": changes.get("size", current.size),
-            "parent_id": (
-                StudentGroupId(changes["parent_id"])
-                if changes.get("parent_id") is not None
-                else (None if "parent_id" in changes else current.parent_id)
-            ),
-            "member_ids": (
-                frozenset(StudentGroupId(i) for i in changes["member_ids"])
-                if changes.get("member_ids") is not None
-                else current.member_ids
-            ),
-        }
+    # Rebuilt through `_group` rather than `model_copy`, which does not re-validate:
+    # copying a structural group and adding `member_ids` to it produced an object the
+    # domain would have refused had anyone asked, and nobody was asking.
+    prospective[StudentGroupId(group_id)] = _group(
+        id=current.id,
+        name=changes.get("name", current.name),
+        kind=current.kind,
+        size=changes.get("size", current.size),
+        program_id=current.program_id,
+        parent_id=(
+            StudentGroupId(changes["parent_id"])
+            if changes.get("parent_id") is not None
+            else (None if "parent_id" in changes else current.parent_id)
+        ),
+        member_ids=(
+            frozenset(StudentGroupId(i) for i in changes["member_ids"])
+            if changes.get("member_ids") is not None
+            else current.member_ids
+        ),
     )
     _validated(list(prospective.values()))
 
