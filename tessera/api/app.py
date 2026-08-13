@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request, Response
 from sqlalchemy import Engine
 
 import tessera
+from tessera.api import console
 from tessera.api.deps import ProjectState
 from tessera.api.errors import ERROR_BASE, Problem, problem_response, register_error_handlers
 from tessera.api.logging import bind_request, configure_logging
@@ -126,7 +127,24 @@ def create_app(
             if request.url.path in OPEN_PATHS:
                 return await call_next(request)
 
-            supplied = request.headers.get("x-tessera-token", "")
+            # Three carriers for one secret. A browser navigating to a URL can set
+            # neither a header nor a cookie it does not yet have, so the console is
+            # entered once through a link and presents a cookie from then on.
+            #
+            # The query string is accepted on **exactly one path** — the exchange itself.
+            # Allowing it everywhere would put the token in history and logs on every
+            # page; opening that path instead would mean a route that hands out cookies
+            # without checking what it was given. Keeping it here leaves one place in the
+            # application that decides whether a caller is authentic.
+            supplied = (
+                request.headers.get("x-tessera-token", "")
+                or request.cookies.get(console.CONSOLE_COOKIE, "")
+                or (
+                    request.query_params.get("token", "")
+                    if request.url.path == console.ENTRY_PATH
+                    else ""
+                )
+            )
             # Constant-time: a plain == returns as soon as it finds a difference, so how
             # long it takes leaks how much of the token was right. Overkill for a
             # loopback socket, and the correct habit.
@@ -145,7 +163,10 @@ def create_app(
 
     register_error_handlers(app)
 
+    app.middleware("http")(console.guard_console)
+
     for module in (health, structure, groups, teaching, rules, imports, solving, timetables):
         app.include_router(module.router)
+    app.include_router(console.router)
 
     return app
