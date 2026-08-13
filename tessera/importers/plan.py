@@ -72,6 +72,13 @@ class Prepared:
 
     row: int
     entity: d.Room | d.Instructor | d.Course | dg.StudentGroup
+    #: A parent named in *this file* rather than already in the project.
+    #:
+    #: A sheet of groups almost always contains an intake and the batches beneath it, so
+    #: resolving parents only against what already exists would reject every child in the
+    #: commonest file there is. The name is carried instead, and whoever writes the plan
+    #: creates parents first and resolves it then.
+    pending_parent: str = ""
 
 
 @dataclass(frozen=True)
@@ -139,6 +146,17 @@ def _values(row: Row, mapping: Mapping[str, str], name: str) -> list[str]:
     return found
 
 
+def _names_in(sheet: Sheet, mapping: Mapping[str, str]) -> set[str]:
+    """Every name this file itself defines, folded for comparison.
+
+    What makes an in-file parent distinguishable from a typo: `2024 Intake` on row 2 is a
+    group that will exist by the time row 3 is written, and `2025 Intake` is not.
+    """
+    return {
+        _fold(_value(row, mapping, "name")) for row in sheet.rows if _value(row, mapping, "name")
+    }
+
+
 def build(sheet: Sheet, kind: Kind, mapping: Mapping[str, str], known: Catalogue) -> Plan:
     """Everything the file would add, and everything wrong with it."""
     problems: list[Problem] = []
@@ -154,15 +172,16 @@ def build(sheet: Sheet, kind: Kind, mapping: Mapping[str, str], known: Catalogue
         )
 
     builder = _BUILDERS[kind]
+    defined = _names_in(sheet, mapping)
     counted = 0
     for row in sheet.rows:
         if not any(row.cells.values()):
             continue  # a blank line between blocks is formatting, not a missing record
         counted += 1
-        entity, row_problems = builder(row, mapping, known)
+        entity, pending, row_problems = builder(row, mapping, known, defined)
         problems.extend(row_problems)
         if entity is not None:
-            ready.append(Prepared(row=row.number, entity=entity))
+            ready.append(Prepared(row=row.number, entity=entity, pending_parent=pending))
 
     return Plan(
         kind=kind,
@@ -173,7 +192,9 @@ def build(sheet: Sheet, kind: Kind, mapping: Mapping[str, str], known: Catalogue
     )
 
 
-def _domain(row: Row, build_entity: Any, column: str = "") -> tuple[Any | None, list[Problem]]:
+def _domain(
+    row: Row, build_entity: Any, column: str = "", pending: str = ""
+) -> tuple[Any | None, str, list[Problem]]:
     """Hand the row to the domain and turn its objection into a row problem.
 
     The rules are not restated here. A capacity below zero, a course with no code and a
@@ -181,9 +202,9 @@ def _domain(row: Row, build_entity: Any, column: str = "") -> tuple[Any | None, 
     second copy of those rules in the importer is a second copy to keep in step.
     """
     try:
-        return build_entity(), []
+        return build_entity(), pending, []
     except ValueError as error:
-        return None, [Problem(row=row.number, column=column, message=_first_message(error))]
+        return None, "", [Problem(row=row.number, column=column, message=_first_message(error))]
 
 
 def _first_message(error: ValueError) -> str:
@@ -196,8 +217,8 @@ def _first_message(error: ValueError) -> str:
 
 
 def _room(
-    row: Row, mapping: Mapping[str, str], known: Catalogue
-) -> tuple[d.Room | None, list[Problem]]:
+    row: Row, mapping: Mapping[str, str], known: Catalogue, defined: set[str]
+) -> tuple[d.Room | None, str, list[Problem]]:
     problems: list[Problem] = []
     name = _value(row, mapping, "name")
     if not name:
@@ -230,7 +251,7 @@ def _room(
             feature_ids.append(found)
 
     if problems:
-        return None, problems
+        return None, "", problems
     return _domain(
         row,
         lambda: d.Room(
@@ -244,8 +265,8 @@ def _room(
 
 
 def _instructor(
-    row: Row, mapping: Mapping[str, str], known: Catalogue
-) -> tuple[d.Instructor | None, list[Problem]]:
+    row: Row, mapping: Mapping[str, str], known: Catalogue, defined: set[str]
+) -> tuple[d.Instructor | None, str, list[Problem]]:
     problems: list[Problem] = []
     name = _value(row, mapping, "name")
     if not name:
@@ -261,7 +282,7 @@ def _instructor(
             )
 
     if problems:
-        return None, problems
+        return None, "", problems
     return _domain(
         row,
         lambda: d.Instructor(
@@ -274,8 +295,8 @@ def _instructor(
 
 
 def _course(
-    row: Row, mapping: Mapping[str, str], known: Catalogue
-) -> tuple[d.Course | None, list[Problem]]:
+    row: Row, mapping: Mapping[str, str], known: Catalogue, defined: set[str]
+) -> tuple[d.Course | None, str, list[Problem]]:
     problems: list[Problem] = []
     code = _value(row, mapping, "code")
     name = _value(row, mapping, "name")
@@ -299,7 +320,7 @@ def _course(
             )
 
     if problems:
-        return None, problems
+        return None, "", problems
     return _domain(
         row,
         lambda: d.Course(
@@ -313,8 +334,8 @@ def _course(
 
 
 def _group(
-    row: Row, mapping: Mapping[str, str], known: Catalogue
-) -> tuple[dg.StudentGroup | None, list[Problem]]:
+    row: Row, mapping: Mapping[str, str], known: Catalogue, defined: set[str]
+) -> tuple[dg.StudentGroup | None, str, list[Problem]]:
     problems: list[Problem] = []
     name = _value(row, mapping, "name")
     if not name:
@@ -326,14 +347,18 @@ def _group(
         problems.append(Problem(row.number, "size", f"{raw_size!r} is not a number of students."))
 
     parent_id = None
+    pending = ""
     parent = _value(row, mapping, "parent")
     if parent:
         parent_id, near = _resolve(parent, known.groups)
         if parent_id is None:
-            # Groups arrive in one file and a parent is often a row above, so this is
-            # reported against the project as it stands. The applier writes parents
-            # before children for exactly this reason.
-            problems.append(Problem(row.number, "parent", f"No group called {parent!r}.", near))
+            if _fold(parent) in defined:
+                # The parent is another row of this same file — an intake above its lab
+                # batches, which is what a group sheet almost always looks like. Rejecting
+                # it would reject every child in the commonest file there is.
+                pending = parent
+            else:
+                problems.append(Problem(row.number, "parent", f"No group called {parent!r}.", near))
 
     program_id = None
     program = _value(row, mapping, "program")
@@ -345,7 +370,7 @@ def _group(
             )
 
     if problems:
-        return None, problems
+        return None, "", problems
     return _domain(
         row,
         lambda: dg.StudentGroup(
@@ -356,6 +381,7 @@ def _group(
             program_id=ProgramId(program_id) if program_id is not None else None,
         ),
         "size",
+        pending,
     )
 
 
