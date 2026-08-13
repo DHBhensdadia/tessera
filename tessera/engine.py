@@ -27,6 +27,7 @@ from pathlib import Path
 import structlog
 import uvicorn
 
+from tessera import paths
 from tessera.api.app import create_app
 from tessera.api.logging import configure_logging
 from tessera.repository.database import create_project_engine
@@ -83,15 +84,12 @@ def watch_parent(poll_seconds: float = 1.0) -> None:
 def migrations_directory() -> Path:
     """Where the migration scripts live, frozen or not.
 
-    PyInstaller unpacks bundled data under ``sys._MEIPASS`` rather than beside the
-    source, so resolving relative to ``__file__`` finds nothing in a shipped build. The
-    packaging spec adds the migrations as data; this finds them either way.
+    Kept as a name here because callers and tests import it from this module; the
+    resolution itself moved to `tessera.paths` in 2.5, when the console's templates
+    turned out to need exactly the same treatment and one copy of the rule was better
+    than two.
     """
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    candidate = base / "repository" / "migrations"
-    if candidate.exists():
-        return candidate
-    return Path(__file__).resolve().parent / "repository" / "migrations"
+    return paths.migrations_directory()
 
 
 def migrate(project_path: Path) -> None:
