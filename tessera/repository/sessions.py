@@ -230,6 +230,61 @@ def _reject_unplaceable_duration(session: DbSession, term_id: int, duration_slot
         )
 
 
+def update_template(
+    session: DbSession, template_id: int, *, changes: Mapping[str, Any]
+) -> d.SessionTemplate:
+    """Change how many sessions a component produces, and who attends them.
+
+    **Multiplicity only** — `per_week`, `split_per_attendee`, `attendee_ids`. Shape
+    (`kind`, `duration_slots`, instructors, features) is fixed at creation and is not in
+    `SessionTemplateUpdate` either.
+
+    The reason is that shape is *copied* into each session, so a session can diverge:
+    one lab running long is a real thing to want, and `PATCH /sessions/{id}` exists for
+    it. There is no honest way to propagate a shape change afterwards. Overwriting would
+    silently revert those deliberate edits; not overwriting would leave a component and
+    its sessions disagreeing with nothing to say which is right. Nothing records whether
+    a session diverged, so the two cases cannot be told apart.
+
+    Changing shape therefore means deleting the component and adding it again, which
+    Decision #54 makes a clean operation with a visible guard.
+
+    This does **not** touch sessions. Expansion reconciles them, and separating the two
+    is what lets the caller see what an edit would cost before paying it.
+    """
+    row = _get_or_404(session, m.SessionTemplate, template_id)
+
+    attendees = changes.get("attendee_ids")
+    if attendees is not None:
+        _reject_foreign_groups(session, row.offering_id, attendees)
+        _check_exist(session, m.StudentGroup, {int(i) for i in attendees}, "attendee_ids")
+
+    _validated(
+        d.SessionTemplate,
+        offering_id=row.offering_id,
+        kind=d.SessionKind(row.kind),
+        duration_slots=row.duration_slots,
+        per_week=int(changes.get("per_week", row.per_week)),
+        split_per_attendee=bool(changes.get("split_per_attendee", row.split_per_attendee)),
+        attendee_ids=frozenset(
+            attendees if attendees is not None else [g.id for g in row.attendees]
+        ),
+        instructor_ids=frozenset(int(i.id) for i in row.instructors),
+        required_features=frozenset(int(f.id) for f in row.required_features),
+    )
+
+    for field in ("per_week", "split_per_attendee"):
+        if field in changes:
+            setattr(row, field, changes[field])
+    if attendees is not None:
+        row.attendees = list(
+            session.scalars(select(m.StudentGroup).where(m.StudentGroup.id.in_(list(attendees))))
+        )
+
+    session.flush()
+    return mappers.template_to_domain(row)
+
+
 def delete_template(session: DbSession, template_id: int) -> None:
     """Remove a component, and the sessions it generated with it.
 
