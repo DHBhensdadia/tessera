@@ -7675,6 +7675,24 @@
     "/api/v1/terms": {
       "get": {
         "operationId": "list_terms_api_v1_terms_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "institution_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Institution Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7953,6 +7971,7 @@
         ]
       },
       "patch": {
+        "description": "Name and dates only. `TermUpdate` carries no `time_grid_id`, deliberately \u2014\nrepointing a term at a differently-shaped grid has the same effect as editing one.",
         "operationId": "update_term_api_v1_terms__term_id__patch",
         "parameters": [
           {
@@ -8338,6 +8357,7 @@
         ]
       },
       "post": {
+        "description": "The term is named twice \u2014 once in the path, once in the body.\n\n`OfferingCreate` carries a `term_id` because the contract was frozen in 1.4, before\nthe handlers existed. Rather than pick a winner silently, a disagreement is refused:\nwhichever one the caller meant, they believe the offering went somewhere it did not,\nand that belief surfaces much later as a course missing from a timetable.",
         "operationId": "create_offering_api_v1_terms__term_id__offerings_post",
         "parameters": [
           {
@@ -9155,6 +9175,24 @@
     "/api/v1/time-grids": {
       "get": {
         "operationId": "list_time_grids_api_v1_time_grids_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "institution_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Institution Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -9291,6 +9329,74 @@
       }
     },
     "/api/v1/time-grids/{grid_id}": {
+      "delete": {
+        "description": "Added in 2.4. The frozen contract could create grids and never remove one \u2014 the\nsame gap fixed for buildings and features in 2.1 and programmes in 2.3.",
+        "operationId": "delete_time_grid_api_v1_time_grids__grid_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Validation failed"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not implemented yet"
+          }
+        },
+        "summary": "Delete Time Grid",
+        "tags": [
+          "teaching"
+        ]
+      },
       "get": {
         "operationId": "get_time_grid_api_v1_time_grids__grid_id__get",
         "parameters": [
