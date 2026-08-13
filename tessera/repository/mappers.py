@@ -113,6 +113,26 @@ def program_to_domain(row: m.Program) -> d.Program:
     )
 
 
+def term_to_domain(row: m.Term) -> d.Term:
+    return d.Term(
+        id=TermId(row.id),
+        institution_id=InstitutionId(row.institution_id),
+        time_grid_id=TimeGridId(row.time_grid_id),
+        academic_year=row.academic_year,
+        name=row.name,
+        starts_on=row.starts_on,
+        ends_on=row.ends_on,
+    )
+
+
+def offering_to_domain(row: m.Offering) -> d.Offering:
+    return d.Offering(
+        id=OfferingId(row.id),
+        term_id=TermId(row.term_id),
+        course_id=CourseId(row.course_id),
+    )
+
+
 def course_to_domain(row: m.Course) -> d.Course:
     return d.Course(
         id=CourseId(row.id),

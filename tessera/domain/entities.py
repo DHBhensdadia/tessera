@@ -129,6 +129,11 @@ class Term(_Entity):
     time_grid_id: TimeGridId | None = None
     academic_year: str = Field(min_length=1)
     name: str = Field(min_length=1)
+
+    # Calendar dates, unlike everything else about a term, are decoration: scheduling is
+    # done entirely in slot indices and nothing here reads these. They exist so a printed
+    # timetable can say which weeks it covers, and are optional because a department
+    # starts building next year's timetable long before the dates are confirmed.
     starts_on: date | None = None
     ends_on: date | None = None
 
