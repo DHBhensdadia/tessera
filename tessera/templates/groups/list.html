@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Student groups · Tessera console{% endblock %}
+{% block body %}
+<h1>Student groups</h1>
+<p class="lede">
+  Intakes split into lab batches; electives cut across intakes. Two groups clash when they
+  share any students, which is what stops a lecture being scheduled opposite its own labs.
+</p>
+
+<table>
+  <tr><th>Group</th><th>Own size</th><th>Seats needed</th><th>Cannot be taught opposite</th><th></th></tr>
+  {% for node in nodes %}
+  <tr>
+    {# Depth is rendered as indentation rather than a nested table: the nesting is the
+       whole point, and a flat list of names hides the only structure worth seeing. #}
+    <td style="padding-left: {{ 0.7 + node.depth * 1.4 }}rem">
+      {{ node.name }}
+      {% if node.kind == 'cohort' %}<span class="empty">· elective</span>{% endif %}
+    </td>
+    <td>
+      <form class="inline" method="post" action="/console/student-groups/{{ node.id }}/resize">
+        <input name="size" type="number" min="0" value="{{ node.size }}" size="4" style="min-width:5rem">
+        <button type="submit">Set</button>
+      </form>
+    </td>
+    <td>{{ node.headcount }}</td>
+    <td class="empty">{{ node.clashes_with }}</td>
+    <td>
+      <form class="inline" method="post" action="/console/student-groups/{{ node.id }}/delete">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="empty">No groups yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem">Add a group</h1>
+<form method="post" action="/console/student-groups">
+  <fieldset>
+    <legend>New group</legend>
+
+    <label for="name">Name</label>
+    <input id="name" name="name" required value="{{ submitted.name if submitted else '' }}">
+
+    <label for="kind">Kind</label>
+    <select id="kind" name="kind">
+      <option value="structural">Structural — an intake or a batch, sitting in the tree</option>
+      <option value="cohort">Elective — draws students from other groups</option>
+    </select>
+
+    <label for="size">Own size <span class="empty">(students in this group alone; leave 0 for a parent)</span></label>
+    <input id="size" name="size" type="number" min="0" value="{{ submitted.size if submitted else 0 }}">
+
+    <label for="parent_id">Sits under <span class="empty">(structural only)</span></label>
+    <select id="parent_id" name="parent_id">
+      <option value="">— top level —</option>
+      {% for group in groups %}
+      {% if group.kind.value == 'structural' %}<option value="{{ group.id }}">{{ group.name }}</option>{% endif %}
+      {% endfor %}
+    </select>
+
+    <label for="program_id">Programme</label>
+    <select id="program_id" name="program_id">
+      <option value="">— none —</option>
+      {% for program in programs %}<option value="{{ program.id }}">{{ program.name }}</option>{% endfor %}
+    </select>
+
+    <label for="member_ids">Draws from <span class="empty">(electives only)</span></label>
+    <select id="member_ids" name="member_ids" multiple size="4">
+      {% for group in groups %}
+      {% if group.kind.value == 'structural' %}<option value="{{ group.id }}">{{ group.name }}</option>{% endif %}
+      {% endfor %}
+    </select>
+
+    <p><button type="submit">Add group</button></p>
+  </fieldset>
+</form>
+{% endblock %}

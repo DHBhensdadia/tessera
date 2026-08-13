@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Instructors · Tessera console{% endblock %}
+{% block body %}
+<h1>Instructors</h1>
+<p class="lede">Teaching staff, and the hours each one cannot be scheduled.</p>
+
+<table>
+  <tr><th>Name</th><th>Email</th><th></th></tr>
+  {% for person in instructors %}
+  <tr>
+    <td>{{ person.name }}</td>
+    <td>{{ person.email or '—' }}</td>
+    <td>
+      <a href="/console/instructors/{{ person.id }}/availability">Availability</a>
+      <form class="inline" method="post" action="/console/instructors/{{ person.id }}/delete">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="empty">No instructors yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem">Add an instructor</h1>
+<form method="post" action="/console/instructors">
+  <fieldset>
+    <legend>New instructor</legend>
+    <label for="name">Name</label>
+    <input id="name" name="name" required value="{{ submitted.name if submitted else '' }}">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email">
+    <p><button type="submit">Add instructor</button></p>
+  </fieldset>
+</form>
+{% endblock %}

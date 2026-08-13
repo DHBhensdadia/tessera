@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ instructor.name }} · availability{% endblock %}
+{% block body %}
+<h1>{{ instructor.name }}</h1>
+<p class="lede">
+  Tick the hours this person <em>cannot</em> teach.
+  {{ blocked_count }} slot{{ '' if blocked_count == 1 else 's' }} blocked.
+</p>
+
+{% if not terms %}
+<p class="empty">No terms exist yet, and availability is per term — a slot index only
+means a time by reference to a term's teaching week. Create a term first.</p>
+{% else %}
+<form method="get" action="/console/instructors/{{ instructor.id }}/availability">
+  <label for="term_id">Term</label>
+  <select id="term_id" name="term_id" onchange="this.form.submit()">
+    {% for term in terms %}
+    <option value="{{ term.id }}" {{ 'selected' if term.id == term_id else '' }}>
+      {{ term.name }} {{ term.academic_year }}
+    </option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit">Show</button></noscript>
+</form>
+
+<form method="post" action="/console/instructors/{{ instructor.id }}/availability">
+  <input type="hidden" name="term_id" value="{{ term_id }}">
+  <table style="margin-top:1rem">
+    <tr><th>Time</th>{% for day in days %}<th>{{ day }}</th>{% endfor %}</tr>
+    {% for row in week %}
+    <tr>
+      <td style="color:#666">{{ row.time }}</td>
+      {% for cell in row.cells %}
+      {# Break slots are shown rather than hidden: seeing lunch in the grid is how
+         someone confirms the teaching week is the one they meant to set up. #}
+      <td{% if cell.is_break %} style="background:#f3f1ec"{% endif %}>
+        {% if cell.is_break %}
+          <span class="empty" title="{{ cell.label }}">break</span>
+        {% else %}
+          <input type="checkbox" name="blocked" value="{{ cell.slot }}"
+                 title="{{ cell.label }}" {{ 'checked' if cell.blocked else '' }}>
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  <p><button type="submit">Save availability</button></p>
+</form>
+{% endif %}
+{% endblock %}
