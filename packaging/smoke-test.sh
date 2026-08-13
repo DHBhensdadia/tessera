@@ -96,6 +96,16 @@ if [ -n "$DIRECT_PORT" ]; then
         "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: evil.example" \
             -H "x-tessera-token: $DIRECT_TOKEN" \
             "http://127.0.0.1:$DIRECT_PORT/console/rooms" || true)"
+    # pandas is the largest dependency this project freezes, and the import path is the
+    # only thing that uses it. A missing hidden import is invisible until the first person
+    # to download the app tries to upload a spreadsheet.
+    IMPORTED=$(printf 'Room,Seats\nLH-901,42\n' | curl -s -X POST \
+        -H "x-tessera-token: $DIRECT_TOKEN" \
+        -F "file=@-;filename=rooms.csv;type=text/csv" \
+        "http://127.0.0.1:$DIRECT_PORT/api/v1/imports/spreadsheet?term_id=1" || true)
+    check "a spreadsheet can be read from the shipped bundle" "rooms" \
+        "$(echo "$IMPORTED" | sed -n 's/.*"detected_kind": *"\([a-z]*\)".*/\1/p')"
+
     check "console refuses an unauthenticated browser" "401" \
         "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$DIRECT_PORT/console/rooms" || true)"
 fi

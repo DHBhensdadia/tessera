@@ -25,7 +25,16 @@ a = Analysis(
     # Every one of these is imported by a string at runtime, which static analysis
     # cannot see. Without them the frozen engine builds cleanly and dies on launch with
     # ModuleNotFoundError — the most common way a PyInstaller build fails.
+    # PyInstaller finds pandas' own modules, but the pieces it reaches for by string at
+    # runtime — the csv and excel readers, and openpyxl underneath the latter — look like
+    # nothing is importing them. A build without these succeeds and then fails on the
+    # first upload, in the one place nobody is watching.
     hiddenimports=[
+        "pandas._libs.tslibs.base",
+        "pandas.io.formats.string",
+        "pandas.io.parsers.readers",
+        "pandas.io.excel._openpyxl",
+        "openpyxl",
         "uvicorn.logging",
         "uvicorn.loops.auto",
         "uvicorn.protocols.http.auto",
