@@ -105,6 +105,24 @@ class SessionTemplateCreate(Wire):
     required_feature_ids: list[int] = Field(default_factory=list)
 
 
+class SessionTemplateUpdate(Wire):
+    """What can change about a component after it has been created.
+
+    **Multiplicity only.** ``kind``, ``duration_slots``, ``instructor_ids`` and
+    ``required_feature_ids`` are absent deliberately: those are *copied* into each
+    session so a session can diverge from its template, and there is no honest way to
+    propagate a change to them. Overwriting would revert deliberate per-session edits;
+    not overwriting would leave a template and its sessions silently disagreeing. To
+    change the shape of a component, delete it and add it again.
+
+    What is here is what reconciliation can act on: how many, and taught to whom.
+    """
+
+    per_week: int | None = Field(default=None, ge=1)
+    split_per_attendee: bool | None = None
+    attendee_ids: list[int] | None = Field(default=None, min_length=1)
+
+
 class SessionTemplateRead(Wire):
     id: int
     offering_id: int
