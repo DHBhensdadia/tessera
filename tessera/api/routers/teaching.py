@@ -12,6 +12,7 @@ route's absence — if you are here to add it, read Decision #51 first.
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from tessera.api.deps import Db
@@ -37,6 +38,7 @@ from tessera.domain import entities as d
 from tessera.domain.time_grid import TimeGrid
 from tessera.repository import calendar as repo
 from tessera.repository import models as m
+from tessera.repository import sessions as sessions_repo
 
 router = APIRouter(prefix="/api/v1", tags=["teaching"])
 ERRORS = problem_responses(404, 409, 422, 501)
@@ -88,6 +90,64 @@ def _offering_read(session: DbSession, offering: d.Offering) -> OfferingRead:
             Reference(id=course.id, name=f"{course.code} {course.name}".strip()) if course else None
         ),
         session_count=repo.session_count(session, offering.id),
+    )
+
+
+def _refs(session: DbSession, model: type[m.Base], ids: frozenset[int]) -> list[Reference]:
+    """Ids expanded into id-and-name pairs, so a list renders in one request.
+
+    A session carries three of these. Returning bare ids would make drawing one week
+    hundreds of round trips.
+    """
+    if not ids:
+        return []
+    rows = session.scalars(select(model).where(model.id.in_(list(ids)))).all()
+    return [Reference(id=row.id, name=getattr(row, "name", "")) for row in rows]
+
+
+def _course_of(session: DbSession, offering_id: int | None) -> Reference | None:
+    if offering_id is None:
+        return None
+    course = session.scalar(
+        select(m.Course)
+        .join(m.Offering, m.Offering.course_id == m.Course.id)
+        .where(m.Offering.id == offering_id)
+    )
+    return Reference(id=course.id, name=f"{course.code} {course.name}".strip()) if course else None
+
+
+def _template_read(session: DbSession, template: d.SessionTemplate) -> SessionTemplateRead:
+    assert template.id is not None and template.offering_id is not None
+    return SessionTemplateRead(
+        id=template.id,
+        offering_id=template.offering_id,
+        kind=template.kind,
+        duration_slots=template.duration_slots,
+        per_week=template.per_week,
+        split_per_attendee=template.split_per_attendee,
+        attendees=_refs(session, m.StudentGroup, template.attendee_ids),
+        instructors=_refs(session, m.Instructor, template.instructor_ids),
+        required_features=_refs(session, m.Feature, template.required_features),
+        session_count=sessions_repo.template_session_count(session, template.id),
+    )
+
+
+def _session_read(session: DbSession, block: d.Session) -> SessionRead:
+    """``session_count`` on a template is what it *has* generated; ``headcount`` here is
+    what the session must seat, resolved through the group hierarchy so overlapping
+    attendees are not counted twice."""
+    assert block.id is not None and block.offering_id is not None
+    return SessionRead(
+        id=block.id,
+        offering_id=block.offering_id,
+        course=_course_of(session, block.offering_id),
+        kind=block.kind,
+        duration_slots=block.duration_slots,
+        occurrence=block.occurrence,
+        attendees=_refs(session, m.StudentGroup, block.attendee_ids),
+        instructors=_refs(session, m.Instructor, block.instructor_ids),
+        required_features=_refs(session, m.Feature, block.required_features),
+        headcount=sessions_repo.headcount_of(session, sorted(block.attendee_ids)),
     )
 
 
@@ -230,8 +290,10 @@ def delete_offering(offering_id: int, db: Db) -> None:
     response_model=Page[SessionTemplateRead],
     responses=ERRORS,
 )
-def list_templates(offering_id: int) -> Page[SessionTemplateRead]:
-    pending("2.4")
+def list_templates(offering_id: int, db: Db) -> Page[SessionTemplateRead]:
+    return _page(
+        [_template_read(db, t) for t in sessions_repo.list_templates(db, offering_id=offering_id)]
+    )
 
 
 @router.post(
@@ -240,13 +302,38 @@ def list_templates(offering_id: int) -> Page[SessionTemplateRead]:
     status_code=status.HTTP_201_CREATED,
     responses=ERRORS,
 )
-def create_template(offering_id: int, payload: SessionTemplateCreate) -> SessionTemplateRead:
-    pending("2.4")
+def create_template(
+    offering_id: int, payload: SessionTemplateCreate, db: Db
+) -> SessionTemplateRead:
+    """The offering is named twice, as with offerings themselves — path and body must
+    agree rather than one silently winning."""
+    if payload.offering_id != offering_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"offering_id in the body ({payload.offering_id}) "
+                f"does not match the URL ({offering_id})"
+            ),
+        )
+    created = sessions_repo.create_template(
+        db,
+        offering_id=offering_id,
+        kind=payload.kind,
+        duration_slots=payload.duration_slots,
+        per_week=payload.per_week,
+        split_per_attendee=payload.split_per_attendee,
+        attendee_ids=payload.attendee_ids,
+        instructor_ids=payload.instructor_ids,
+        required_feature_ids=payload.required_feature_ids,
+    )
+    return _template_read(db, created)
 
 
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
-def delete_template(template_id: int) -> None:
-    pending("2.4")
+def delete_template(template_id: int, db: Db) -> None:
+    """Removes the component and the sessions it generated. Refused while any of those
+    are scheduled — see `repository.sessions.delete_template`."""
+    sessions_repo.delete_template(db, template_id)
 
 
 @router.post("/offerings/{offering_id}/expand", response_model=Page[SessionRead], responses=ERRORS)
@@ -265,18 +352,33 @@ def expand_offering(offering_id: int) -> Page[SessionRead]:
 @router.get("/terms/{term_id}/sessions", response_model=Page[SessionRead], responses=ERRORS)
 def list_sessions(
     term_id: int,
+    db: Db,
     offering_id: int | None = None,
     group_id: int | None = None,
     instructor_id: int | None = None,
 ) -> Page[SessionRead]:
-    pending("2.4")
+    """Filtered server-side so the client can draw one person's or one group's week
+    without fetching a whole department and narrowing locally."""
+    found = sessions_repo.list_sessions(
+        db,
+        term_id=term_id,
+        offering_id=offering_id,
+        group_id=group_id,
+        instructor_id=instructor_id,
+    )
+    return _page([_session_read(db, s) for s in found])
 
 
 @router.get("/sessions/{session_id}", response_model=SessionRead, responses=ERRORS)
-def get_session(session_id: int) -> SessionRead:
-    pending("2.4")
+def get_session(session_id: int, db: Db) -> SessionRead:
+    return _session_read(db, sessions_repo.get_session(db, session_id))
 
 
 @router.patch("/sessions/{session_id}", response_model=SessionRead, responses=ERRORS)
-def update_session(session_id: int, payload: SessionUpdate) -> SessionRead:
-    pending("2.4")
+def update_session(session_id: int, payload: SessionUpdate, db: Db) -> SessionRead:
+    """Lets one session diverge from its template. Refused while it is scheduled, since
+    every editable field here changes whether an existing placement is still legal."""
+    updated = sessions_repo.update_session(
+        db, session_id, changes=payload.model_dump(exclude_unset=True)
+    )
+    return _session_read(db, updated)
