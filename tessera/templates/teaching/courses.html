@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Courses · Tessera console{% endblock %}
+{% block body %}
+<h1>Courses</h1>
+<p class="lede">The catalogue. A course outlives every term; what a term does with it is an offering.</p>
+
+<table>
+  <tr><th>Code</th><th>Name</th><th>Credits</th><th>Department</th><th></th></tr>
+  {% for course in courses %}
+  <tr>
+    <td>{{ course.code }}</td>
+    <td>{{ course.name }}</td>
+    <td>{{ course.credits }}</td>
+    <td>{{ course.department }}</td>
+    <td>
+      <form class="inline" method="post" action="/console/courses/{{ course.id }}/delete">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="empty">No courses yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem">Add a course</h1>
+<form method="post" action="/console/courses">
+  <fieldset>
+    <legend>New course</legend>
+    <label for="code">Code <span class="empty">(what the department calls it; unique within one)</span></label>
+    <input id="code" name="code" required value="{{ submitted.code if submitted else '' }}" placeholder="CS301">
+    <label for="name">Name</label>
+    <input id="name" name="name" required value="{{ submitted.name if submitted else '' }}">
+    <label for="credits">Credits</label>
+    <input id="credits" name="credits" type="number" min="0" value="0">
+    <label for="department_id">Department <span class="empty">(optional — a syllabus committee names courses before ownership is settled)</span></label>
+    <select id="department_id" name="department_id">
+      <option value="">— none —</option>
+      {% for department in departments %}<option value="{{ department.id }}">{{ department.name }}</option>{% endfor %}
+    </select>
+    <p><button type="submit">Add course</button></p>
+  </fieldset>
+</form>
+{% endblock %}

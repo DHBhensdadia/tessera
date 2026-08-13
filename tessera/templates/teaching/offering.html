@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ course.code }} · Tessera console{% endblock %}
+{% block body %}
+<h1>{{ course.code }} — {{ course.name }}</h1>
+<p class="lede">
+  Offered in {{ term.name }} {{ term.academic_year }}.
+  <a href="/console/terms/{{ term.id }}/offerings">Back to the term</a>
+</p>
+
+<h1 style="font-size:1.1rem">Weekly pattern</h1>
+<table>
+  <tr><th>Component</th><th>Taught to</th><th>Staff</th><th>Needs</th><th>Generates</th><th></th></tr>
+  {% for pattern in patterns %}
+  <tr>
+    <td>
+      <form class="inline" method="post" action="/console/templates/{{ pattern.id }}/repeat">
+        <input name="per_week" type="number" min="1" value="{{ pattern.per_week }}" style="min-width:4rem">
+        <button type="submit">×</button>
+      </form>
+      {{ pattern.kind }}, {{ pattern.duration_slots }} slot{{ '' if pattern.duration_slots == 1 else 's' }}
+    </td>
+    <td>{{ pattern.attendees }}{% if pattern.split %} <span class="empty">· split</span>{% endif %}</td>
+    <td class="empty">{{ pattern.instructors }}</td>
+    <td class="empty">{{ pattern.features }}</td>
+    {# "→ generates 3 sessions" is doing real teaching work: it makes the lecture/lab-split
+       model visible without anyone reading documentation. When the two numbers disagree,
+       the pattern has been edited and not yet expanded. #}
+    <td>
+      → {{ pattern.expects }} session{{ '' if pattern.expects == 1 else 's' }}
+      {% if pattern.generated != pattern.expects %}
+      <span class="empty">({{ pattern.generated }} now — expand to reconcile)</span>
+      {% endif %}
+    </td>
+    <td>
+      <form class="inline" method="post" action="/console/templates/{{ pattern.id }}/delete">
+        <button class="danger" type="submit">Remove</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="empty">No components yet. A course with no pattern generates nothing.</td></tr>
+  {% endfor %}
+</table>
+
+<form method="post" action="/console/offerings/{{ offering.id }}/expand" style="margin-top:1rem">
+  <button type="submit"><strong>Expand</strong> — turn this pattern into sessions</button>
+  <span class="empty">Safe to press twice. Refuses rather than removing a session already placed.</span>
+</form>
+
+<h1 style="margin-top:2rem; font-size:1.1rem">Sessions</h1>
+<table>
+  <tr><th>Kind</th><th>Which</th><th>Length</th><th>Taught to</th><th>Seats</th></tr>
+  {% for session in sessions %}
+  <tr>
+    <td>{{ session.kind }}</td>
+    <td class="empty">{{ session.occurrence }} of its group</td>
+    <td>{{ session.duration_slots }} slot{{ '' if session.duration_slots == 1 else 's' }}</td>
+    <td>{{ session.attendees }}</td>
+    <td>{{ session.headcount }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="empty">Nothing generated yet — press Expand.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem; font-size:1.1rem">Add a component</h1>
+<form method="post" action="/console/offerings/{{ offering.id }}/templates">
+  <fieldset>
+    <legend>New component</legend>
+    <label for="kind">Kind</label>
+    <select id="kind" name="kind">
+      {% for kind in kinds %}<option value="{{ kind }}">{{ kind }}</option>{% endfor %}
+    </select>
+
+    <label for="per_week">How many a week</label>
+    <input id="per_week" name="per_week" type="number" min="1" value="1" required>
+
+    <label for="duration_slots">Slots each</label>
+    <input id="duration_slots" name="duration_slots" type="number" min="1" value="2" required>
+
+    <label for="attendee_ids">Taught to <span class="empty">(hold ⌘ to pick several)</span></label>
+    <select id="attendee_ids" name="attendee_ids" multiple size="5" required>
+      {% for group in groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}
+    </select>
+
+    <label>
+      <input type="checkbox" name="split_per_attendee" value="true">
+      Split — each group gets its own parallel session
+      <span class="empty">(how one lab becomes three)</span>
+    </label>
+
+    <label for="instructor_ids">Staff</label>
+    <select id="instructor_ids" name="instructor_ids" multiple size="3">
+      {% for id, name in instructors %}<option value="{{ id }}">{{ name }}</option>{% endfor %}
+    </select>
+
+    <label for="required_feature_ids">Requires</label>
+    <select id="required_feature_ids" name="required_feature_ids" multiple size="3">
+      {% for feature in features %}<option value="{{ feature.id }}">{{ feature.name }}</option>{% endfor %}
+    </select>
+
+    <p><button type="submit">Add component</button></p>
+  </fieldset>
+</form>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ term.name }} · Tessera console{% endblock %}
+{% block body %}
+<h1>{{ term.name }} {{ term.academic_year }}</h1>
+<p class="lede">Courses offered this term. Open one to describe its week.</p>
+
+<table>
+  <tr><th>Course</th><th>Sessions</th><th></th></tr>
+  {% for offering in offerings %}
+  <tr>
+    <td><a href="/console/offerings/{{ offering.id }}/templates">{{ offering.label }}</a></td>
+    <td>{{ offering.sessions }}</td>
+    <td>
+      <form class="inline" method="post" action="/console/offerings/{{ offering.id }}/delete">
+        <button class="danger" type="submit">Withdraw</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="empty">Nothing offered this term yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem">Offer a course</h1>
+<form method="post" action="/console/terms/{{ term.id }}/offerings">
+  <fieldset>
+    <legend>Add to this term</legend>
+    <label for="course_id">Course</label>
+    {# Courses already offered are left out rather than shown and refused: the rule is
+       one offering per course per term, and a menu that offers a choice it will reject
+       is a worse explanation than a menu that does not. #}
+    <select id="course_id" name="course_id" required>
+      {% for course in available %}<option value="{{ course.id }}">{{ course.code }} {{ course.name }}</option>{% endfor %}
+    </select>
+    {% if not available %}<p class="empty">Every course is already offered this term.</p>{% endif %}
+    <p><button type="submit">Offer course</button></p>
+  </fieldset>
+</form>
+{% endblock %}
