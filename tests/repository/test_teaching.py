@@ -149,10 +149,12 @@ class TestDeleting:
         """The guard proved by breaking the thing it guards.
 
         ``offering.course_id`` cascades, and ``session`` cascades from ``offering``, so
-        without the refusal this delete would silently remove the offering too. The
-        offering is inserted through the ORM because no endpoint creates one yet — the
-        table has existed since 1.3, and waiting for part 2 would mean shipping a guard
-        nobody has seen fire.
+        without the refusal this delete would silently remove the offering too.
+
+        The offering is inserted through the ORM because this is a repository test and
+        there is no HTTP here. When it was written in part 1 there was no other way —
+        no endpoint created an offering. Part 2 added one, and
+        `tests/api/test_teaching.py` now proves the same guard through the real path.
         """
         course = repo.create_course(db, code="CS101", name="Intro", department_id=department.id)
         assert course.id is not None
