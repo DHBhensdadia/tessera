@@ -13,7 +13,7 @@ a path of its own has to be imported before it or the catch-all swallows the pat
 
 from __future__ import annotations
 
-from tessera.api.console import calendar, groups, people, places, rooms, teaching
+from tessera.api.console import calendar, groups, imports, people, places, rooms, teaching
 from tessera.api.console.base import (
     CONSOLE_COOKIE,
     ENTRY_PATH,
@@ -35,6 +35,7 @@ __all__ = [
     "describe",
     "groups",
     "guard_console",
+    "imports",
     "page",
     "people",
     "places",

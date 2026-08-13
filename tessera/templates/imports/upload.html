@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Import · Tessera console{% endblock %}
+{% block body %}
+<h1>Import a spreadsheet</h1>
+
+{% if not token %}
+<p class="lede">
+  Rooms, instructors, courses or student groups, as <code>.csv</code> or <code>.xlsx</code>.
+  Nothing is written until you have seen what would happen.
+</p>
+<form method="post" action="/console/imports" enctype="multipart/form-data">
+  <fieldset>
+    <legend>Choose a file</legend>
+    <label for="term_id">Term <span class="empty">(names the institution; rooms and staff are not term-specific)</span></label>
+    <select id="term_id" name="term_id" required>
+      {% for term in terms %}<option value="{{ term.id }}">{{ term.name }} {{ term.academic_year }}</option>{% endfor %}
+    </select>
+    {% if not terms %}<p class="empty">Create a term first.</p>{% endif %}
+
+    <label for="file">Spreadsheet</label>
+    <input id="file" name="file" type="file" accept=".csv,.xlsx,.xlsm" required>
+
+    <p><button type="submit">Check the file</button></p>
+  </fieldset>
+</form>
+
+{% else %}
+<p class="lede">
+  <strong>{{ filename }}</strong> — looks like {{ kind }}.
+  {{ rows_ready }} of {{ rows_total }} row{{ '' if rows_total == 1 else 's' }} would be imported.
+  {% if rows_ready != rows_total %}Nothing has been written.{% endif %}
+</p>
+
+{% if missing %}
+<p class="problem">No column was found for: {{ missing|join(', ') }}. Point one at it below.</p>
+{% endif %}
+
+<form method="post" action="/console/imports/{{ token }}/check">
+  <fieldset>
+    <legend>Columns</legend>
+    {# The mapping is a guess, so it is shown as a set of dropdowns rather than applied
+       silently. An unrecognised column is the case that matters: without this the only
+       way to import a sheet whose header says something unexpected is to edit the
+       spreadsheet, which is the manual work this page exists to remove. #}
+    <table>
+      <tr><th>Column in the file</th><th>Means</th></tr>
+      {% for column in columns %}
+      <tr>
+        <td>{{ column.header }}</td>
+        <td>
+          <select name="column:{{ column.header }}">
+            <option value="">— ignore —</option>
+            {% for field in fields %}
+            <option value="{{ field }}" {{ 'selected' if field == column.field else '' }}>{{ field }}</option>
+            {% endfor %}
+          </select>
+          {% if column.suggestion %}<span class="empty">looks like {{ column.suggestion }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p><button type="submit">Check again</button></p>
+  </fieldset>
+</form>
+
+<h1 style="font-size:1.1rem">What is wrong</h1>
+<table>
+  <tr><th>Row</th><th>Column</th><th>Problem</th></tr>
+  {% for problem in problems %}
+  <tr>
+    <td>{{ problem.row }}</td>
+    <td class="empty">{{ problem.column or '—' }}</td>
+    <td>
+      {{ problem.message }}
+      {% if problem.suggestion %}<span class="empty">Did you mean “{{ problem.suggestion }}”?</span>{% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="empty">Nothing. Every row can be imported.</td></tr>
+  {% endfor %}
+</table>
+
+<form method="post" action="/console/imports/{{ token }}/commit" style="margin-top:1rem">
+  {% for column in columns %}
+  <input type="hidden" name="column:{{ column.header }}" value="{{ column.field }}">
+  {% endfor %}
+  <button type="submit"><strong>Import {{ rows_ready }} row{{ '' if rows_ready == 1 else 's' }}</strong></button>
+  <span class="empty">
+    Rows listed above are left out. If any row fails to write, none of them are imported.
+  </span>
+</form>
+<p><a href="/console/imports">Start again with a different file</a></p>
+{% endif %}
+{% endblock %}
