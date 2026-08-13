@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session as DbSession
 
 from tessera.api.deps import Db
 from tessera.api.errors import problem_responses
-from tessera.api.routers._stubs import pending
 from tessera.api.schemas import (
     BuildingCreate,
     BuildingRead,
@@ -44,6 +43,7 @@ from tessera.repository import groups as groups_repo
 from tessera.repository import models as m
 from tessera.repository import people as people_repo
 from tessera.repository import structure as repo
+from tessera.repository import teaching as teaching_repo
 
 router = APIRouter(prefix="/api/v1", tags=["structure"])
 ERRORS = problem_responses(404, 409, 422, 501)
@@ -323,31 +323,54 @@ def delete_instructor(instructor_id: int, db: Db) -> None:
     people_repo.delete_instructor(db, instructor_id)
 
 
-# -- courses (2.4) ---------------------------------------------------------------
+# -- courses -------------------------------------------------------------------
+
+
+def _course_read(session: DbSession, course: d.Course) -> CourseRead:
+    assert course.id is not None  # everything the repository returns has been flushed
+    department = session.get(m.Department, course.department_id) if course.department_id else None
+    return CourseRead(
+        id=course.id,
+        code=course.code,
+        name=course.name,
+        credits=course.credits,
+        department=(Reference(id=department.id, name=department.name) if department else None),
+    )
 
 
 @router.get("/courses", response_model=Page[CourseRead], responses=ERRORS)
-def list_courses(department_id: int | None = None) -> Page[CourseRead]:
-    pending("2.4")
+def list_courses(db: Db, department_id: int | None = None) -> Page[CourseRead]:
+    courses = teaching_repo.list_courses(db, department_id=department_id)
+    return _page([_course_read(db, course) for course in courses])
 
 
 @router.post(
     "/courses", response_model=CourseRead, status_code=status.HTTP_201_CREATED, responses=ERRORS
 )
-def create_course(payload: CourseCreate) -> CourseRead:
-    pending("2.4")
+def create_course(payload: CourseCreate, db: Db) -> CourseRead:
+    created = teaching_repo.create_course(
+        db,
+        code=payload.code,
+        name=payload.name,
+        credits=payload.credits,
+        department_id=payload.department_id,
+    )
+    return _course_read(db, created)
 
 
 @router.get("/courses/{course_id}", response_model=CourseRead, responses=ERRORS)
-def get_course(course_id: int) -> CourseRead:
-    pending("2.4")
+def get_course(course_id: int, db: Db) -> CourseRead:
+    return _course_read(db, teaching_repo.get_course(db, course_id))
 
 
 @router.patch("/courses/{course_id}", response_model=CourseRead, responses=ERRORS)
-def update_course(course_id: int, payload: CourseUpdate) -> CourseRead:
-    pending("2.4")
+def update_course(course_id: int, payload: CourseUpdate, db: Db) -> CourseRead:
+    updated = teaching_repo.update_course(
+        db, course_id, changes=payload.model_dump(exclude_unset=True)
+    )
+    return _course_read(db, updated)
 
 
 @router.delete("/courses/{course_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
-def delete_course(course_id: int) -> None:
-    pending("2.4")
+def delete_course(course_id: int, db: Db) -> None:
+    teaching_repo.delete_course(db, course_id)
