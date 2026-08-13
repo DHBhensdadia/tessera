@@ -67,6 +67,43 @@ if [ -n "$ENGINE_PID" ]; then
         "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/health" || true)"
 fi
 
+echo "==> the console renders from the shipped bundle"
+# Run the bundled engine directly rather than through the app, because the handshake —
+# and therefore the token — goes to whoever started it. Without the token every console
+# request is a 401, which would prove the route exists and nothing about whether the
+# templates travelled.
+#
+# This is the check that catches the whole class of PyInstaller data bugs: templates are
+# read from disk at render time, so a spec that forgets them builds cleanly, passes every
+# unit test, and serves a stack trace to the first person who downloads the app.
+ENGINE_BIN="$STAGE/Tessera.app/Contents/Resources/engine/tessera-engine"
+HANDSHAKE=$(mktemp)
+"$ENGINE_BIN" --project "$STAGE/smoke.tessera" >"$HANDSHAKE" 2>/dev/null &
+DIRECT_PID=$!
+for _ in $(seq 1 40); do [ -s "$HANDSHAKE" ] && break; sleep 0.25; done
+
+DIRECT_PORT=$(sed -n '1p' "$HANDSHAKE" | sed -E 's/.*"port": *([0-9]+).*/\1/')
+DIRECT_TOKEN=$(sed -n '1p' "$HANDSHAKE" | sed -E 's/.*"token": *"([^"]+)".*/\1/')
+check "engine announces a port when run directly" "yes" \
+    "$([ -n "$DIRECT_PORT" ] && echo yes || echo no)"
+
+if [ -n "$DIRECT_PORT" ]; then
+    CONSOLE=$(curl -s -H "x-tessera-token: $DIRECT_TOKEN" \
+        "http://127.0.0.1:$DIRECT_PORT/console/rooms" || true)
+    check "console page renders (templates were bundled)" "yes" \
+        "$(echo "$CONSOLE" | grep -q "Tessera console\|<h1>Rooms</h1>" && echo yes || echo no)"
+    check "console refuses a foreign Host header" "403" \
+        "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: evil.example" \
+            -H "x-tessera-token: $DIRECT_TOKEN" \
+            "http://127.0.0.1:$DIRECT_PORT/console/rooms" || true)"
+    check "console refuses an unauthenticated browser" "401" \
+        "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$DIRECT_PORT/console/rooms" || true)"
+fi
+# Suppressed because bash announces the reaped job on stderr, and a stray "Killed: 9"
+# in the middle of a passing run reads like a failure.
+{ kill -9 "$DIRECT_PID" && wait "$DIRECT_PID"; } 2>/dev/null || true
+rm -f "$HANDSHAKE"
+
 echo "==> force quit, the way a user would"
 kill -9 "$APP_PID" 2>/dev/null || true
 sleep 6

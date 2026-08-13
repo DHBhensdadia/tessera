@@ -15,7 +15,13 @@ a = Analysis(
     # Alembic loads migration scripts from disk at runtime, so they travel as data
     # rather than being importable modules. tessera.engine.migrations_directory finds
     # them under sys._MEIPASS once frozen.
-    datas=[(str(ROOT / "tessera" / "repository" / "migrations"), "repository/migrations")],
+    # Templates are read from disk at render time, exactly like the migrations above, so
+    # they travel the same way. Miss this and the console works in development and serves
+    # a stack trace from the .dmg — which is why smoke-test.sh fetches a console page.
+    datas=[
+        (str(ROOT / "tessera" / "repository" / "migrations"), "repository/migrations"),
+        (str(ROOT / "tessera" / "templates"), "templates"),
+    ],
     # Every one of these is imported by a string at runtime, which static analysis
     # cannot see. Without them the frozen engine builds cleanly and dies on launch with
     # ModuleNotFoundError — the most common way a PyInstaller build fails.
