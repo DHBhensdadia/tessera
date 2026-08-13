@@ -222,7 +222,18 @@ class StudentGroup(Base):
 
 
 class Course(Base):
+    """A catalogue entry, independent of any term.
+
+    ``code`` is what a department actually calls the course — CS101 — and is the
+    handle used on printed timetables and in imported spreadsheets. Two courses
+    sharing one within a department cannot be told apart by anyone reading the
+    output, so the pair is unique. Names are not: "Project Work" is a real course
+    in several departments at once.
+    """
+
     __tablename__ = "course"
+    __table_args__ = (UniqueConstraint("department_id", "code", name="uq_course_department_code"),)
+
     department_id: Mapped[int | None] = mapped_column(
         ForeignKey("department.id", ondelete="SET NULL"), nullable=True
     )
