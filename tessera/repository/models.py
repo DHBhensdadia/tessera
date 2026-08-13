@@ -276,7 +276,18 @@ class TimeGridBreak(Base):
 
 
 class Term(Base):
+    """One schedulable period.
+
+    ``time_grid_id`` is ``RESTRICT`` rather than ``CASCADE`` because a grid is what gives
+    every stored slot index its meaning. Removing one out from under a term would leave
+    every assignment in it pointing at a week that no longer exists.
+    """
+
     __tablename__ = "term"
+    __table_args__ = (
+        UniqueConstraint("institution_id", "academic_year", "name", name="uq_term_year_name"),
+    )
+
     institution_id: Mapped[int] = mapped_column(ForeignKey("institution.id", ondelete="CASCADE"))
     time_grid_id: Mapped[int] = mapped_column(ForeignKey("time_grid.id", ondelete="RESTRICT"))
     academic_year: Mapped[str] = mapped_column(String(20))
