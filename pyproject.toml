@@ -85,6 +85,15 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ANN"]   # test signatures carry no useful type information
 
+[tool.ruff.lint.flake8-builtins]
+# `credits` is what a university calls the weight of a course, and it is already the
+# name of the column, the domain field and the wire field. Renaming only the function
+# argument to dodge a shadow would break that consistency for no gain: the builtin it
+# hides is the interactive banner helper, not something any of this code could want.
+# Listed explicitly rather than suppressed inline — there is no `noqa` in this codebase
+# and this is the reason to keep it that way.
+builtins-ignorelist = ["credits"]
+
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 

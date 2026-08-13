@@ -27,6 +27,7 @@ from tessera.domain.ids import (
     BuildingId,
     CommandId,
     ConstraintId,
+    CourseId,
     DepartmentId,
     FeatureId,
     InstitutionId,
@@ -109,6 +110,16 @@ def program_to_domain(row: m.Program) -> d.Program:
         department_id=DepartmentId(row.department_id) if row.department_id is not None else None,
         name=row.name,
         code=row.code,
+    )
+
+
+def course_to_domain(row: m.Course) -> d.Course:
+    return d.Course(
+        id=CourseId(row.id),
+        department_id=DepartmentId(row.department_id) if row.department_id is not None else None,
+        code=row.code,
+        name=row.name,
+        credits=row.credits,
     )
 
 
