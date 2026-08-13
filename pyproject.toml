@@ -19,6 +19,8 @@ dependencies = [
     "alembic>=1.19.1",
     "fastapi>=0.141.1",
     "jinja2>=3.1.6",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.5",
     "pydantic>=2.13.4",
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.0",
@@ -41,6 +43,8 @@ dev = [
     "hypothesis>=6.165.3",
     "httpx>=0.28.1",
     "pyinstaller>=6.22.0",
+    "pandas-stubs>=3.0.5.260730",
+    "types-openpyxl>=3.1.5.20260807",
 ]
 
 [build-system]
