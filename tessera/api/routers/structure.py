@@ -18,21 +18,26 @@ from tessera.api.errors import problem_responses
 from tessera.api.schemas import (
     BuildingCreate,
     BuildingRead,
+    BuildingUpdate,
     CourseCreate,
     CourseRead,
     CourseUpdate,
     DepartmentCreate,
     DepartmentRead,
+    DepartmentUpdate,
     FeatureCreate,
     FeatureRead,
+    FeatureUpdate,
     InstitutionCreate,
     InstitutionRead,
+    InstitutionUpdate,
     InstructorCreate,
     InstructorRead,
     InstructorUpdate,
     Page,
     ProgramCreate,
     ProgramRead,
+    ProgramUpdate,
     Reference,
     RoomCreate,
     RoomRead,
@@ -94,6 +99,31 @@ def create_institution(payload: InstitutionCreate, db: Db) -> InstitutionRead:
     return InstitutionRead.model_validate(repo.create_institution(db, name=payload.name))
 
 
+@router.get("/institutions/{institution_id}", response_model=InstitutionRead, responses=ERRORS)
+def get_institution(institution_id: int, db: Db) -> InstitutionRead:
+    return InstitutionRead.model_validate(repo.get_institution(db, institution_id))
+
+
+@router.patch("/institutions/{institution_id}", response_model=InstitutionRead, responses=ERRORS)
+def update_institution(institution_id: int, payload: InstitutionUpdate, db: Db) -> InstitutionRead:
+    """Added in 2.4b. The 1.4 freeze gave the "just a name" entities list and create and
+    nothing else, so until now a mistyped institution name was permanent."""
+    return InstitutionRead.model_validate(
+        repo.update_institution(db, institution_id, changes=payload.model_dump(exclude_unset=True))
+    )
+
+
+@router.delete(
+    "/institutions/{institution_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=ERRORS,
+)
+def delete_institution(institution_id: int, db: Db) -> None:
+    """Refused while anything belongs to it — an institution is the root of five cascade
+    chains, so this would otherwise empty a project from one dialog."""
+    repo.delete_institution(db, institution_id)
+
+
 @router.get("/departments", response_model=Page[DepartmentRead], responses=ERRORS)
 def list_departments(db: Db, institution_id: int | None = None) -> Page[DepartmentRead]:
     return _page(
@@ -116,6 +146,27 @@ def create_department(payload: DepartmentCreate, db: Db) -> DepartmentRead:
             db, institution_id=payload.institution_id, name=payload.name, code=payload.code
         )
     )
+
+
+@router.get("/departments/{department_id}", response_model=DepartmentRead, responses=ERRORS)
+def get_department(department_id: int, db: Db) -> DepartmentRead:
+    return DepartmentRead.model_validate(repo.get_department(db, department_id))
+
+
+@router.patch("/departments/{department_id}", response_model=DepartmentRead, responses=ERRORS)
+def update_department(department_id: int, payload: DepartmentUpdate, db: Db) -> DepartmentRead:
+    return DepartmentRead.model_validate(
+        repo.update_department(db, department_id, changes=payload.model_dump(exclude_unset=True))
+    )
+
+
+@router.delete(
+    "/departments/{department_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS
+)
+def delete_department(department_id: int, db: Db) -> None:
+    """Refused while programmes belong to it, but **not** for courses: a course with no
+    department is a state the catalogue is designed for (Decision #50)."""
+    repo.delete_department(db, department_id)
 
 
 # -- buildings and features ------------------------------------------------------
@@ -143,6 +194,18 @@ def create_building(payload: BuildingCreate, db: Db) -> BuildingRead:
     )
 
 
+@router.get("/buildings/{building_id}", response_model=BuildingRead, responses=ERRORS)
+def get_building(building_id: int, db: Db) -> BuildingRead:
+    return BuildingRead.model_validate(repo.get_building(db, building_id))
+
+
+@router.patch("/buildings/{building_id}", response_model=BuildingRead, responses=ERRORS)
+def update_building(building_id: int, payload: BuildingUpdate, db: Db) -> BuildingRead:
+    return BuildingRead.model_validate(
+        repo.update_building(db, building_id, changes=payload.model_dump(exclude_unset=True))
+    )
+
+
 @router.get("/features", response_model=Page[FeatureRead], responses=ERRORS)
 def list_features(db: Db, institution_id: int | None = None) -> Page[FeatureRead]:
     return _page(
@@ -162,6 +225,18 @@ def list_features(db: Db, institution_id: int | None = None) -> Page[FeatureRead
 def create_feature(payload: FeatureCreate, db: Db) -> FeatureRead:
     return FeatureRead.model_validate(
         repo.create_feature(db, institution_id=payload.institution_id, name=payload.name)
+    )
+
+
+@router.get("/features/{feature_id}", response_model=FeatureRead, responses=ERRORS)
+def get_feature(feature_id: int, db: Db) -> FeatureRead:
+    return FeatureRead.model_validate(repo.get_feature(db, feature_id))
+
+
+@router.patch("/features/{feature_id}", response_model=FeatureRead, responses=ERRORS)
+def update_feature(feature_id: int, payload: FeatureUpdate, db: Db) -> FeatureRead:
+    return FeatureRead.model_validate(
+        repo.update_feature(db, feature_id, changes=payload.model_dump(exclude_unset=True))
     )
 
 
@@ -189,6 +264,18 @@ def create_program(payload: ProgramCreate, db: Db) -> ProgramRead:
         groups_repo.create_program(
             db, name=payload.name, code=payload.code, department_id=payload.department_id
         )
+    )
+
+
+@router.get("/programs/{program_id}", response_model=ProgramRead, responses=ERRORS)
+def get_program(program_id: int, db: Db) -> ProgramRead:
+    return ProgramRead.model_validate(groups_repo.get_program(db, program_id))
+
+
+@router.patch("/programs/{program_id}", response_model=ProgramRead, responses=ERRORS)
+def update_program(program_id: int, payload: ProgramUpdate, db: Db) -> ProgramRead:
+    return ProgramRead.model_validate(
+        groups_repo.update_program(db, program_id, changes=payload.model_dump(exclude_unset=True))
     )
 
 

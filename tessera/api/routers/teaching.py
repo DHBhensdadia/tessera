@@ -282,6 +282,13 @@ def create_offering(term_id: int, payload: OfferingCreate, db: Db) -> OfferingRe
     return _offering_read(db, created)
 
 
+@router.get("/offerings/{offering_id}", response_model=OfferingRead, responses=ERRORS)
+def get_offering(offering_id: int, db: Db) -> OfferingRead:
+    """Added in 2.4b. An offering could be created, listed, expanded and deleted, but
+    not fetched on its own."""
+    return _offering_read(db, repo.get_offering(db, offering_id))
+
+
 @router.delete("/offerings/{offering_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
 def delete_offering(offering_id: int, db: Db) -> None:
     repo.delete_offering(db, offering_id)
@@ -329,6 +336,11 @@ def create_template(
         required_feature_ids=payload.required_feature_ids,
     )
     return _template_read(db, created)
+
+
+@router.get("/templates/{template_id}", response_model=SessionTemplateRead, responses=ERRORS)
+def get_template(template_id: int, db: Db) -> SessionTemplateRead:
+    return _template_read(db, sessions_repo.get_template(db, template_id))
 
 
 @router.patch("/templates/{template_id}", response_model=SessionTemplateRead, responses=ERRORS)
