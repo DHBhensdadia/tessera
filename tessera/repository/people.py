@@ -18,7 +18,7 @@ from tessera.domain import entities as d
 from tessera.repository import mappers
 from tessera.repository import models as m
 from tessera.repository.errors import ConflictError, InvalidReferenceError
-from tessera.repository.structure import _get_or_404, _reject_duplicate_name
+from tessera.repository.structure import _get_or_404, _reject_duplicate
 
 # --------------------------------------------------------------------------------
 # instructors
@@ -50,7 +50,7 @@ def create_instructor(
         _get_or_404(session, m.Department, department_id)
     # Scoped to the department rather than globally: two departments can each employ a
     # different A. Sharma, and refusing the second would be wrong.
-    _reject_duplicate_name(
+    _reject_duplicate(
         session,
         m.Instructor,
         name,
@@ -83,7 +83,7 @@ def update_instructor(
         row.department_id = changes["department_id"]
 
     if "name" in changes:
-        _reject_duplicate_name(
+        _reject_duplicate(
             session,
             m.Instructor,
             str(changes["name"]),

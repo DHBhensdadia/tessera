@@ -54,11 +54,12 @@ def _check_exist(session: DbSession, model: type[m.Base], ids: set[int], field: 
         raise InvalidReferenceError(field, list(missing))
 
 
-def _reject_duplicate_name(
+def _reject_duplicate(
     session: DbSession,
     model: type[m.Base],
-    name: str,
+    value: str,
     *,
+    column: object | None = None,
     scope_column: object | None = None,
     scope_value: int | None = None,
     exclude_id: int | None = None,
@@ -69,14 +70,31 @@ def _reject_duplicate_name(
     message says "a room called LH-201 already exists in this building" instead of
     quoting an index name. Check-then-act is a race in principle — in a single-user
     application it is not, and the constraint still catches it.
+
+    ``column`` defaults to the model's ``name`` because that is what almost everything
+    here is identified by. Courses are the exception — they are identified by ``code``,
+    and two courses may legitimately share a name.
+
+    One thing this catches that the database does not: when the scope is null, SQL
+    treats each null as distinct and the unique constraint does not fire, whereas
+    SQLAlchemy renders ``scope_column == None`` as ``IS NULL`` and this check *does*
+    match. So a duplicate under an unassigned parent is refused here and only here.
     """
-    query = select(model.id).where(model.name == name)  # type: ignore[attr-defined]
+    target = column if column is not None else model.name  # type: ignore[attr-defined]
+    query = select(model.id).where(target == value)  # type: ignore[arg-type]
     if scope_column is not None:
         query = query.where(scope_column == scope_value)  # type: ignore[arg-type]
     if exclude_id is not None:
         query = query.where(model.id != exclude_id)
-    if session.scalars(query).first() is not None:
-        raise ConflictError(f"a {model.__tablename__} called {name!r} already exists here")
+    if session.scalars(query).first() is None:
+        return
+
+    # "called" only reads correctly for a name. A course collides on its code, and
+    # "a course called 'CS101'" invites the reader to go looking for a course of that
+    # name, which is not what happened.
+    field = str(getattr(target, "key", "name"))
+    descriptor = "called" if field == "name" else f"with {field}"
+    raise ConflictError(f"a {model.__tablename__} {descriptor} {value!r} already exists here")
 
 
 # --------------------------------------------------------------------------------
@@ -90,7 +108,7 @@ def list_institutions(session: DbSession) -> list[d.Institution]:
 
 
 def create_institution(session: DbSession, *, name: str) -> d.Institution:
-    _reject_duplicate_name(session, m.Institution, name)
+    _reject_duplicate(session, m.Institution, name)
     row = m.Institution(name=name)
     session.add(row)
     session.flush()
@@ -110,7 +128,7 @@ def create_department(
     session: DbSession, *, institution_id: int, name: str, code: str = ""
 ) -> d.Department:
     _get_or_404(session, m.Institution, institution_id)
-    _reject_duplicate_name(
+    _reject_duplicate(
         session,
         m.Department,
         name,
@@ -132,7 +150,7 @@ def list_buildings(session: DbSession, *, institution_id: int | None = None) -> 
 
 def create_building(session: DbSession, *, institution_id: int, name: str) -> d.Building:
     _get_or_404(session, m.Institution, institution_id)
-    _reject_duplicate_name(
+    _reject_duplicate(
         session,
         m.Building,
         name,
@@ -154,7 +172,7 @@ def list_features(session: DbSession, *, institution_id: int | None = None) -> l
 
 def create_feature(session: DbSession, *, institution_id: int, name: str) -> d.Feature:
     _get_or_404(session, m.Institution, institution_id)
-    _reject_duplicate_name(
+    _reject_duplicate(
         session, m.Feature, name, scope_column=m.Feature.institution_id, scope_value=institution_id
     )
     row = m.Feature(institution_id=institution_id, name=name)
@@ -229,7 +247,7 @@ def create_room(
     if building_id is not None:
         _get_or_404(session, m.Building, building_id)
     _check_exist(session, m.Feature, set(feature_ids), "feature_ids")
-    _reject_duplicate_name(
+    _reject_duplicate(
         session, m.Room, name, scope_column=m.Room.building_id, scope_value=building_id
     )
 
@@ -271,7 +289,7 @@ def update_room(
         row.building_id = building_id
 
     if "name" in changes:
-        _reject_duplicate_name(
+        _reject_duplicate(
             session,
             m.Room,
             str(changes["name"]),

@@ -25,7 +25,7 @@ from tessera.domain.ids import StudentGroupId
 from tessera.repository import mappers
 from tessera.repository import models as m
 from tessera.repository.errors import ConflictError, InvalidReferenceError, NotFoundError
-from tessera.repository.structure import _get_or_404, _reject_duplicate_name
+from tessera.repository.structure import _get_or_404, _reject_duplicate
 
 # --------------------------------------------------------------------------------
 # programmes
@@ -44,7 +44,7 @@ def create_program(
 ) -> d.Program:
     if department_id is not None:
         _get_or_404(session, m.Department, department_id)
-    _reject_duplicate_name(
+    _reject_duplicate(
         session,
         m.Program,
         name,
@@ -132,7 +132,7 @@ def create_group(
 ) -> dg.StudentGroup:
     if program_id is not None:
         _get_or_404(session, m.Program, program_id)
-    _reject_duplicate_name(
+    _reject_duplicate(
         session,
         m.StudentGroup,
         name,
@@ -186,7 +186,7 @@ def update_group(
     row = _get_or_404(session, m.StudentGroup, group_id)
 
     if "name" in changes:
-        _reject_duplicate_name(
+        _reject_duplicate(
             session,
             m.StudentGroup,
             str(changes["name"]),
