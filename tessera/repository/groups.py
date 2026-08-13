@@ -25,7 +25,7 @@ from tessera.domain.ids import StudentGroupId
 from tessera.repository import mappers
 from tessera.repository import models as m
 from tessera.repository.errors import ConflictError, InvalidReferenceError, NotFoundError
-from tessera.repository.structure import _get_or_404, _reject_duplicate
+from tessera.repository.structure import _get_or_404, _reject_duplicate, _rename
 
 # --------------------------------------------------------------------------------
 # programmes
@@ -55,6 +55,24 @@ def create_program(
     session.add(row)
     session.flush()
     return mappers.program_to_domain(row)
+
+
+def get_program(session: DbSession, program_id: int) -> d.Program:
+    return mappers.program_to_domain(_get_or_404(session, m.Program, program_id))
+
+
+def update_program(session: DbSession, program_id: int, *, changes: Mapping[str, Any]) -> d.Program:
+    """Rename a programme, or set its code.
+
+    Its department is not editable: moving a programme would take its whole group tree
+    to another department, which is the re-parenting hazard Decision #51 refuses in the
+    equivalent case.
+    """
+    return mappers.program_to_domain(
+        _rename(
+            session, m.Program, program_id, changes=changes, scope_column=m.Program.department_id
+        )
+    )
 
 
 def delete_program(session: DbSession, program_id: int) -> None:

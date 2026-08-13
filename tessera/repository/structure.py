@@ -102,6 +102,170 @@ def _reject_duplicate(
 # --------------------------------------------------------------------------------
 
 
+def _rename[T: m.Base](
+    session: DbSession,
+    model: type[T],
+    identifier: int,
+    *,
+    changes: Mapping[str, Any],
+    scope_column: object | None = None,
+) -> T:
+    """Rename one of the "just a name" entities, and set its code if it has one.
+
+    These five — institutions, departments, buildings, features, programmes — were given
+    `list` and `create` by the 1.4 freeze and nothing else, so until 2.4b a mistyped name
+    was permanent. They differ only in which uniqueness scope they sit in, which is the
+    single argument here; five near-identical functions would differ in nothing else and
+    drift the moment one of them was touched.
+
+    `exclude_id` is what makes renaming a thing to its own name a no-op rather than a
+    collision with itself — the bug found in 2.1 and worth not reintroducing five times.
+    """
+    row = _get_or_404(session, model, identifier)
+
+    if "name" in changes and changes["name"] is not None:
+        _reject_duplicate(
+            session,
+            model,
+            str(changes["name"]),
+            scope_column=scope_column,
+            scope_value=getattr(row, str(getattr(scope_column, "key", "")), None)
+            if scope_column is not None
+            else None,
+            exclude_id=identifier,
+        )
+
+    for field in ("name", "code"):
+        if changes.get(field) is not None:
+            setattr(row, field, changes[field])
+
+    session.flush()
+    return row
+
+
+def _refuse_while_dependants[T: m.Base](
+    session: DbSession, row: T, blockers: Mapping[str, int]
+) -> None:
+    present = {k: v for k, v in blockers.items() if v}
+    if present:
+        raise ConflictError(
+            f"{getattr(row, 'name', 'this record')} still has dependants and cannot be deleted",
+            blockers=present,
+        )
+
+
+def get_institution(session: DbSession, institution_id: int) -> d.Institution:
+    return mappers.institution_to_domain(_get_or_404(session, m.Institution, institution_id))
+
+
+def update_institution(
+    session: DbSession, institution_id: int, *, changes: Mapping[str, Any]
+) -> d.Institution:
+    return mappers.institution_to_domain(
+        _rename(session, m.Institution, institution_id, changes=changes)
+    )
+
+
+def delete_institution(session: DbSession, institution_id: int) -> None:
+    """Refuse while anything at all belongs to it.
+
+    An institution is the root of **five** `ON DELETE CASCADE` chains — buildings,
+    departments, features, time grids and terms — and terms reach sessions and
+    assignments beyond that. Without this, deleting one would empty an entire project
+    from a single confirmation dialog.
+    """
+    row = _get_or_404(session, m.Institution, institution_id)
+    _refuse_while_dependants(
+        session,
+        row,
+        {
+            "buildings": _count(session, m.Building, m.Building.institution_id, institution_id),
+            "departments": _count(
+                session, m.Department, m.Department.institution_id, institution_id
+            ),
+            "features": _count(session, m.Feature, m.Feature.institution_id, institution_id),
+            "time_grids": _count(session, m.TimeGrid, m.TimeGrid.institution_id, institution_id),
+            "terms": _count(session, m.Term, m.Term.institution_id, institution_id),
+        },
+    )
+    session.delete(row)
+    session.flush()
+
+
+def _count(session: DbSession, model: type[m.Base], column: object, value: int) -> int:
+    return int(
+        session.scalar(select(func.count()).select_from(model).where(column == value))  # type: ignore[arg-type]
+        or 0
+    )
+
+
+def get_department(session: DbSession, department_id: int) -> d.Department:
+    return mappers.department_to_domain(_get_or_404(session, m.Department, department_id))
+
+
+def update_department(
+    session: DbSession, department_id: int, *, changes: Mapping[str, Any]
+) -> d.Department:
+    return mappers.department_to_domain(
+        _rename(
+            session,
+            m.Department,
+            department_id,
+            changes=changes,
+            scope_column=m.Department.institution_id,
+        )
+    )
+
+
+def delete_department(session: DbSession, department_id: int) -> None:
+    """Refuse while programmes belong to it — but **not** for courses.
+
+    `program.department_id` cascades, so programmes and the group trees under them would
+    go. `course.department_id` is `ON DELETE SET NULL`, and a course with no department is
+    a state the catalogue is designed for: Decision #50 exists because a syllabus
+    committee creates courses before ownership is settled. Blocking on courses would make
+    that design unreachable.
+    """
+    row = _get_or_404(session, m.Department, department_id)
+    _refuse_while_dependants(
+        session,
+        row,
+        {"programs": _count(session, m.Program, m.Program.department_id, department_id)},
+    )
+    session.delete(row)
+    session.flush()
+
+
+def get_building(session: DbSession, building_id: int) -> d.Building:
+    return mappers.building_to_domain(_get_or_404(session, m.Building, building_id))
+
+
+def update_building(
+    session: DbSession, building_id: int, *, changes: Mapping[str, Any]
+) -> d.Building:
+    return mappers.building_to_domain(
+        _rename(
+            session,
+            m.Building,
+            building_id,
+            changes=changes,
+            scope_column=m.Building.institution_id,
+        )
+    )
+
+
+def get_feature(session: DbSession, feature_id: int) -> d.Feature:
+    return mappers.feature_to_domain(_get_or_404(session, m.Feature, feature_id))
+
+
+def update_feature(session: DbSession, feature_id: int, *, changes: Mapping[str, Any]) -> d.Feature:
+    return mappers.feature_to_domain(
+        _rename(
+            session, m.Feature, feature_id, changes=changes, scope_column=m.Feature.institution_id
+        )
+    )
+
+
 def list_institutions(session: DbSession) -> list[d.Institution]:
     rows = session.scalars(select(m.Institution).order_by(m.Institution.name))
     return [mappers.institution_to_domain(row) for row in rows]
