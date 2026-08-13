@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Rooms · Tessera console{% endblock %}
+{% block body %}
+<h1>Rooms</h1>
+<p class="lede">{{ rooms|length }} room{{ '' if rooms|length == 1 else 's' }}.</p>
+
+{# Read and write are separated on purpose. This table renders from data alone, with no
+   form targets in it, which is what lets the same markup become the static HTML export
+   later (Decision #21) — an export has no server to post to. #}
+<table>
+  <tr><th>Name</th><th>Building</th><th>Seats</th><th>Equipment</th><th></th></tr>
+  {% for room in rooms %}
+  <tr>
+    <td>{{ room.name }}</td>
+    <td>{{ room.building or '—' }}</td>
+    <td>{{ room.capacity }}</td>
+    <td>{{ room.features|join(', ') or '—' }}</td>
+    <td>
+      <form class="inline" method="post" action="/console/rooms/{{ room.id }}/delete">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="empty">No rooms yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem">Add a room</h1>
+<form method="post" action="/console/rooms">
+  <fieldset>
+    <legend>New room</legend>
+    <label for="name">Name</label>
+    <input id="name" name="name" required value="{{ submitted.name if submitted else '' }}">
+
+    <label for="capacity">Seats</label>
+    <input id="capacity" name="capacity" type="number" min="0" required
+           value="{{ submitted.capacity if submitted else '' }}">
+
+    <label for="building_id">Building</label>
+    <select id="building_id" name="building_id">
+      <option value="">— none —</option>
+      {% for building in buildings %}
+      <option value="{{ building.id }}">{{ building.name }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="feature_ids">Equipment <span class="empty">(hold ⌘ to pick several)</span></label>
+    <select id="feature_ids" name="feature_ids" multiple size="4">
+      {% for feature in features %}
+      <option value="{{ feature.id }}">{{ feature.name }}</option>
+      {% endfor %}
+    </select>
+
+    <p><button type="submit">Add room</button></p>
+  </fieldset>
+</form>
+{% endblock %}
