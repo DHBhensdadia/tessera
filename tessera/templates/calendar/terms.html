@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Terms · Tessera console{% endblock %}
+{% block body %}
+<h1>Terms</h1>
+<p class="lede">One schedulable period. Everything a solver places belongs to exactly one.</p>
+
+<table>
+  <tr><th>Term</th><th>Year</th><th>Runs</th><th></th></tr>
+  {% for term in terms %}
+  <tr>
+    <td><a href="/console/terms/{{ term.id }}/offerings">{{ term.name }}</a></td>
+    <td>{{ term.academic_year }}</td>
+    <td class="empty">{{ term.starts_on or '—' }} to {{ term.ends_on or '—' }}</td>
+    <td>
+      <form class="inline" method="post" action="/console/terms/{{ term.id }}/delete">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4" class="empty">No terms yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem">Add a term</h1>
+<form method="post" action="/console/terms">
+  <fieldset>
+    <legend>New term</legend>
+    <label for="institution_id">Institution</label>
+    <select id="institution_id" name="institution_id" required>
+      {% for institution in institutions %}<option value="{{ institution.id }}">{{ institution.name }}</option>{% endfor %}
+    </select>
+
+    <label for="time_grid_id">Teaching week</label>
+    <select id="time_grid_id" name="time_grid_id" required>
+      {% for grid in grids %}<option value="{{ grid.id }}">{{ grid.name }}</option>{% endfor %}
+    </select>
+    {% if not grids %}<p class="empty">Create a teaching week first — a term is meaningless without one.</p>{% endif %}
+
+    <label for="name">Name</label>
+    <input id="name" name="name" required value="{{ submitted.name if submitted else '' }}"
+           placeholder="Autumn">
+
+    <label for="academic_year">Academic year</label>
+    <input id="academic_year" name="academic_year" required
+           value="{{ submitted.year if submitted else '' }}" placeholder="2026-27">
+
+    <label for="starts_on">Starts <span class="empty">(optional)</span></label>
+    <input id="starts_on" name="starts_on" type="date">
+
+    <label for="ends_on">Ends <span class="empty">(optional)</span></label>
+    <input id="ends_on" name="ends_on" type="date">
+
+    <p><button type="submit">Add term</button></p>
+  </fieldset>
+</form>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Teaching weeks · Tessera console{% endblock %}
+{% block body %}
+<h1>Teaching weeks</h1>
+<p class="lede">The shape of a week: how many days, how finely divided, and where the breaks are.</p>
+
+<table>
+  <tr><th>Name</th><th>Shape</th><th>Breaks</th><th>Slots</th><th>Longest block</th><th></th></tr>
+  {% for grid in grids %}
+  <tr>
+    <td>{{ grid.name }}</td>
+    <td>{{ grid.shape }}</td>
+    <td>{{ grid.breaks }}</td>
+    <td>{{ grid.slot_count }}</td>
+    {# The number nobody thinks to check until a solve fails: a two-hour lab cannot be
+       placed in a week whose longest unbroken run is 90 minutes. #}
+    <td>{{ grid.longest_block }} slot{{ '' if grid.longest_block == 1 else 's' }}</td>
+    <td>
+      <form class="inline" method="post" action="/console/time-grids/{{ grid.id }}/delete">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="empty">No teaching weeks yet.</td></tr>
+  {% endfor %}
+</table>
+
+<p class="problem" style="background:#fbfaf5; border-color:#e6dfc8; color:#5c5230">
+  <strong>A week cannot be edited.</strong> Every scheduled hour is stored as a number
+  counted through the week, so changing its shape would silently move everything already
+  placed. To change the week, add another one and build a new term on it — the old week
+  stays, and the timetables built on it keep their meaning.
+</p>
+
+<h1 style="margin-top:2rem">Add a teaching week</h1>
+<form method="post" action="/console/time-grids">
+  <fieldset>
+    <legend>New teaching week</legend>
+    <label for="institution_id">Institution</label>
+    <select id="institution_id" name="institution_id" required>
+      {% for institution in institutions %}<option value="{{ institution.id }}">{{ institution.name }}</option>{% endfor %}
+    </select>
+    {% if not institutions %}<p class="empty">Create an institution first.</p>{% endif %}
+
+    <label for="name">Name</label>
+    <input id="name" name="name" value="{{ submitted.name if submitted else 'Standard' }}" required>
+
+    <label for="days">Teaching days a week</label>
+    <input id="days" name="days" type="number" min="1" max="7" value="5" required>
+
+    <label for="slots_per_day">Slots a day</label>
+    <input id="slots_per_day" name="slots_per_day" type="number" min="1" max="96" value="16" required>
+
+    <label for="slot_minutes">Minutes per slot</label>
+    <input id="slot_minutes" name="slot_minutes" type="number" min="5" max="120" value="30" required>
+
+    <label for="day_start_minute">Day starts at <span class="empty">(minutes after midnight; 540 = 09:00)</span></label>
+    <input id="day_start_minute" name="day_start_minute" type="number" min="0" max="1439" value="540" required>
+
+    <label for="break_slots">Break slots <span class="empty">(slot-of-day numbers, repeated daily — e.g. 8 and 9 for lunch)</span></label>
+    <input id="break_slots" name="break_slots" type="number" min="0" placeholder="8">
+    <input name="break_slots" type="number" min="0" placeholder="9">
+
+    <p><button type="submit">Add teaching week</button></p>
+  </fieldset>
+</form>
+{% endblock %}
