@@ -41,6 +41,7 @@ lucky about it.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Request, Response, status
@@ -73,8 +74,44 @@ def _host_is_local(request: Request) -> bool:
     return host in ALLOWED_HOSTS
 
 
+@dataclass(frozen=True)
+class Section:
+    """One entry in the navigation, and one row on the overview.
+
+    A list rather than markup because there will be a dozen of these before the phase is
+    out, and hand-editing two places per section is how one of them ends up missing from
+    the menu and reachable only by typing the URL.
+    """
+
+    slug: str
+    label: str
+    blurb: str
+
+    @property
+    def href(self) -> str:
+        return f"/console/{self.slug}"
+
+
+SECTIONS: tuple[Section, ...] = (
+    Section("institutions", "Institutions", "The university, and anything sharing this file"),
+    Section("departments", "Departments", "Who owns courses, programmes and staff"),
+    Section("buildings", "Buildings", "Where rooms are"),
+    Section("rooms", "Rooms", "Where teaching happens: capacity and equipment"),
+    Section("features", "Equipment", "What a room can offer, and what a session can need"),
+    Section("instructors", "Instructors", "Teaching staff, and when they cannot teach"),
+    Section("programs", "Programmes", "Degrees, and the intakes beneath them"),
+    Section("student-groups", "Student groups", "Intakes, lab batches and electives"),
+)
+
+
 def page(request: Request, template: str, **context: Any) -> HTMLResponse:
-    """Render a template with the things every page needs."""
+    """Render a template with the things every page needs.
+
+    `sections` is injected here rather than passed by each handler, so a new section
+    appears in the navigation by existing rather than by being remembered.
+    """
+    context.setdefault("sections", SECTIONS)
+    context.setdefault("here", request.url.path)
     return templates.TemplateResponse(request=request, name=template, context=context)
 
 

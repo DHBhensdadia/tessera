@@ -17,7 +17,8 @@
     header .bar { max-width: 62rem; margin: 0 auto; padding: .8rem 1.25rem; display: flex;
                   align-items: baseline; gap: 1.5rem; }
     header strong { font-size: 1.05rem; letter-spacing: .01em; }
-    nav a { color: #333; text-decoration: none; margin-right: 1rem; font-size: .92rem; }
+    nav { display: flex; flex-wrap: wrap; gap: 0 1rem; }
+    nav a { color: #333; text-decoration: none; font-size: .92rem; }
     nav a:hover, nav a[aria-current] { text-decoration: underline; }
     main { max-width: 62rem; margin: 0 auto; padding: 1.75rem 1.25rem 4rem; }
     h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
@@ -47,8 +48,10 @@
     <div class="bar">
       <strong>Tessera</strong>
       <nav>
-        <a href="/console/">Overview</a>
-        <a href="/console/rooms">Rooms</a>
+        <a href="/console/"{% if here == '/console/' %} aria-current="page"{% endif %}>Overview</a>
+        {% for section in sections %}
+        <a href="{{ section.href }}"{% if here.startswith(section.href) %} aria-current="page"{% endif %}>{{ section.label }}</a>
+        {% endfor %}
       </nav>
     </div>
   </header>
