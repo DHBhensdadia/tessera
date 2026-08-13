@@ -11,6 +11,18 @@ class InstitutionCreate(Wire):
     name: str = Field(min_length=1, max_length=200)
 
 
+class InstitutionUpdate(Wire):
+    """Only the name.
+
+    Every ``*Update`` below carries the entity's own fields and never its parent. Moving
+    a department to another institution would silently take its programmes, groups and
+    rooms with it — the same hazard as re-pointing a term at another grid (Decision #51),
+    and out of scope for the same reason.
+    """
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 class InstitutionRead(Wire):
     id: int
     name: str
@@ -20,6 +32,11 @@ class DepartmentCreate(Wire):
     institution_id: int
     name: str = Field(min_length=1, max_length=200)
     code: str = ""
+
+
+class DepartmentUpdate(Wire):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    code: str | None = None
 
 
 class DepartmentRead(Wire):
@@ -34,6 +51,10 @@ class BuildingCreate(Wire):
     name: str = Field(min_length=1, max_length=200)
 
 
+class BuildingUpdate(Wire):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 class BuildingRead(Wire):
     id: int
     institution_id: int
@@ -43,6 +64,10 @@ class BuildingRead(Wire):
 class FeatureCreate(Wire):
     institution_id: int
     name: str = Field(min_length=1, max_length=100)
+
+
+class FeatureUpdate(Wire):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class FeatureRead(Wire):
@@ -55,6 +80,11 @@ class ProgramCreate(Wire):
     department_id: int | None = None
     name: str = Field(min_length=1, max_length=200)
     code: str = ""
+
+
+class ProgramUpdate(Wire):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    code: str | None = None
 
 
 class ProgramRead(Wire):
