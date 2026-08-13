@@ -161,6 +161,12 @@
             "description": "An .xlsx or .csv file.",
             "title": "File",
             "type": "string"
+          },
+          "mapping": {
+            "default": "",
+            "description": "JSON object of source column to model field, overriding what was detected. Send back a corrected `column_mapping` from a dry run.",
+            "title": "Mapping",
+            "type": "string"
           }
         },
         "required": [
@@ -5651,6 +5657,7 @@
     },
     "/api/v1/imports/spreadsheet": {
       "post": {
+        "description": "Read a spreadsheet, and either report on it or apply it.\n\n`term_id` names the institution rather than scoping the data: rooms and staff belong\nto an institution, not a term, but a project file may hold more than one institution\nand `Block A` at one is not `Block A` at the other.",
         "operationId": "import_spreadsheet_api_v1_imports_spreadsheet_post",
         "parameters": [
           {
@@ -5749,6 +5756,7 @@
     },
     "/api/v1/imports/{import_id}": {
       "get": {
+        "description": "A report from earlier in this session.\n\nReports do not survive a restart, and should not: by then the spreadsheet has either\nbeen corrected or abandoned, and a stale list of problems about a file nobody has any\nmore is worse than nothing.",
         "operationId": "get_import_api_v1_imports__import_id__get",
         "parameters": [
           {
