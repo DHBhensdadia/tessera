@@ -7,6 +7,7 @@ exercises the real upgrade path — see ``tests/repository/test_migrations.py``.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from typing import Any
 
@@ -111,12 +112,20 @@ def unimplemented_route(client: TestClient) -> str:
     Tests needing *an* unimplemented endpoint kept hardcoding whichever one was handy,
     so every phase that implemented something broke unrelated tests — three in 2.1, two
     more in 2.2. Discovery makes them outlive the stubs.
+
+    Widened in 2.4 part 2, which implemented the last two parameterless stubs — the
+    fixture then found nothing and said so, which is the failure mode it was built to
+    have. Routes with path parameters are now probed too, with an id substituted in: a
+    stub raises before it looks anything up, so the id never needs to exist.
     """
     spec: dict[str, Any] = client.get("/openapi.json").json()
-    for path, operations in spec["paths"].items():
+    candidates = sorted(spec["paths"], key=lambda p: ("{" in str(p), str(p)))
+
+    for path in candidates:
         route = str(path)
-        if "get" not in operations or "{" in route:
+        if "get" not in spec["paths"][path]:
             continue
-        if client.get(route).status_code == 501:
-            return route
+        probe = re.sub(r"\{[^}]+\}", "1", route)
+        if client.get(probe).status_code == 501:
+            return probe
     raise AssertionError("no unimplemented GET route remains; these tests need updating")
