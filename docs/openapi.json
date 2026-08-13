@@ -2478,6 +2478,51 @@
         "title": "SessionTemplateRead",
         "type": "object"
       },
+      "SessionTemplateUpdate": {
+        "description": "What can change about a component after it has been created.\n\n**Multiplicity only.** ``kind``, ``duration_slots``, ``instructor_ids`` and\n``required_feature_ids`` are absent deliberately: those are *copied* into each\nsession so a session can diverge from its template, and there is no honest way to\npropagate a change to them. Overwriting would revert deliberate per-session edits;\nnot overwriting would leave a template and its sessions silently disagreeing. To\nchange the shape of a component, delete it and add it again.\n\nWhat is here is what reconciliation can act on: how many, and taught to whom.",
+        "properties": {
+          "attendee_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendee Ids"
+          },
+          "per_week": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Week"
+          },
+          "split_per_attendee": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Per Attendee"
+          }
+        },
+        "title": "SessionTemplateUpdate",
+        "type": "object"
+      },
       "SessionUpdate": {
         "properties": {
           "duration_slots": {
@@ -5729,7 +5774,7 @@
     },
     "/api/v1/offerings/{offering_id}/expand": {
       "post": {
-        "description": "Turn templates into the sessions the solver will place.\n\nExplicit rather than automatic on template change: expanding replaces sessions, and\nsessions may already be scheduled and pinned.",
+        "description": "Turn templates into the sessions the solver will place.\n\nExplicit rather than automatic on template change, because it is a **reconciliation**\nagainst sessions that may already be scheduled and pinned: it adds what is missing,\nremoves what is no longer wanted, and leaves everything else untouched. Running it\ntwice changes nothing the second time.\n\nRefused, in full, when it would remove a session somebody has placed.",
         "operationId": "expand_offering_api_v1_offerings__offering_id__expand_post",
         "parameters": [
           {
@@ -5880,6 +5925,7 @@
         ]
       },
       "post": {
+        "description": "The offering is named twice, as with offerings themselves \u2014 path and body must\nagree rather than one silently winning.",
         "operationId": "create_template_api_v1_offerings__offering_id__templates_post",
         "parameters": [
           {
@@ -6688,6 +6734,7 @@
         ]
       },
       "patch": {
+        "description": "Lets one session diverge from its template. Refused while it is scheduled, since\nevery editable field here changes whether an existing placement is still legal.",
         "operationId": "update_session_api_v1_sessions__session_id__patch",
         "parameters": [
           {
@@ -7605,6 +7652,7 @@
     },
     "/api/v1/templates/{template_id}": {
       "delete": {
+        "description": "Removes the component and the sessions it generated. Refused while any of those\nare scheduled \u2014 see `repository.sessions.delete_template`.",
         "operationId": "delete_template_api_v1_templates__template_id__delete",
         "parameters": [
           {
@@ -7667,6 +7715,91 @@
           }
         },
         "summary": "Delete Template",
+        "tags": [
+          "teaching"
+        ]
+      },
+      "patch": {
+        "description": "Added in 2.4. Without it a component could be created and deleted but never\nadjusted, and reconciliation would have nothing to reconcile.\n\nMultiplicity only \u2014 see `SessionTemplateUpdate`. This changes no sessions; expanding\nafterwards is what reconciles them, and keeping the two separate is what lets the\ncaller find out what an edit would cost before paying it.",
+        "operationId": "update_template_api_v1_templates__template_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionTemplateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTemplateRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Validation failed"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not implemented yet"
+          }
+        },
+        "summary": "Update Template",
         "tags": [
           "teaching"
         ]
@@ -8521,6 +8654,7 @@
     },
     "/api/v1/terms/{term_id}/sessions": {
       "get": {
+        "description": "Filtered server-side so the client can draw one person's or one group's week\nwithout fetching a whole department and narrowing locally.",
         "operationId": "list_sessions_api_v1_terms__term_id__sessions_get",
         "parameters": [
           {

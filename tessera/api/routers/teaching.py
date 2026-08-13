@@ -26,6 +26,7 @@ from tessera.api.schemas import (
     SessionRead,
     SessionTemplateCreate,
     SessionTemplateRead,
+    SessionTemplateUpdate,
     SessionUpdate,
     TermCreate,
     TermDuplicate,
@@ -37,6 +38,7 @@ from tessera.api.schemas import (
 from tessera.domain import entities as d
 from tessera.domain.time_grid import TimeGrid
 from tessera.repository import calendar as repo
+from tessera.repository import expansion
 from tessera.repository import models as m
 from tessera.repository import sessions as sessions_repo
 
@@ -329,6 +331,23 @@ def create_template(
     return _template_read(db, created)
 
 
+@router.patch("/templates/{template_id}", response_model=SessionTemplateRead, responses=ERRORS)
+def update_template(
+    template_id: int, payload: SessionTemplateUpdate, db: Db
+) -> SessionTemplateRead:
+    """Added in 2.4. Without it a component could be created and deleted but never
+    adjusted, and reconciliation would have nothing to reconcile.
+
+    Multiplicity only — see `SessionTemplateUpdate`. This changes no sessions; expanding
+    afterwards is what reconciles them, and keeping the two separate is what lets the
+    caller find out what an edit would cost before paying it.
+    """
+    updated = sessions_repo.update_template(
+        db, template_id, changes=payload.model_dump(exclude_unset=True)
+    )
+    return _template_read(db, updated)
+
+
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
 def delete_template(template_id: int, db: Db) -> None:
     """Removes the component and the sessions it generated. Refused while any of those
@@ -337,13 +356,17 @@ def delete_template(template_id: int, db: Db) -> None:
 
 
 @router.post("/offerings/{offering_id}/expand", response_model=Page[SessionRead], responses=ERRORS)
-def expand_offering(offering_id: int) -> Page[SessionRead]:
+def expand_offering(offering_id: int, db: Db) -> Page[SessionRead]:
     """Turn templates into the sessions the solver will place.
 
-    Explicit rather than automatic on template change: expanding replaces sessions, and
-    sessions may already be scheduled and pinned.
+    Explicit rather than automatic on template change, because it is a **reconciliation**
+    against sessions that may already be scheduled and pinned: it adds what is missing,
+    removes what is no longer wanted, and leaves everything else untouched. Running it
+    twice changes nothing the second time.
+
+    Refused, in full, when it would remove a session somebody has placed.
     """
-    pending("2.4")
+    return _page([_session_read(db, s) for s in expansion.expand(db, offering_id)])
 
 
 # -- sessions ------------------------------------------------------------------
