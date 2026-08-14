@@ -11,6 +11,7 @@ term forward copies rows rather than sharing them.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 
 from sqlalchemy import (
@@ -27,8 +28,15 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
+    text,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    declared_attr,
+    mapped_column,
+    relationship,
+)
 
 # Explicit naming, because SQLite cannot ALTER an unnamed constraint. Without this,
 # Alembic generates anonymous constraints that later migrations are unable to drop —
@@ -60,13 +68,6 @@ class Base(DeclarativeBase):
 # than mapped classes.
 # ---------------------------------------------------------------------------
 
-room_feature = Table(
-    "room_feature",
-    Base.metadata,
-    Column("room_id", ForeignKey("room.id", ondelete="CASCADE"), primary_key=True),
-    Column("feature_id", ForeignKey("feature.id", ondelete="CASCADE"), primary_key=True),
-)
-
 group_member = Table(
     "group_member",
     Base.metadata,
@@ -88,13 +89,6 @@ template_instructor = Table(
     Column("instructor_id", ForeignKey("instructor.id", ondelete="CASCADE"), primary_key=True),
 )
 
-template_feature = Table(
-    "template_feature",
-    Base.metadata,
-    Column("template_id", ForeignKey("session_template.id", ondelete="CASCADE"), primary_key=True),
-    Column("feature_id", ForeignKey("feature.id", ondelete="CASCADE"), primary_key=True),
-)
-
 session_attendee = Table(
     "session_attendee",
     Base.metadata,
@@ -109,19 +103,126 @@ session_instructor = Table(
     Column("instructor_id", ForeignKey("instructor.id", ondelete="CASCADE"), primary_key=True),
 )
 
-session_feature = Table(
-    "session_feature",
-    Base.metadata,
-    Column("session_id", ForeignKey("session.id", ondelete="CASCADE"), primary_key=True),
-    Column("feature_id", ForeignKey("feature.id", ondelete="CASCADE"), primary_key=True),
-)
 
-constraint_target = Table(
-    "constraint_target",
-    Base.metadata,
-    Column("constraint_id", ForeignKey("constraint.id", ondelete="CASCADE"), primary_key=True),
-    Column("session_id", ForeignKey("session.id", ondelete="CASCADE"), primary_key=True),
-)
+# ---------------------------------------------------------------------------
+# Feature links. These three carry a count (Decision D3 of 2.7b) and so are mapped
+# classes rather than bare association tables — a computer lab has *thirty* machines,
+# and a lab session needs thirty of them.
+#
+# Almost nothing cares about the count. So each owner keeps a plain ``features`` list of
+# :class:`Feature`, assignable and iterable exactly as when the link was a two-column
+# table, and the counts ride along underneath untouched.
+# ---------------------------------------------------------------------------
+
+
+def _features_of(links: Iterable[FeatureLink]) -> list[Feature]:
+    return [link.feature for link in links]
+
+
+def _feature_of(link: FeatureLink) -> int:
+    """The feature a link points at, whether or not it has been flushed.
+
+    ``feature_id`` is filled in by the database, so on a link built a moment ago it is
+    still ``None`` and only ``feature.id`` is set. Reading the wrong one silently keyed
+    every quantity to ``None`` and lost all of them on the way in.
+    """
+    return link.feature_id if link.feature_id is not None else link.feature.id
+
+
+def _links_for[L: FeatureLink](
+    link_model: type[L], existing: Iterable[L], items: Iterable[Feature]
+) -> list[L]:
+    """Rebuild a link collection, **reusing** the row for anything still present.
+
+    Two reasons not to just build fresh objects. A feature that survives the assignment
+    keeps the quantity it had, so renaming a room does not quietly forget that the lab
+    has thirty workstations. And an unchanged feature stays the same row rather than
+    becoming a delete plus an insert — which SQLAlchemy may order insert-first, and the
+    uniqueness of (owner, feature) then rejects an edit that changed nothing.
+    """
+    kept = {_feature_of(link): link for link in existing}
+    return [kept.get(f.id) or link_model(feature=f) for f in items]
+
+
+class FeatureLink(Base):
+    """One feature, and how many of it. Shared shape; not a table of its own."""
+
+    __abstract__ = True
+
+    quantity: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    """Zero means *present, count irrelevant* — a room either has a projector or it does
+    not. Zero is the default so nothing that existed before 2.7b changes meaning."""
+
+    feature_id: Mapped[int] = mapped_column(
+        ForeignKey("feature.id", ondelete="CASCADE"), index=True
+    )
+
+    @declared_attr
+    def feature(cls) -> Mapped[Feature]:
+        return relationship(lazy="joined")
+
+
+class RoomFeature(FeatureLink):
+    __tablename__ = "room_feature"
+    __table_args__ = (UniqueConstraint("room_id", "feature_id", name="uq_room_feature_room_id"),)
+
+    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"), index=True)
+
+
+class TemplateFeature(FeatureLink):
+    __tablename__ = "template_feature"
+    __table_args__ = (
+        UniqueConstraint("template_id", "feature_id", name="uq_template_feature_template_id"),
+    )
+
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("session_template.id", ondelete="CASCADE"), index=True
+    )
+
+
+class SessionFeature(FeatureLink):
+    __tablename__ = "session_feature"
+    __table_args__ = (
+        UniqueConstraint("session_id", "feature_id", name="uq_session_feature_session_id"),
+    )
+
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("session.id", ondelete="CASCADE"), index=True
+    )
+
+
+# The Core tables, still under their old names. Existing queries join and filter these
+# directly (structure.py counts rooms by feature), and a mapped class does not change
+# what the table is.
+room_feature = RoomFeature.__table__
+template_feature = TemplateFeature.__table__
+session_feature = SessionFeature.__table__
+
+
+class ConstraintTarget(Base):
+    """What one constraint applies to.
+
+    ``target_id`` carries no foreign key, because no single column can point at sessions,
+    instructors, groups, rooms and courses at once. That is the price of letting a
+    constraint name any resource — R5 §3 F1 — and it is paid where every other reference
+    is checked: the repository verifies the row exists before writing.
+    """
+
+    __tablename__ = "constraint_target"
+    __table_args__ = (
+        UniqueConstraint(
+            "constraint_id", "target_kind", "target_id", name="uq_constraint_target_constraint_id"
+        ),
+    )
+
+    constraint_id: Mapped[int] = mapped_column(
+        ForeignKey("constraint.id", ondelete="CASCADE"), index=True
+    )
+    target_kind: Mapped[str] = mapped_column(String(20), index=True)
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+
+
+constraint_target = ConstraintTarget.__table__
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +279,30 @@ class Room(Base):
     )
     name: Mapped[str] = mapped_column(String(100), index=True)
     capacity: Mapped[int] = mapped_column(Integer, default=0)
-    features: Mapped[list[Feature]] = relationship(secondary=room_feature, lazy="selectin")
+    turnaround_slots: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    """Slots needed to clear the room before the next class. A chemistry lab cannot be
+    handed over the instant the previous session ends; a classroom can, hence zero."""
+
+    feature_links: Mapped[list[RoomFeature]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    @property
+    def features(self) -> list[Feature]:
+        return _features_of(self.feature_links)
+
+    @features.setter
+    def features(self, items: Iterable[Feature]) -> None:
+        self.feature_links = _links_for(RoomFeature, self.feature_links, items)
+
+    @property
+    def feature_counts(self) -> dict[int, int]:
+        """Only the features whose count was set. Zero means nobody counted."""
+        return {_feature_of(link): link.quantity for link in self.feature_links if link.quantity}
+
+    def set_feature_counts(self, counts: Mapping[int, int]) -> None:
+        for link in self.feature_links:
+            link.quantity = counts.get(_feature_of(link), 0)
 
 
 class Instructor(Base):
@@ -329,9 +453,30 @@ class SessionTemplate(Base):
     instructors: Mapped[list[Instructor]] = relationship(
         secondary=template_instructor, lazy="selectin"
     )
-    required_features: Mapped[list[Feature]] = relationship(
-        secondary=template_feature, lazy="selectin"
+    week_pattern: Mapped[str] = mapped_column(
+        String(20), default="every_week", server_default=text("'every_week'")
     )
+
+    feature_links: Mapped[list[TemplateFeature]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    @property
+    def required_features(self) -> list[Feature]:
+        return _features_of(self.feature_links)
+
+    @required_features.setter
+    def required_features(self, items: Iterable[Feature]) -> None:
+        self.feature_links = _links_for(TemplateFeature, self.feature_links, items)
+
+    @property
+    def feature_counts(self) -> dict[int, int]:
+        """Only the features whose count was set. Zero means nobody counted."""
+        return {_feature_of(link): link.quantity for link in self.feature_links if link.quantity}
+
+    def set_feature_counts(self, counts: Mapping[int, int]) -> None:
+        for link in self.feature_links:
+            link.quantity = counts.get(_feature_of(link), 0)
 
 
 class Session(Base):
@@ -368,9 +513,30 @@ class Session(Base):
     instructors: Mapped[list[Instructor]] = relationship(
         secondary=session_instructor, lazy="selectin"
     )
-    required_features: Mapped[list[Feature]] = relationship(
-        secondary=session_feature, lazy="selectin"
+    week_pattern: Mapped[str] = mapped_column(
+        String(20), default="every_week", server_default=text("'every_week'")
     )
+
+    feature_links: Mapped[list[SessionFeature]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    @property
+    def required_features(self) -> list[Feature]:
+        return _features_of(self.feature_links)
+
+    @required_features.setter
+    def required_features(self, items: Iterable[Feature]) -> None:
+        self.feature_links = _links_for(SessionFeature, self.feature_links, items)
+
+    @property
+    def feature_counts(self) -> dict[int, int]:
+        """Only the features whose count was set. Zero means nobody counted."""
+        return {_feature_of(link): link.quantity for link in self.feature_links if link.quantity}
+
+    def set_feature_counts(self, counts: Mapping[int, int]) -> None:
+        for link in self.feature_links:
+            link.quantity = counts.get(_feature_of(link), 0)
 
 
 class Unavailability(Base):
@@ -400,6 +566,11 @@ class Unavailability(Base):
     )
     slot: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String(200), default="")
+    is_hard: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
+    """True means *cannot*, false means *would rather not*. Rows written before 2.7b are
+    hard, which is what they always meant."""
+
+    weight: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
 
 
 class Constraint(Base):
@@ -410,7 +581,9 @@ class Constraint(Base):
     weight: Mapped[int] = mapped_column(Integer, default=1)
     params: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    targets: Mapped[list[Session]] = relationship(secondary=constraint_target, lazy="selectin")
+    targets: Mapped[list[ConstraintTarget]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,12 @@ from sqlalchemy.orm import Session as DbSession
 from tessera.domain import entities as d
 from tessera.domain import groups as dg
 from tessera.domain import timetable as dt
-from tessera.domain.constraints import Constraint, ConstraintKind
+from tessera.domain.constraints import (
+    Constraint,
+    ConstraintKind,
+    ConstraintTarget,
+    TargetKind,
+)
 from tessera.domain.ids import (
     AssignmentId,
     BuildingId,
@@ -143,6 +148,21 @@ def course_to_domain(row: m.Course) -> d.Course:
     )
 
 
+TARGET_MODELS: dict[TargetKind, type[m.Base]] = {
+    TargetKind.SESSION: m.Session,
+    TargetKind.INSTRUCTOR: m.Instructor,
+    TargetKind.GROUP: m.StudentGroup,
+    TargetKind.ROOM: m.Room,
+    TargetKind.COURSE: m.Course,
+}
+"""Which table each target kind names.
+
+``constraint_target.target_id`` carries no foreign key — it cannot, pointing at five
+tables — so this is where the reference is checked instead. A kind missing from here is
+a kind that cannot be stored, which is the failure mode to want: loud, at the write.
+"""
+
+
 def room_to_domain(row: m.Room) -> d.Room:
     return d.Room(
         id=RoomId(row.id),
@@ -150,6 +170,8 @@ def room_to_domain(row: m.Room) -> d.Room:
         name=row.name,
         capacity=row.capacity,
         features=frozenset(FeatureId(f.id) for f in row.features),
+        feature_counts={FeatureId(f): n for f, n in row.feature_counts.items()},
+        turnaround_slots=row.turnaround_slots,
     )
 
 
@@ -188,6 +210,8 @@ def session_to_domain(row: m.Session) -> d.Session:
         attendee_ids=frozenset(StudentGroupId(g.id) for g in row.attendees),
         instructor_ids=frozenset(InstructorId(i.id) for i in row.instructors),
         required_features=frozenset(FeatureId(f.id) for f in row.required_features),
+        required_counts={FeatureId(f): n for f, n in row.feature_counts.items()},
+        week_pattern=d.WeekPattern(row.week_pattern),
     )
 
 
@@ -202,6 +226,8 @@ def template_to_domain(row: m.SessionTemplate) -> d.SessionTemplate:
         attendee_ids=frozenset(StudentGroupId(g.id) for g in row.attendees),
         instructor_ids=frozenset(InstructorId(i.id) for i in row.instructors),
         required_features=frozenset(FeatureId(f.id) for f in row.required_features),
+        required_counts={FeatureId(f): n for f, n in row.feature_counts.items()},
+        week_pattern=d.WeekPattern(row.week_pattern),
     )
 
 
@@ -212,7 +238,9 @@ def constraint_to_domain(row: m.Constraint) -> Constraint:
         kind=ConstraintKind(row.kind),
         is_hard=row.is_hard,
         weight=row.weight,
-        target_ids=frozenset(SessionId(s.id) for s in row.targets),
+        targets=frozenset(
+            ConstraintTarget(kind=TargetKind(t.target_kind), id=t.target_id) for t in row.targets
+        ),
         params=dict(row.params or {}),
         enabled=row.enabled,
     )
@@ -250,6 +278,8 @@ def unavailability_to_domain(row: m.Unavailability) -> d.Unavailability:
         room_id=RoomId(row.room_id) if row.room_id is not None else None,
         slot=row.slot,
         reason=row.reason,
+        is_hard=row.is_hard,
+        weight=row.weight,
     )
 
 
@@ -260,6 +290,8 @@ def unavailability_to_orm(item: d.Unavailability) -> m.Unavailability:
         room_id=item.room_id,
         slot=item.slot,
         reason=item.reason,
+        is_hard=item.is_hard,
+        weight=item.weight,
     )
 
 
@@ -296,8 +328,14 @@ def time_grid_to_orm(grid: TimeGrid, institution_id: int) -> m.TimeGrid:
 
 
 def room_to_orm(session: DbSession, room: d.Room) -> m.Room:
-    row = m.Room(building_id=room.building_id, name=room.name, capacity=room.capacity)
+    row = m.Room(
+        building_id=room.building_id,
+        name=room.name,
+        capacity=room.capacity,
+        turnaround_slots=room.turnaround_slots,
+    )
     row.features = _resolve(session, m.Feature, frozenset(room.features))
+    row.set_feature_counts({int(f): n for f, n in room.feature_counts.items()})
     return row
 
 
@@ -326,10 +364,12 @@ def session_to_orm(session: DbSession, item: d.Session, term_id: int) -> m.Sessi
         kind=item.kind.value,
         duration_slots=item.duration_slots,
         occurrence=item.occurrence,
+        week_pattern=item.week_pattern.value,
     )
     row.attendees = _resolve(session, m.StudentGroup, frozenset(item.attendee_ids))
     row.instructors = _resolve(session, m.Instructor, frozenset(item.instructor_ids))
     row.required_features = _resolve(session, m.Feature, frozenset(item.required_features))
+    row.set_feature_counts({int(f): n for f, n in item.required_counts.items()})
     return row
 
 
@@ -340,11 +380,20 @@ def template_to_orm(session: DbSession, item: d.SessionTemplate) -> m.SessionTem
         duration_slots=item.duration_slots,
         per_week=item.per_week,
         split_per_attendee=item.split_per_attendee,
+        week_pattern=item.week_pattern.value,
     )
     row.attendees = _resolve(session, m.StudentGroup, frozenset(item.attendee_ids))
     row.instructors = _resolve(session, m.Instructor, frozenset(item.instructor_ids))
     row.required_features = _resolve(session, m.Feature, frozenset(item.required_features))
+    row.set_feature_counts({int(f): n for f, n in item.required_counts.items()})
     return row
+
+
+def _by_kind(targets: frozenset[ConstraintTarget]) -> dict[TargetKind, frozenset[int]]:
+    grouped: dict[TargetKind, set[int]] = {}
+    for target in targets:
+        grouped.setdefault(target.kind, set()).add(target.id)
+    return {kind: frozenset(ids) for kind, ids in grouped.items()}
 
 
 def constraint_to_orm(session: DbSession, item: Constraint) -> m.Constraint:
@@ -356,7 +405,12 @@ def constraint_to_orm(session: DbSession, item: Constraint) -> m.Constraint:
         params=dict(item.params),
         enabled=item.enabled,
     )
-    row.targets = _resolve(session, m.Session, frozenset(item.target_ids))
+    row.targets = [
+        m.ConstraintTarget(target_kind=t.kind.value, target_id=t.id)
+        for t in sorted(item.targets, key=lambda t: (t.kind.value, t.id))
+    ]
+    for kind, ids in _by_kind(item.targets).items():
+        _resolve(session, TARGET_MODELS[kind], ids)
     return row
 
 

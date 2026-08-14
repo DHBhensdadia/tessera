@@ -28,8 +28,53 @@ from tessera.domain.ids import ConstraintId, SessionId, TermId
 
 
 class ConstraintScope(StrEnum):
+    """Whether a kind *may* apply term-wide, not whether it must.
+
+    ``GLOBAL`` kinds take targets optionally: "minimise gaps" with no targets is the
+    term-wide preference it always was, and the same kind naming Prof. Shah is that
+    preference narrowed to one person. Making the narrowing a target rather than a
+    separate kind is what R5 §3 F1 asked for — FET's palette is almost entirely
+    per-resource, and three of ours could previously only apply to everybody or nobody.
+
+    ``TARGETED`` kinds are meaningless without targets: "these two sessions must not
+    overlap" needs to know which two.
+    """
+
     GLOBAL = "global"
     TARGETED = "targeted"
+
+
+class TargetKind(StrEnum):
+    """What a constraint can be applied to.
+
+    Until 2.7b a constraint could name **sessions and nothing else**, which meant
+    "Prof. Shah teaches at most three consecutive hours" and "this division gets no more
+    than two gaps a day" could not be written at all — the ordinary case in a department
+    rather than an edge case.
+
+    Adding a kind here is a handler in the solver, not a migration, which is what
+    Decision #12 promised and could not deliver while the target table held one column.
+    """
+
+    SESSION = "session"
+    INSTRUCTOR = "instructor"
+    GROUP = "group"
+    ROOM = "room"
+    COURSE = "course"
+
+
+class ConstraintTarget(BaseModel):
+    """One thing a constraint applies to.
+
+    A kind and an id rather than a foreign key, because no single key can point at five
+    tables. The reference is checked by the repository, in the same place every other
+    reference is checked.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: TargetKind
+    id: int = Field(ge=1)
 
 
 class ConstraintKind(StrEnum):
@@ -102,22 +147,37 @@ class Constraint(BaseModel):
     institutions genuinely disagree about the relative importance of these and the
     argument should be settled by the user rather than by us."""
 
-    target_ids: frozenset[SessionId] = frozenset()
+    targets: frozenset[ConstraintTarget] = frozenset()
+    """What this applies to. Empty for a global preference."""
+
     params: dict[str, int] = Field(default_factory=dict)
     """Deliberately narrow: every parameter these kinds need is a count of slots or
     days. Widening it later is additive."""
 
     enabled: bool = True
 
+    @property
+    def target_ids(self) -> frozenset[SessionId]:
+        """The sessions this applies to.
+
+        Kept because the frozen API contract speaks in session ids, and because most
+        distribution constraints are over sessions. Derived rather than stored, so there
+        is one place a target lives and the two cannot disagree.
+        """
+        return frozenset(SessionId(t.id) for t in self.targets if t.kind is TargetKind.SESSION)
+
     @model_validator(mode="after")
     def _shape_matches_kind(self) -> Constraint:
-        if self.kind.scope is ConstraintScope.GLOBAL:
-            if self.target_ids:
-                raise ValueError(f"{self.kind} applies to the whole term and takes no targets")
+        if not self.targets:
+            if self.kind.scope is ConstraintScope.TARGETED:
+                raise ValueError(f"{self.kind} must name what it applies to")
+            # A term-wide preference cannot be hard, because nothing satisfies "minimise
+            # gaps" absolutely — there is no timetable it would accept. Narrowed to a
+            # resource the same kind becomes a checkable rule ("Prof. Shah: at most 3
+            # consecutive hours"), which an institution may well insist on, so the ban
+            # applies to being untargeted rather than to the kind.
             if self.is_hard:
-                raise ValueError(f"{self.kind} is a preference and cannot be hard")
-        elif not self.target_ids:
-            raise ValueError(f"{self.kind} must name the sessions it applies to")
+                raise ValueError(f"{self.kind} applies to the whole term and cannot be hard")
 
         missing = [p for p in _REQUIRED_PARAMS.get(self.kind, ()) if p not in self.params]
         if missing:

@@ -81,10 +81,9 @@ def run_migrations_online() -> None:
     engine = engine_from_config(section, prefix="sqlalchemy.", poolclass=pool.NullPool)
 
     with engine.connect() as connection:
-        # SQLite leaves foreign keys unenforced by default, and a migration that
-        # rebuilds tables is exactly when a dangling reference would slip through.
-        if connection.dialect.name == "sqlite":
-            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+        sqlite = connection.dialect.name == "sqlite"
+        if sqlite:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
         _configure(connection)
         with context.begin_transaction():
             context.run_migrations()
@@ -94,6 +93,34 @@ def run_migrations_online() -> None:
         # and the database still claims to be at base — so the next downgrade does
         # nothing and the next upgrade fails on tables that already exist.
         connection.commit()
+        if sqlite:
+            _check_foreign_keys(connection)
+
+
+def _check_foreign_keys(connection: Connection) -> None:
+    """Verify integrity *after* migrating, having not enforced it during.
+
+    Enforcing foreign keys while migrating looks like the careful choice and is the
+    opposite of one. SQLite has no ALTER for a primary key, so any real change means
+    rebuilding the table — and with ``foreign_keys=ON`` a ``DROP TABLE`` performs an
+    implicit ``DELETE FROM`` first, which fires ``ON DELETE CASCADE`` into every child.
+
+    That is not hypothetical. Adding one nullable column to ``room`` silently emptied
+    ``room_feature``: batch mode rebuilt ``room``, the drop cascaded, and the migration
+    reported success having deleted every room's equipment. It is caught by
+    ``test_rows_survive_the_tables_being_rebuilt``.
+
+    So enforcement is off while tables move, and the whole database is checked once at
+    the end — which is SQLite's own documented procedure, and a stronger guarantee: it
+    inspects every row that exists rather than only the ones a statement touched.
+    """
+    dangling = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+    if dangling:
+        broken = sorted({(row[0], row[2]) for row in dangling})
+        raise RuntimeError(
+            "migration left dangling references: "
+            + ", ".join(f"{table} → {parent}" for table, parent in broken)
+        )
 
 
 if context.is_offline_mode():

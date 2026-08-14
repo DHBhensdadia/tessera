@@ -99,6 +99,12 @@ ignore = [
 # and this is the reason to keep it that way.
 builtins-ignorelist = ["credits"]
 
+[tool.ruff.lint.pep8-naming]
+# `declared_attr` really is handed the class, so `cls` is the honest name for it. The
+# alternative to telling ruff that is renaming the argument to `self` — writing something
+# false to satisfy a linter — or the codebase's first `noqa`. Both are worse.
+classmethod-decorators = ["sqlalchemy.orm.declared_attr", "declared_attr"]
+
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 

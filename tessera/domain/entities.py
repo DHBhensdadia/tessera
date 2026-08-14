@@ -16,6 +16,7 @@ has nowhere to live.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 from enum import StrEnum
 
@@ -79,8 +80,48 @@ class Room(_Entity):
     capacity: int = Field(ge=0)
     features: frozenset[FeatureId] = frozenset()
 
-    def can_host(self, headcount: int, required: frozenset[FeatureId]) -> bool:
-        return self.capacity >= headcount and required <= self.features
+    feature_counts: Mapping[FeatureId, int] = Field(default_factory=dict)
+    """How many of a feature the room has, where the number matters.
+
+    A computer lab with thirty workstations seats seventy for a lecture and holds thirty
+    for a lab. Without this the schema knows only "has computers" and "seats 70", and
+    nothing stops sixty students being sent to thirty machines.
+
+    Absent means *present, count irrelevant* — a room either has a projector or it does
+    not, and nobody counts.
+    """
+
+    turnaround_slots: int = Field(default=0, ge=0)
+    """Slots needed to clear the room before the next class.
+
+    A chemistry lab cannot be handed over the instant the previous session ends. Zero for
+    an ordinary classroom, which is why it is the default.
+    """
+
+    @model_validator(mode="after")
+    def _counts_are_for_features_it_has(self) -> Room:
+        stray = sorted(f for f in self.feature_counts if f not in self.features)
+        if stray:
+            raise ValueError(f"counts given for features the room does not have: {stray}")
+        return self
+
+    def can_host(
+        self,
+        headcount: int,
+        required: frozenset[FeatureId],
+        required_counts: Mapping[FeatureId, int] | None = None,
+    ) -> bool:
+        """Whether this room could hold that session.
+
+        `required_counts` is optional so every existing caller keeps its meaning: a
+        session that does not count its equipment is satisfied by presence alone.
+        """
+        if self.capacity < headcount or not required <= self.features:
+            return False
+        for feature, wanted in (required_counts or {}).items():
+            if self.feature_counts.get(feature, 0) < wanted:
+                return False
+        return True
 
 
 class Instructor(_Entity):
@@ -152,6 +193,30 @@ class Offering(_Entity):
     course_id: CourseId | None = None
 
 
+class WeekPattern(StrEnum):
+    """Which weeks of the term a teaching block actually happens in.
+
+    A pattern rather than a mask over a 13-week horizon. Fortnightly labs are real —
+    equipment gets shared between cohorts — and a repeating week cannot say so. A full
+    horizon would multiply the solver's variables by the number of weeks, which
+    Decision #35 already warns about at department scale, to buy "weeks 3, 7 and 11"
+    that nobody has asked for.
+
+    Two blocks can only clash if their patterns can coincide, which is the whole of the
+    rule the solver needs.
+    """
+
+    EVERY_WEEK = "every_week"
+    ODD_WEEKS = "odd_weeks"
+    EVEN_WEEKS = "even_weeks"
+
+    def coincides_with(self, other: WeekPattern) -> bool:
+        """Whether two blocks could ever land in the same week."""
+        if self is WeekPattern.EVERY_WEEK or other is WeekPattern.EVERY_WEEK:
+            return True
+        return self is other
+
+
 class SessionKind(StrEnum):
     LECTURE = "lecture"
     LAB = "lab"
@@ -181,6 +246,22 @@ class SessionTemplate(_Entity):
     split_per_attendee: bool = False
     instructor_ids: frozenset[InstructorId] = frozenset()
     required_features: frozenset[FeatureId] = frozenset()
+
+    required_counts: Mapping[FeatureId, int] = Field(default_factory=dict)
+    """How many of a feature this needs, where the number matters.
+
+    "This lab needs 30 workstations" — checked against :attr:`Room.feature_counts`.
+    A feature absent here is required to be *present* and not counted.
+    """
+
+    week_pattern: WeekPattern = WeekPattern.EVERY_WEEK
+
+    @model_validator(mode="after")
+    def _counts_are_for_features_it_needs(self) -> SessionTemplate:
+        stray = sorted(f for f in self.required_counts if f not in self.required_features)
+        if stray:
+            raise ValueError(f"counts given for features not required: {stray}")
+        return self
 
     @model_validator(mode="after")
     def _has_attendees(self) -> SessionTemplate:
@@ -218,6 +299,22 @@ class Session(_Entity):
     instructor_ids: frozenset[InstructorId] = frozenset()
     required_features: frozenset[FeatureId] = frozenset()
 
+    required_counts: Mapping[FeatureId, int] = Field(default_factory=dict)
+    """How many of a feature this needs, where the number matters.
+
+    "This lab needs 30 workstations" — checked against :attr:`Room.feature_counts`.
+    A feature absent here is required to be *present* and not counted.
+    """
+
+    week_pattern: WeekPattern = WeekPattern.EVERY_WEEK
+
+    @model_validator(mode="after")
+    def _counts_are_for_features_it_needs(self) -> Session:
+        stray = sorted(f for f in self.required_counts if f not in self.required_features)
+        if stray:
+            raise ValueError(f"counts given for features not required: {stray}")
+        return self
+
     @model_validator(mode="after")
     def _has_attendees(self) -> Session:
         if not self.attendee_ids:
@@ -247,6 +344,17 @@ class Unavailability(_Entity):
     room_id: RoomId | None = None
     slot: Slot
     reason: str = ""
+
+    is_hard: bool = True
+    """``True`` means *cannot*, ``False`` means *would rather not*.
+
+    Defaults to hard so every row that existed before 2.7b keeps exactly the meaning it
+    had. The soft case is what gives ``RESPECT_INSTRUCTOR_PREFERENCES`` — a constraint
+    kind with no data behind it since 1.3 — something to read.
+    """
+
+    weight: int = Field(default=1, ge=1)
+    """What ignoring this preference costs. Meaningless when :attr:`is_hard`."""
 
     @model_validator(mode="after")
     def _exactly_one_subject(self) -> Unavailability:

@@ -17,10 +17,12 @@ from tessera.domain import (
     CommandKind,
     Constraint,
     ConstraintKind,
+    ConstraintTarget,
     GroupKind,
     Room,
     SessionKind,
     StudentGroup,
+    TargetKind,
     TimeGrid,
     TimetableStatus,
 )
@@ -256,7 +258,7 @@ class TestConstraint:
             term_id=TermId(term.id),
             kind=ConstraintKind.MIN_GAP,
             is_hard=True,
-            target_ids=frozenset(SessionId(s.id) for s in sessions),
+            targets=frozenset(ConstraintTarget(kind=TargetKind.SESSION, id=s.id) for s in sessions),
             params={"slots": 4},
         )
         constraint_row = mappers.constraint_to_orm(db, original)

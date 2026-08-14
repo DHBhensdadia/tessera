@@ -11,6 +11,8 @@ from tessera.domain.constraints import (
     Constraint,
     ConstraintKind,
     ConstraintScope,
+    ConstraintTarget,
+    TargetKind,
     default_constraints,
 )
 from tessera.domain.entities import (
@@ -29,6 +31,7 @@ from tessera.domain.entities import (
     Term,
     Unavailability,
     UnavailabilityKind,
+    WeekPattern,
 )
 from tessera.domain.groups import GroupKind, GroupSet, StudentGroup
 from tessera.domain.time_grid import Slot, TimeGrid
@@ -48,6 +51,7 @@ __all__ = [
     "Constraint",
     "ConstraintKind",
     "ConstraintScope",
+    "ConstraintTarget",
     "Course",
     "Department",
     "Feature",
@@ -63,11 +67,13 @@ __all__ = [
     "SessionTemplate",
     "Slot",
     "StudentGroup",
+    "TargetKind",
     "Term",
     "TimeGrid",
     "Timetable",
     "TimetableStatus",
     "Unavailability",
     "UnavailabilityKind",
+    "WeekPattern",
     "default_constraints",
 ]
