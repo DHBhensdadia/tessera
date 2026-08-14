@@ -77,6 +77,23 @@ non-terminating, and the tree comes from user data.
 `room_type: enum` works until the first room that is a chemistry lab *and* has a
 smartboard, and then every new category is a migration. Sets scale without one.
 
+What was missing was not a type but a **number**. A computer lab with thirty
+workstations and seventy seats is two different rooms depending on what happens in it,
+and a set could only say *has computers* — so nothing stopped sixty students being sent
+to thirty machines. `Room.feature_counts` and `Session.required_counts` carry the count
+where a count exists; absent means *present, count irrelevant*, because nobody counts
+projectors. `can_host` takes the required counts as an optional argument, so a session
+that does not count its equipment is still satisfied by presence alone.
+
+`Room.turnaround_slots` is the other half of a room being physical: a chemistry lab
+cannot be handed over the instant the previous class ends. Zero for a classroom, hence
+the default. Nothing enforces it yet — Stage 4 writes the overlap rule once, against a
+model that already knows rooms need clearing.
+
+The convenience a type enum was reaching for belongs in the interface instead: pick
+"Chemistry lab" in the console and it applies the feature set, which stays editable and
+stays authoritative. That is UI work with no schema risk.
+
 ## 4. A course is split three ways
 
 | | |
@@ -100,15 +117,70 @@ The rules that make a timetable *valid* — no instructor in two rooms at once, 
 features, availability — are **not stored**. They are unconditional, and a timetable
 violating one is not worse, it is invalid. They live in the validator and the solver.
 
-Everything else is a row: a discriminator, an optional target set, a hard/soft flag and
-a weight, following the ITC-2019 formulation. A *global* constraint is a term-wide
-preference and names no targets; a *targeted* one applies to specific sessions.
+Everything else is a row: a discriminator, a target set, a hard/soft flag and a weight,
+following the ITC-2019 formulation.
+
+**A target is a kind and an id, not a session id.** That distinction is the whole of
+Phase 2.7b. Until then `constraint_target` held `(constraint_id, session_id)`, so
+*"Prof. Shah may teach at most 3 consecutive hours"* and *"CSE5-A: no more than two gaps
+a day"* could not be written at all — the normal case in a department rather than an
+edge case. Three kinds were global-only, meaning they applied identically to everybody
+or to nobody, while FET's palette is almost entirely per-resource.
+
+So the generality Decision #12 promised was **false for any per-resource constraint**,
+and would have stayed false under everything 2.8 built on it.
+
+```
+constraint_target  →  constraint_id, target_kind, target_id
+```
+
+`target_id` carries no foreign key, because no column can point at sessions,
+instructors, groups, rooms and courses at once. That is the price of the shape; it is
+paid where every other reference is checked, in `mappers.TARGET_MODELS`, which fails
+loudly on an id that does not exist.
+
+Scope became "may this kind apply term-wide", not "must it":
+
+| | |
+|---|---|
+| no targets | the term-wide preference it always was — and **cannot be hard**, because nothing satisfies "minimise gaps" absolutely |
+| targets | the same preference narrowed to a resource — *may* be hard, because "at most 3 consecutive hours" is a rule an institution can insist on |
+| `TARGETED` kinds | meaningless untargeted; "these two must not overlap" needs to know which two |
+
+`Constraint.target_ids` survives as a **derived** property returning only the session
+targets, because the frozen API contract speaks in session ids. Derived rather than
+stored, so the two cannot disagree — and a group whose id happens to match a session's
+cannot leak through it.
 
 That generality is what lets a new rule arrive as a new handler rather than a schema
 migration — and it is why institution-specific quirks could safely be left undecided
 while the schema was designed.
 
-## 6. Three fields that had to exist from the first migration
+## 6. A week that is not always the same week
+
+A `TimeGrid` is one repeating week, which cannot say *"this lab runs fortnightly"* —
+ordinary practice wherever equipment is shared. `week_pattern` on sessions and templates
+is `EVERY_WEEK`, `ODD_WEEKS` or `EVEN_WEEKS`, and the only rule anything needs from it is
+`coincides_with`: two blocks can clash only if their patterns can land in the same week.
+
+**Not** ITC-2019's 13-week bitmask. That multiplies the solver's variables by the number
+of weeks — which Decision #35 already warns about at department scale — to buy "weeks 3,
+7 and 11", which nobody has asked for. FET has no equivalent at all and serves thousands
+of schools, so this is a judgement rather than an oversight; the pattern is the cheapest
+thing that makes the expensive retrofit unnecessary, and if arbitrary weeks are ever
+genuinely needed it becomes a mask without changing anything that reads it.
+
+Retrofitting it later would have touched every assignment, the overlap check, the solver
+formulation and the grid. It is the most expensive thing on R5's list to add late, which
+is why it is here before anything reads it.
+
+**`Unavailability` is three-state.** `is_hard` and `weight` turn *cannot* into *cannot*,
+*would rather not*, and free — which is how people describe their own week, and which
+gives `RESPECT_INSTRUCTOR_PREFERENCES` (a constraint kind with no data behind it since
+1.3) something to read. Rows written before this are hard, which is the only thing they
+could ever have meant.
+
+## 7. Three fields that had to exist from the first migration
 
 Retrofitting any of these would mean reworking code built on top.
 
@@ -178,3 +250,32 @@ downgrade silently does nothing and the next upgrade fails on tables that alread
 `test_models_and_migrations_have_not_drifted` fails if `models.py` changes without a
 migration. That mistake is otherwise invisible locally, because the test database is
 built from the models rather than from the migrations.
+
+### Foreign keys are off while migrating, and checked afterwards
+
+Enforcing them during a migration looks like the careful choice and is the opposite of
+one.
+
+SQLite has no `ALTER` for a primary key, so any real change means rebuilding the table —
+and **with `foreign_keys=ON` a `DROP TABLE` performs an implicit `DELETE FROM` first**,
+which fires `ON DELETE CASCADE` into every child. Batch mode rebuilds tables. So adding
+one column to `room` silently emptied `room_feature`, and the migration reported success
+having deleted every room's equipment.
+
+It passed every migration test at the time, because they all ran against an empty
+database. `env.py` now migrates with enforcement off and runs `PRAGMA foreign_key_check`
+at the end, failing loudly on anything dangling — SQLite's own documented procedure, and
+a stronger guarantee than enforcement-during-DDL: it inspects every row that exists
+rather than only the ones a statement touched.
+
+Two things follow for anyone writing a migration here:
+
+- **A migration that has only run against an empty schema is not known to work.** The
+  tests in `test_migrations.py` seed a row into every table a revision reshapes, migrate,
+  roll back and migrate again. `test_rows_survive_the_tables_being_rebuilt` is the one
+  that caught the cascade.
+- **Autogenerate does not move data.** Asked to make `constraint_target` polymorphic it
+  produced a revision that dropped `session_id` and added `target_id` without copying
+  between them — correct in shape, and it would have emptied the constraint targets of
+  every project already in existence. Tables that change shape are rebuilt explicitly in
+  that revision, with the copy stated column by column.
