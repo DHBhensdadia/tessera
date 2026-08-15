@@ -93,9 +93,8 @@ class TestF1ConstraintsCanNameAnyResource:
     ) -> None:
         original = Constraint(
             term_id=TermId(term.id),
-            kind=ConstraintKind.MIN_GAP,
+            kind=ConstraintKind.MINIMISE_GROUP_GAPS,
             targets=frozenset({ConstraintTarget(kind=TargetKind.GROUP, id=batch.id)}),
-            params={"slots": 2},
         )
         row = mappers.constraint_to_orm(db, original)
         db.add(row)
@@ -113,7 +112,7 @@ class TestF1ConstraintsCanNameAnyResource:
 
         original = Constraint(
             term_id=TermId(term.id),
-            kind=ConstraintKind.NOT_OVERLAP,
+            kind=ConstraintKind.MINIMISE_BUILDING_CHANGES,
             targets=frozenset(
                 {
                     ConstraintTarget(kind=TargetKind.INSTRUCTOR, id=shah.id),
@@ -137,7 +136,7 @@ class TestF1ConstraintsCanNameAnyResource:
         """
         constraint = Constraint(
             term_id=TermId(term.id),
-            kind=ConstraintKind.SAME_ROOM,
+            kind=ConstraintKind.MINIMISE_GROUP_GAPS,
             targets=frozenset({ConstraintTarget(kind=TargetKind.GROUP, id=batch.id)}),
         )
         assert constraint.target_ids == frozenset()
@@ -146,7 +145,7 @@ class TestF1ConstraintsCanNameAnyResource:
         """``target_id`` carries no foreign key, so this check is the only one there is."""
         constraint = Constraint(
             term_id=TermId(term.id),
-            kind=ConstraintKind.SAME_TIME,
+            kind=ConstraintKind.MINIMISE_INSTRUCTOR_GAPS,
             targets=frozenset({ConstraintTarget(kind=TargetKind.INSTRUCTOR, id=9999)}),
         )
         with pytest.raises(LookupError, match="Instructor"):

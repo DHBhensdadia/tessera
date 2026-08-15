@@ -20,6 +20,7 @@ See R1 §3.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -105,28 +106,161 @@ class ConstraintKind(StrEnum):
     MAX_DAYS_BETWEEN = "max_days_between"
 
     @property
+    def spec(self) -> ConstraintSpec:
+        """What this kind accepts. See :data:`SPECS`."""
+        return SPECS[self]
+
+    @property
     def scope(self) -> ConstraintScope:
-        return ConstraintScope.GLOBAL if self in _GLOBAL_KINDS else ConstraintScope.TARGETED
+        return self.spec.scope
 
 
-_GLOBAL_KINDS = frozenset(
-    {
-        ConstraintKind.MINIMISE_GROUP_GAPS,
-        ConstraintKind.MINIMISE_INSTRUCTOR_GAPS,
-        ConstraintKind.AVOID_SAME_COURSE_TWICE_A_DAY,
-        ConstraintKind.RESPECT_INSTRUCTOR_PREFERENCES,
-        ConstraintKind.MINIMISE_BUILDING_CHANGES,
-        ConstraintKind.BALANCE_DAILY_LOAD,
-        ConstraintKind.PREFER_ROOM_STABILITY,
-        ConstraintKind.LIMIT_CONSECUTIVE_SLOTS,
-    }
-)
+class ParamSpec(BaseModel):
+    """One parameter a kind takes, and the range it means anything over."""
 
-_REQUIRED_PARAMS: dict[ConstraintKind, tuple[str, ...]] = {
-    ConstraintKind.LIMIT_CONSECUTIVE_SLOTS: ("slots",),
-    ConstraintKind.MIN_GAP: ("slots",),
-    ConstraintKind.MAX_DAYS_BETWEEN: ("days",),
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    """How the interface asks for it — "at most how many hours in a row?"."""
+
+    minimum: int = 1
+    maximum: int = 100
+    default: int = 1
+
+    def check(self, value: int) -> str | None:
+        if not self.minimum <= value <= self.maximum:
+            return f"must be between {self.minimum} and {self.maximum}"
+        return None
+
+
+class ConstraintSpec(BaseModel):
+    """Everything a constraint kind needs, except how to evaluate it.
+
+    Evaluation belongs to the validator in Phase 4.1, which P5 requires be written as an
+    *independent* reading of the rules — Phase 0.1 got zero cost mismatches across 21
+    instances precisely because the solver model and the validator were two separate
+    readings, and sharing logic would let one misreading hide inside both.
+
+    So this is the other half: what a kind may be attached to, what it must be given, and
+    how to say it in a sentence. It is what makes "adding a rule is a handler, not a
+    migration" true rather than merely unfalsified — before 2.8 nothing checked anything
+    about a kind, so adding one was easy only because nothing was required of it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    scope: ConstraintScope
+    targets: frozenset[TargetKind] = frozenset()
+    """What it may be attached to. A kind with no targets listed is term-wide only."""
+
+    params: Mapping[str, ParamSpec] = Field(default_factory=dict)
+    summary: str
+    """One sentence, with ``{param}`` placeholders and a ``{targets}`` slot.
+
+    Here rather than in a template because the console needs a sentence per constraint
+    and a second copy would drift from the rule it describes.
+    """
+
+    def describe(self, params: Mapping[str, int], targets: str = "everyone") -> str:
+        filled = {name: params.get(name, spec.default) for name, spec in self.params.items()}
+        return self.summary.format(**filled, targets=targets).strip()
+
+
+_PEOPLE_AND_GROUPS = frozenset({TargetKind.INSTRUCTOR, TargetKind.GROUP})
+_SESSIONS = frozenset({TargetKind.SESSION})
+
+SPECS: Mapping[ConstraintKind, ConstraintSpec] = {
+    ConstraintKind.MINIMISE_GROUP_GAPS: ConstraintSpec(
+        scope=ConstraintScope.GLOBAL,
+        targets=frozenset({TargetKind.GROUP}),
+        summary="Minimise idle gaps in the day for {targets}",
+    ),
+    ConstraintKind.MINIMISE_INSTRUCTOR_GAPS: ConstraintSpec(
+        scope=ConstraintScope.GLOBAL,
+        targets=frozenset({TargetKind.INSTRUCTOR}),
+        summary="Minimise idle gaps in the day for {targets}",
+    ),
+    ConstraintKind.AVOID_SAME_COURSE_TWICE_A_DAY: ConstraintSpec(
+        scope=ConstraintScope.GLOBAL,
+        targets=frozenset({TargetKind.COURSE}),
+        summary="Avoid teaching {targets} twice in one day",
+    ),
+    ConstraintKind.RESPECT_INSTRUCTOR_PREFERENCES: ConstraintSpec(
+        scope=ConstraintScope.GLOBAL,
+        targets=frozenset({TargetKind.INSTRUCTOR}),
+        summary="Respect the marked time preferences of {targets}",
+    ),
+    ConstraintKind.MINIMISE_BUILDING_CHANGES: ConstraintSpec(
+        scope=ConstraintScope.GLOBAL,
+        targets=_PEOPLE_AND_GROUPS,
+        summary="Minimise moves between buildings for {targets}",
+    ),
+    ConstraintKind.BALANCE_DAILY_LOAD: ConstraintSpec(
+        scope=ConstraintScope.GLOBAL,
+        targets=_PEOPLE_AND_GROUPS,
+        summary="Spread teaching evenly across the week for {targets}",
+    ),
+    ConstraintKind.PREFER_ROOM_STABILITY: ConstraintSpec(
+        scope=ConstraintScope.GLOBAL,
+        targets=frozenset({TargetKind.COURSE}),
+        summary="Keep {targets} in the same room all week",
+    ),
+    ConstraintKind.LIMIT_CONSECUTIVE_SLOTS: ConstraintSpec(
+        scope=ConstraintScope.GLOBAL,
+        targets=_PEOPLE_AND_GROUPS,
+        params={
+            "slots": ParamSpec(label="Hours in a row", minimum=1, maximum=24, default=3),
+        },
+        summary="Give {targets} at most {slots} hour(s) in a row",
+    ),
+    ConstraintKind.SAME_TIME: ConstraintSpec(
+        scope=ConstraintScope.TARGETED,
+        targets=_SESSIONS,
+        summary="Start {targets} at the same time",
+    ),
+    ConstraintKind.SAME_ROOM: ConstraintSpec(
+        scope=ConstraintScope.TARGETED,
+        targets=_SESSIONS,
+        summary="Put {targets} in the same room",
+    ),
+    ConstraintKind.SAME_DAY: ConstraintSpec(
+        scope=ConstraintScope.TARGETED,
+        targets=_SESSIONS,
+        summary="Keep {targets} on the same day",
+    ),
+    ConstraintKind.DIFFERENT_DAY: ConstraintSpec(
+        scope=ConstraintScope.TARGETED,
+        targets=_SESSIONS,
+        summary="Keep {targets} on different days",
+    ),
+    ConstraintKind.PRECEDES: ConstraintSpec(
+        scope=ConstraintScope.TARGETED,
+        targets=_SESSIONS,
+        summary="Run {targets} in the order given",
+    ),
+    ConstraintKind.NOT_OVERLAP: ConstraintSpec(
+        scope=ConstraintScope.TARGETED,
+        targets=_SESSIONS,
+        summary="Never run {targets} at the same time",
+    ),
+    ConstraintKind.MIN_GAP: ConstraintSpec(
+        scope=ConstraintScope.TARGETED,
+        targets=_SESSIONS,
+        params={"slots": ParamSpec(label="Hours between", minimum=1, maximum=24, default=1)},
+        summary="Leave at least {slots} hour(s) between {targets}",
+    ),
+    ConstraintKind.MAX_DAYS_BETWEEN: ConstraintSpec(
+        scope=ConstraintScope.TARGETED,
+        targets=_SESSIONS,
+        params={"days": ParamSpec(label="Days apart at most", minimum=1, maximum=7, default=2)},
+        summary="Keep {targets} within {days} day(s) of each other",
+    ),
 }
+"""One entry per kind, and the enum is checked against it rather than trusted.
+
+Adding a rule is an entry here plus an evaluator in 4.1 — no migration, no route, no
+schema. ``test_every_kind_has_a_spec`` is what keeps that a fact.
+"""
 
 
 class Constraint(BaseModel):
@@ -168,8 +302,10 @@ class Constraint(BaseModel):
 
     @model_validator(mode="after")
     def _shape_matches_kind(self) -> Constraint:
+        spec = self.kind.spec
+
         if not self.targets:
-            if self.kind.scope is ConstraintScope.TARGETED:
+            if spec.scope is ConstraintScope.TARGETED:
                 raise ValueError(f"{self.kind} must name what it applies to")
             # A term-wide preference cannot be hard, because nothing satisfies "minimise
             # gaps" absolutely — there is no timetable it would accept. Narrowed to a
@@ -179,10 +315,42 @@ class Constraint(BaseModel):
             if self.is_hard:
                 raise ValueError(f"{self.kind} applies to the whole term and cannot be hard")
 
-        missing = [p for p in _REQUIRED_PARAMS.get(self.kind, ()) if p not in self.params]
+        wrong = sorted({t.kind for t in self.targets} - spec.targets)
+        if wrong:
+            allowed = ", ".join(sorted(spec.targets)) or "nothing"
+            raise ValueError(f"{self.kind} applies to {allowed}, not {', '.join(wrong)}")
+
+        missing = sorted(set(spec.params) - set(self.params))
         if missing:
             raise ValueError(f"{self.kind} requires parameter(s) {missing}")
+
+        unknown = sorted(set(self.params) - set(spec.params))
+        if unknown:
+            raise ValueError(f"{self.kind} takes no parameter(s) {unknown}")
+
+        for name, param in spec.params.items():
+            complaint = param.check(self.params[name])
+            if complaint is not None:
+                raise ValueError(f"{name} {complaint}")
         return self
+
+    def describe(self, targets: str = "") -> str:
+        """This rule as a sentence, for the interface. See :class:`ConstraintSpec`.
+
+        ``targets`` is the resolved names, which only a caller holding the database can
+        supply. Without them a *targeted* rule falls back to naming kinds and ids rather
+        than to "everyone" — which would be the opposite of true, and was: the API
+        reported "Give everyone at most 3 hour(s) in a row" for a rule about one person.
+        """
+        if targets:
+            return self.kind.spec.describe(self.params, targets)
+        if not self.targets:
+            return self.kind.spec.describe(self.params)
+        listed = ", ".join(
+            f"{t.kind.value} {t.id}"
+            for t in sorted(self.targets, key=lambda t: (t.kind.value, t.id))
+        )
+        return self.kind.spec.describe(self.params, listed)
 
     @property
     def effective_weight(self) -> int:
