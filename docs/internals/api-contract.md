@@ -115,13 +115,26 @@ per related object.
 `docs/openapi.json` is committed, and `tests/api/test_contract.py` compares it against
 the live application.
 
-It compares **shape, not bytes**: the set of (method, path) pairs, their operation ids,
-and the set of component schema names. Byte-equality would fail on every FastAPI
-upgrade, so Dependabot would turn the guard into noise — and a guard that cries wolf
-gets silenced, which is worse than not having one.
+It compares **shape, not bytes**: byte-equality would fail on every FastAPI upgrade, so
+Dependabot would turn the guard into noise — and a guard that cries wolf gets silenced,
+which is worse than not having one.
 
-Operation ids are included because they become method names in a generated client:
-renaming one is a breaking change even when the URL is untouched.
+What it compares has been wrong twice, in the same way both times — it covered less than
+it appeared to, and nobody knew because it had never been watched fail:
+
+| Added | Covers | Found by |
+|---|---|---|
+| 1.4 | (method, path) pairs and operation ids — the latter become method names in a generated client, so renaming one breaks it even when the URL does not change | — |
+| 2.2 (#46) | query and path **parameters**. Dropping a required one is unambiguously breaking and passed silently | removing a parameter and watching the suite stay green |
+| 2.8 | schema **fields**, and fields that become newly required. The model test compared schema *names*, so deleting a field from a response model passed | deleting `ConstraintRead.target_ids` after regenerating the snapshot, exactly as Decision #43 requires, and watching nothing happen |
+
+**Only removals fail.** Adding a parameter or a field is additive and safe, which is how
+2.2's selective unavailability delete and 2.8's `targets` both arrived without breaking
+the frozen surface. A field going from optional to required fails too: it breaks a caller
+written against the old shape just as surely as deleting one.
+
+The lesson is not about OpenAPI. A guard that has never been seen to fail is not known to
+work, and "we have a contract test" is the sentence that stops anyone checking.
 
 When a contract change is intentional:
 

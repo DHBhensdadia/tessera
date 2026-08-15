@@ -16,6 +16,7 @@ document links to the ADRs that constrain it.
 | [Structural data](structure-crud.md) | Rooms and their scaffolding — the repository pattern, filtering, and the deletion rules |
 | [Student groups](student-groups.md) | The tree, cohorts, and the conflict relation the solver depends on |
 | [Teaching](teaching.md) | Courses, terms, the frozen time grid, and how a weekly pattern expands into sessions |
+| [Constraints](constraints.md) | The rules that are stored rather than true, the registry that makes a new one cheap, and where the weight sliders write |
 | [Importing a spreadsheet](import.md) | The two-step import, why pandas is fenced off from interpreting anything, and what "no partial write" means |
 | [The browser console](console.md) | The HTML UI, how a browser gets past the engine token, and why it calls the repository directly |
 | [Packaging and the sidecar](packaging.md) | How the engine and client become one `.dmg`, and how they find each other |
