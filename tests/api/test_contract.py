@@ -114,6 +114,50 @@ def test_request_and_response_models_have_not_changed(
     assert not removed, f"models removed from the contract: {removed}"
 
 
+def fields(spec: dict[str, Any]) -> dict[str, tuple[set[str], set[str]]]:
+    """Every model mapped to the fields it has, and the subset a caller must send."""
+    found: dict[str, tuple[set[str], set[str]]] = {}
+    for name, schema in spec.get("components", {}).get("schemas", {}).items():
+        found[name] = (set(schema.get("properties", {})), set(schema.get("required", [])))
+    return found
+
+
+def test_no_field_has_been_removed_or_newly_required(
+    app: FastAPI, snapshot: dict[str, Any]
+) -> None:
+    """The third time this guard has been found to cover less than it appeared to.
+
+    1.4 compared paths, methods and operation ids. 2.2 found that a removed query
+    parameter passed silently and added `test_no_parameter_has_been_removed` (#46). 2.8
+    found the same one level further down: the model test compares schema *names*, so
+    deleting a field from a response model — unambiguously breaking for every client —
+    passed. Caught by deleting `ConstraintRead.target_ids` and watching the suite stay
+    green.
+
+    Removals fail, and so does making an optional request field required, because both
+    break a caller that was written against the old shape. Additions pass: that is how
+    `targets` was added here without breaking the 1.4 surface.
+    """
+    live = fields(app.openapi())
+    committed = fields(snapshot)
+
+    lost = {
+        name: sorted(properties - live[name][0])
+        for name, (properties, _) in committed.items()
+        if name in live and properties - live[name][0]
+    }
+    tightened = {
+        name: sorted(live[name][1] - required)
+        for name, (_, required) in committed.items()
+        if name in live and live[name][1] - required
+    }
+    assert not (lost or tightened), (
+        f"fields removed from the contract: {lost}\n"
+        f"fields newly required: {tightened}\n"
+        "If intended, regenerate the snapshot: uv run tessera-openapi"
+    )
+
+
 def test_every_route_documents_its_error_shape(app: FastAPI) -> None:
     """Errors are RFC 9457 everywhere, and the schema must say so.
 
