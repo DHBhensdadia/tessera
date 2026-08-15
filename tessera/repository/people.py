@@ -188,8 +188,10 @@ def block_slots(
     subject_id: int,
     slots: Iterable[int],
     reason: str = "",
+    is_hard: bool = True,
+    weight: int = 1,
 ) -> list[d.Unavailability]:
-    """Mark slots unavailable. Blocking an already-blocked slot is a no-op.
+    """Mark slots unavailable, or merely undesirable. Re-blocking a slot is a no-op.
 
     Idempotent on purpose: dragging across a partly-blocked range is ordinary use, and
     failing halfway through a gesture would be worse than useless. The unique constraint
@@ -223,10 +225,16 @@ def block_slots(
             room_id=room_id,
             slot=slot,
             reason=reason,
+            is_hard=is_hard,
+            weight=weight,
         )
         for slot in wanted
         if slot not in already
     )
+    # An already-blocked slot keeps the strength it had rather than silently taking the
+    # new one: dragging across a range that is partly "cannot" and partly "rather not"
+    # is ordinary use, and the alternative flattens a distinction the user made on
+    # purpose. Changing one means clearing it first, which is what the grid does.
     session.flush()
     return list_unavailability(session, term_id, kind=kind, subject_id=subject_id)
 
@@ -261,15 +269,38 @@ def unblock_slots(
 
 
 def blocked_slots(session: DbSession, term_id: int, *, instructor_id: int) -> frozenset[int]:
-    """The set the solver asks for, as a set rather than rows.
+    """The hours the solver may not use, as a set rather than rows.
 
     Kept beside the row-level functions so the solver and the interface read the same
     data through the same module rather than each assembling it from the table.
+
+    **Hard rows only.** Since 2.7b a row can mean "would rather not" (Decision #78), and
+    returning those here would hand the solver a preference dressed as a prohibition —
+    silently turning every soft hour into an hour nobody may teach, which is both wrong
+    and impossible to see in the output. The soft ones are `discouraged_slots`.
     """
     rows = session.scalars(
         select(m.Unavailability.slot).where(
             m.Unavailability.term_id == term_id,
             m.Unavailability.instructor_id == instructor_id,
+            m.Unavailability.is_hard,
         )
     )
     return frozenset(rows)
+
+
+def discouraged_slots(session: DbSession, term_id: int, *, instructor_id: int) -> dict[int, int]:
+    """The hours someone would rather not teach, mapped to what ignoring one costs.
+
+    The middle state of the availability grid. Separate from `blocked_slots` because the
+    two are used differently — one narrows the solver\'s domain, the other adds to its
+    penalty — and merging them is exactly the mistake the split exists to prevent.
+    """
+    rows = session.execute(
+        select(m.Unavailability.slot, m.Unavailability.weight).where(
+            m.Unavailability.term_id == term_id,
+            m.Unavailability.instructor_id == instructor_id,
+            ~m.Unavailability.is_hard,
+        )
+    )
+    return {row.slot: row.weight for row in rows}

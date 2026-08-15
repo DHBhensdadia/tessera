@@ -31,7 +31,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from tessera.repository.errors import ConflictError, InvalidReferenceError, NotFoundError
+from tessera.repository.errors import (
+    ConflictError,
+    InvalidReferenceError,
+    NotFoundError,
+    RuleViolationError,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -206,6 +211,26 @@ def register_error_handlers(app: FastAPI) -> None:
                     ErrorDetail(pointer=f"body/{exc.field}", message=f"no record with id {i}")
                     for i in exc.missing
                 ],
+            )
+        )
+
+    @app.exception_handler(RuleViolationError)
+    async def _handle_rule_violation(request: Request, exc: RuleViolationError) -> JSONResponse:
+        """A rule the domain owns, reported against the body that broke it.
+
+        422 rather than 409: nothing about the stored state has to change for the request
+        to succeed — the request itself is wrong.
+        """
+        return problem_response(
+            Problem(
+                type=f"{ERROR_BASE}/rule-violation",
+                title="Rule violation",
+                status=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=exc.message,
+                instance=request.url.path,
+                errors=[ErrorDetail(pointer=f"body/{exc.field}", message=exc.message)]
+                if exc.field
+                else [],
             )
         )
 

@@ -24,7 +24,12 @@ from tessera.domain import groups as dg
 from tessera.domain.ids import StudentGroupId
 from tessera.repository import mappers
 from tessera.repository import models as m
-from tessera.repository.errors import ConflictError, InvalidReferenceError, NotFoundError
+from tessera.repository.errors import (
+    ConflictError,
+    InvalidReferenceError,
+    NotFoundError,
+    first_message,
+)
 from tessera.repository.structure import _get_or_404, _reject_duplicate, _rename
 
 # --------------------------------------------------------------------------------
@@ -120,21 +125,7 @@ def _group(**fields: Any) -> dg.StudentGroup:
     try:
         return dg.StudentGroup(**fields)
     except ValueError as error:
-        raise ConflictError(_first_message(error)) from error
-
-
-def _first_message(error: ValueError) -> str:
-    """Pydantic's own text, without the type and documentation link around it.
-
-    `str(ValidationError)` is four lines of machine detail. What a person needs is the
-    sentence the domain wrote.
-    """
-    errors = getattr(error, "errors", None)
-    if callable(errors):
-        found = errors()
-        if found:
-            return str(found[0].get("msg", "")).removeprefix("Value error, ")
-    return str(error)
+        raise ConflictError(first_message(error)) from error
 
 
 def _validated(groups: Sequence[dg.StudentGroup]) -> dg.GroupSet:

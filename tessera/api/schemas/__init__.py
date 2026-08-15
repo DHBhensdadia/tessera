@@ -11,7 +11,12 @@ is that a storage change cannot silently become a breaking API change.
 """
 
 from tessera.api.schemas.common import Page, Reference
-from tessera.api.schemas.constraints import ConstraintCreate, ConstraintRead, ConstraintUpdate
+from tessera.api.schemas.constraints import (
+    ConstraintCreate,
+    ConstraintRead,
+    ConstraintUpdate,
+    TargetWire,
+)
 from tessera.api.schemas.groups import (
     StudentGroupCreate,
     StudentGroupRead,
@@ -137,6 +142,7 @@ __all__ = [
     "StudentGroupRead",
     "StudentGroupTree",
     "StudentGroupUpdate",
+    "TargetWire",
     "TermCreate",
     "TermDuplicate",
     "TermRead",

@@ -160,6 +160,11 @@ class UnavailabilityCreate(Wire):
     subject_id: int = Field(description="Instructor or room id, per kind.")
     slots: list[int] = Field(min_length=1, description="Week-absolute slot indices.")
     reason: str = ""
+    is_hard: bool = Field(
+        default=True,
+        description="False means 'would rather not' — a preference the solver may break.",
+    )
+    weight: int = Field(default=1, ge=1, description="Cost of ignoring it. Unused when hard.")
 
 
 class UnavailabilityRead(Wire):
@@ -167,3 +172,5 @@ class UnavailabilityRead(Wire):
     subject_id: int
     slot: int
     reason: str
+    is_hard: bool = True
+    weight: int = 1

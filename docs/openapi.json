@@ -451,7 +451,7 @@
           },
           "is_hard": {
             "default": false,
-            "description": "Targeted constraints only; a global preference cannot be hard.",
+            "description": "Only a rule that names its targets may be hard.",
             "title": "Is Hard",
             "type": "boolean"
           },
@@ -466,11 +466,19 @@
             "type": "object"
           },
           "target_ids": {
-            "description": "Sessions this applies to. Empty for global preferences.",
+            "description": "Sessions this applies to. Shorthand for targets of kind 'session'.",
             "items": {
               "type": "integer"
             },
             "title": "Target Ids",
+            "type": "array"
+          },
+          "targets": {
+            "description": "What this applies to. Empty for a term-wide preference.",
+            "items": {
+              "$ref": "#/components/schemas/TargetWire"
+            },
+            "title": "Targets",
             "type": "array"
           },
           "weight": {
@@ -536,13 +544,26 @@
           },
           "scope": {
             "$ref": "#/components/schemas/ConstraintScope",
-            "description": "Derived from kind; global rules take no targets."
+            "description": "Derived from kind. 'global' may apply term-wide or be narrowed."
+          },
+          "summary": {
+            "description": "The rule as a sentence, for display.",
+            "title": "Summary",
+            "type": "string"
           },
           "target_ids": {
+            "description": "The session targets, for 1.4 consumers.",
             "items": {
               "type": "integer"
             },
             "title": "Target Ids",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetWire"
+            },
+            "title": "Targets",
             "type": "array"
           },
           "term_id": {
@@ -561,12 +582,14 @@
           "scope",
           "is_hard",
           "weight",
-          "enabled"
+          "enabled",
+          "summary"
         ],
         "title": "ConstraintRead",
         "type": "object"
       },
       "ConstraintScope": {
+        "description": "Whether a kind *may* apply term-wide, not whether it must.\n\n``GLOBAL`` kinds take targets optionally: \"minimise gaps\" with no targets is the\nterm-wide preference it always was, and the same kind naming Prof. Shah is that\npreference narrowed to one person. Making the narrowing a target rather than a\nseparate kind is what R5 \u00a73 F1 asked for \u2014 FET's palette is almost entirely\nper-resource, and three of ours could previously only apply to everybody or nobody.\n\n``TARGETED`` kinds are meaningless without targets: \"these two sessions must not\noverlap\" needs to know which two.",
         "enum": [
           "global",
           "targeted"
@@ -625,6 +648,20 @@
               }
             ],
             "title": "Target Ids"
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TargetWire"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targets"
           },
           "weight": {
             "anyOf": [
@@ -3009,6 +3046,37 @@
         "title": "StudentGroupUpdate",
         "type": "object"
       },
+      "TargetKind": {
+        "description": "What a constraint can be applied to.\n\nUntil 2.7b a constraint could name **sessions and nothing else**, which meant\n\"Prof. Shah teaches at most three consecutive hours\" and \"this division gets no more\nthan two gaps a day\" could not be written at all \u2014 the ordinary case in a department\nrather than an edge case.\n\nAdding a kind here is a handler in the solver, not a migration, which is what\nDecision #12 promised and could not deliver while the target table held one column.",
+        "enum": [
+          "session",
+          "instructor",
+          "group",
+          "room",
+          "course"
+        ],
+        "title": "TargetKind",
+        "type": "string"
+      },
+      "TargetWire": {
+        "description": "One thing a constraint applies to.",
+        "properties": {
+          "id": {
+            "minimum": 1.0,
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TargetKind"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "TargetWire",
+        "type": "object"
+      },
       "TermCreate": {
         "properties": {
           "academic_year": {
@@ -3490,6 +3558,12 @@
       },
       "UnavailabilityCreate": {
         "properties": {
+          "is_hard": {
+            "default": true,
+            "description": "False means 'would rather not' \u2014 a preference the solver may break.",
+            "title": "Is Hard",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/UnavailabilityKind"
           },
@@ -3511,6 +3585,13 @@
             "description": "Instructor or room id, per kind.",
             "title": "Subject Id",
             "type": "integer"
+          },
+          "weight": {
+            "default": 1,
+            "description": "Cost of ignoring it. Unused when hard.",
+            "minimum": 1.0,
+            "title": "Weight",
+            "type": "integer"
           }
         },
         "required": [
@@ -3531,6 +3612,11 @@
       },
       "UnavailabilityRead": {
         "properties": {
+          "is_hard": {
+            "default": true,
+            "title": "Is Hard",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/UnavailabilityKind"
           },
@@ -3544,6 +3630,11 @@
           },
           "subject_id": {
             "title": "Subject Id",
+            "type": "integer"
+          },
+          "weight": {
+            "default": 1,
+            "title": "Weight",
             "type": "integer"
           }
         },

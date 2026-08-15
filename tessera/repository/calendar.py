@@ -30,6 +30,7 @@ from tessera.domain import entities as d
 from tessera.domain.time_grid import TimeGrid
 from tessera.repository import mappers
 from tessera.repository import models as m
+from tessera.repository.constraints import seed_default_constraints
 from tessera.repository.errors import ConflictError
 from tessera.repository.structure import _get_or_404, _reject_duplicate
 
@@ -200,6 +201,7 @@ def create_term(
     )
     session.add(row)
     session.flush()
+    seed_default_constraints(session, int(row.id))
     return mappers.term_to_domain(row)
 
 
