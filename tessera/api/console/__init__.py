@@ -7,13 +7,24 @@ Importing a section module is what registers its routes on the shared router, so
 one is named in ``__all__`` rather than imported for its side effect and suppressed —
 there is no ``noqa`` in this codebase.
 
-**Order matters.** `places` ends with a catch-all `/{slug}` route, so every section with
-a path of its own has to be imported before it or the catch-all swallows the path first.
+Import order used to matter, because `places` ended with a catch-all `/{slug}` and
+whichever module registered first won the path — so sorting the imports alphabetically
+silently broke `/console/rooms`. It binds an explicit route per slug now (Decision #67),
+and the ordering hazard is gone with it.
 """
 
 from __future__ import annotations
 
-from tessera.api.console import calendar, groups, imports, people, places, rooms, teaching
+from tessera.api.console import (
+    calendar,
+    groups,
+    imports,
+    people,
+    places,
+    rooms,
+    rules,
+    teaching,
+)
 from tessera.api.console.base import (
     CONSOLE_COOKIE,
     ENTRY_PATH,
@@ -42,5 +53,6 @@ __all__ = [
     "redirect",
     "rooms",
     "router",
+    "rules",
     "teaching",
 ]

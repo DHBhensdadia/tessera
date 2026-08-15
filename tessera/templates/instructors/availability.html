@@ -3,8 +3,8 @@
 {% block body %}
 <h1>{{ instructor.name }}</h1>
 <p class="lede">
-  Tick the hours this person <em>cannot</em> teach.
-  {{ blocked_count }} slot{{ '' if blocked_count == 1 else 's' }} blocked.
+  Mark the hours this person cannot teach, and the ones they would rather not.
+  {{ blocked_count }} blocked, {{ discouraged_count }} discouraged.
 </p>
 
 {% if not terms %}
@@ -37,8 +37,15 @@ means a time by reference to a term's teaching week. Create a term first.</p>
         {% if cell.is_break %}
           <span class="empty" title="{{ cell.label }}">break</span>
         {% else %}
-          <input type="checkbox" name="blocked" value="{{ cell.slot }}"
-                 title="{{ cell.label }}" {{ 'checked' if cell.blocked else '' }}>
+          {# One control per cell rather than two checkboxes: three states is what the
+             availability grid actually has, and a pair of boxes can express a fourth
+             that means nothing. #}
+          <select name="slot_{{ cell.slot }}" title="{{ cell.label }}"
+                  aria-label="{{ cell.label }}">
+            <option value="" {{ 'selected' if cell.state == '' else '' }}>free</option>
+            <option value="soft" {{ 'selected' if cell.state == 'soft' else '' }}>rather not</option>
+            <option value="hard" {{ 'selected' if cell.state == 'hard' else '' }}>cannot</option>
+          </select>
         {% endif %}
       </td>
       {% endfor %}

@@ -49,7 +49,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from tessera import paths
-from tessera.repository.errors import ConflictError, InvalidReferenceError, NotFoundError
+from tessera.repository.errors import (
+    ConflictError,
+    InvalidReferenceError,
+    NotFoundError,
+    RuleViolationError,
+)
 
 router = APIRouter(prefix="/console", tags=["console"])
 
@@ -104,6 +109,7 @@ SECTIONS: tuple[Section, ...] = (
     Section("courses", "Courses", "The catalogue, independent of any term"),
     Section("time-grids", "Teaching weeks", "How long a week is, and where the breaks are"),
     Section("terms", "Terms", "A schedulable period, and what is offered in it"),
+    Section("constraints", "Rules", "What the solver should prefer, and how strongly"),
     Section("imports", "Import", "Rooms, staff, courses or groups from a spreadsheet"),
 )
 
@@ -138,6 +144,8 @@ def describe(error: Exception) -> str:
         return f"{error.message}{f' ({blockers})' if blockers else ''}"
     if isinstance(error, InvalidReferenceError):
         return f"{error.field} refers to something that does not exist: {error.missing}"
+    if isinstance(error, RuleViolationError):
+        return error.message
     if isinstance(error, NotFoundError):
         return "That record no longer exists."
     return str(error)

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Rules · Tessera console{% endblock %}
+{% block body %}
+<h1>Rules</h1>
+<p class="lede">
+  What the solver is asked to prefer, and how strongly. Weights are deliberately yours to
+  set: institutions disagree about these, and the argument should be settled here rather
+  than by us.
+</p>
+
+{% if problem %}<p class="problem">{{ problem }}</p>{% endif %}
+
+{% if not terms %}
+<p class="empty">No terms exist yet, and rules belong to a term. Create a term first.</p>
+{% else %}
+<form method="get" action="/console/constraints">
+  <label for="term_id">Term</label>
+  <select id="term_id" name="term_id" onchange="this.form.submit()">
+    {% for term in terms %}
+    <option value="{{ term.id }}" {{ 'selected' if term.id == term_id else '' }}>
+      {{ term.name }} {{ term.academic_year }}
+    </option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit">Show</button></noscript>
+</form>
+
+<table style="margin-top:1rem">
+  <tr><th>Rule</th><th>Strength</th><th>Weight</th><th></th></tr>
+  {% for rule in rules %}
+  <tr{% if not rule.enabled %} style="opacity:.55"{% endif %}>
+    {# The sentence comes from the constraint's own spec. Composing it here would be a
+       second copy of the rule, drifting from the one the solver reads. #}
+    <td>{{ rule.sentence }}</td>
+    <td>{{ 'must' if rule.is_hard else 'prefer' }}</td>
+    <td>
+      <form class="inline" method="post" action="/console/constraints/{{ rule.id }}">
+        <input type="hidden" name="term_id" value="{{ term_id }}">
+        <input type="range" name="weight" min="0" max="20" value="{{ rule.weight }}"
+               aria-label="Weight for {{ rule.sentence }}"
+               {{ 'disabled' if rule.is_hard else '' }}>
+        <input type="checkbox" name="enabled" value="true"
+               aria-label="Enabled" {{ 'checked' if rule.enabled else '' }}>
+        <button type="submit">Save</button>
+        <span class="empty">{{ rule.weight }}</span>
+      </form>
+    </td>
+    <td>
+      <form class="inline" method="post" action="/console/constraints/{{ rule.id }}/delete">
+        <input type="hidden" name="term_id" value="{{ term_id }}">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4" class="empty">No rules for this term.</td></tr>
+  {% endfor %}
+</table>
+
+<h1 style="margin-top:2rem">Add a rule</h1>
+<p class="lede">
+  Leave the targets empty to apply a preference to the whole term, or name the people and
+  groups it is about. A rule that names nobody cannot be a requirement — nothing satisfies
+  “minimise gaps” absolutely — so “must” only becomes available once it does.
+</p>
+<form method="post" action="/console/constraints">
+  <input type="hidden" name="term_id" value="{{ term_id }}">
+  <fieldset>
+    <legend>New rule</legend>
+    <label for="kind">Rule</label>
+    <select id="kind" name="kind" required>
+      {% for choice in kinds %}
+      <option value="{{ choice.value }}">{{ choice.label }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="target">Applies to</label>
+    <select id="target" name="target" multiple size="6">
+      {% for choice in targets %}
+      <option value="{{ choice.value }}">{{ choice.label }}</option>
+      {% endfor %}
+    </select>
+
+    {# Both parameters are offered and only the ones the chosen rule declares are kept.
+       The alternative is a page that reshapes itself, which needs JavaScript the console
+       deliberately does without. #}
+    <label for="slots">Hours (rules that count hours)</label>
+    <input id="slots" name="slots" type="number" min="1" max="24">
+
+    <label for="days">Days (rules that count days)</label>
+    <input id="days" name="days" type="number" min="1" max="7">
+
+    <label for="is_hard">Requirement rather than preference</label>
+    <input id="is_hard" name="is_hard" type="checkbox" value="true">
+
+    <button type="submit">Add rule</button>
+  </fieldset>
+</form>
+{% endif %}
+{% endblock %}

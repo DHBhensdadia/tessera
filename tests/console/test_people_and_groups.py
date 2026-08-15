@@ -55,7 +55,13 @@ def term(browser: TestClient) -> int:
 
 
 def blocked_count(markup: str) -> int:
-    found = re.search(r"(\d+) slots? blocked", markup)
+    found = re.search(r"(\d+) blocked", markup)
+    assert found is not None
+    return int(found.group(1))
+
+
+def discouraged_count(markup: str) -> int:
+    found = re.search(r"(\d+) discouraged", markup)
     assert found is not None
     return int(found.group(1))
 
@@ -109,14 +115,14 @@ class TestTheAvailabilityGrid:
         markup = browser.get("/console/instructors/1/availability").text
 
         assert markup.count(">break<") == 5
-        assert markup.count('type="checkbox"') == 25
+        assert markup.count('<select name="slot_') == 25
 
     def test_blocking_hours_sticks(self, browser: TestClient, term: int) -> None:
         browser.post("/console/instructors", data={"name": "Prof. Sharma", "email": ""})
 
         browser.post(
             "/console/instructors/1/availability",
-            data={"term_id": str(term), "blocked": ["10", "11"]},
+            data={"term_id": str(term), "slot_10": "hard", "slot_11": "hard"},
         )
 
         markup = browser.get("/console/instructors/1/availability").text
@@ -125,18 +131,19 @@ class TestTheAvailabilityGrid:
     def test_unticking_actually_frees_a_slot(self, browser: TestClient, term: int) -> None:
         """The case a partial update gets wrong.
 
-        An unticked checkbox is simply absent from the form, indistinguishable from one
-        that was never shown. Only clearing the term and re-blocking what came back can
-        tell them apart — anything else silently keeps the slot the user just freed.
+        A control left at its default is indistinguishable from one that was never shown.
+        Only clearing the term and re-applying what came back can tell them apart —
+        anything else silently keeps the slot the user just freed.
         """
         browser.post("/console/instructors", data={"name": "Prof. Sharma", "email": ""})
         browser.post(
             "/console/instructors/1/availability",
-            data={"term_id": str(term), "blocked": ["10", "11"]},
+            data={"term_id": str(term), "slot_10": "hard", "slot_11": "hard"},
         )
 
         browser.post(
-            "/console/instructors/1/availability", data={"term_id": str(term), "blocked": ["10"]}
+            "/console/instructors/1/availability",
+            data={"term_id": str(term), "slot_10": "hard", "slot_11": ""},
         )
 
         assert blocked_count(browser.get("/console/instructors/1/availability").text) == 1
@@ -147,12 +154,31 @@ class TestTheAvailabilityGrid:
         browser.post("/console/instructors", data={"name": "Prof. Sharma", "email": ""})
         browser.post(
             "/console/instructors/1/availability",
-            data={"term_id": str(term), "blocked": ["10", "11"]},
+            data={"term_id": str(term), "slot_10": "hard", "slot_11": "hard"},
         )
 
         browser.post("/console/instructors/1/availability", data={"term_id": str(term)})
 
         assert blocked_count(browser.get("/console/instructors/1/availability").text) == 0
+
+    def test_would_rather_not_is_kept_apart_from_cannot(
+        self, browser: TestClient, term: int
+    ) -> None:
+        """Decision #78's middle state, which the grid could not express before 2.8.
+
+        Storing both as blocked would hand the solver a preference dressed as a
+        prohibition — an hour nobody may teach, from someone who only said they would
+        prefer not to.
+        """
+        browser.post("/console/instructors", data={"name": "Prof. Sharma", "email": ""})
+        browser.post(
+            "/console/instructors/1/availability",
+            data={"term_id": str(term), "slot_10": "hard", "slot_11": "soft"},
+        )
+
+        markup = browser.get("/console/instructors/1/availability").text
+        assert blocked_count(markup) == 1
+        assert discouraged_count(markup) == 1
 
 
 class TestTheGroupTree:

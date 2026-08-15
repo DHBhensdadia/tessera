@@ -12,7 +12,9 @@ about come from one place.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse
@@ -35,8 +37,14 @@ class Cell:
 
     slot: int
     label: str
-    blocked: bool
+    state: str
+    """``""``, ``"soft"`` or ``"hard"`` — free, would rather not, cannot."""
+
     is_break: bool
+
+    @property
+    def blocked(self) -> bool:
+        return self.state == "hard"
 
 
 @dataclass(frozen=True)
@@ -55,7 +63,7 @@ def _grid_of(db: Db, term_id: int) -> TimeGrid | None:
     return mappers.time_grid_to_domain(grid) if grid else None
 
 
-def _week(grid: TimeGrid, blocked: frozenset[int]) -> list[Row]:
+def _week(grid: TimeGrid, blocked: frozenset[int], discouraged: dict[int, int]) -> list[Row]:
     """The week as rows of times and columns of days.
 
     Built here rather than in the template because working out what slot 40 means is the
@@ -70,7 +78,7 @@ def _week(grid: TimeGrid, blocked: frozenset[int]) -> list[Row]:
                 Cell(
                     slot=slot,
                     label=f"{DAY_NAMES[day]} {grid.clock(slot)}",
-                    blocked=slot in blocked,
+                    state="hard" if slot in blocked else "soft" if slot in discouraged else "",
                     is_break=grid.is_break(slot),
                 )
             )
@@ -131,11 +139,12 @@ def availability(
     instructor = repo.get_instructor(db, instructor_id)
 
     grid = _grid_of(db, chosen) if chosen else None
-    blocked = (
-        repo.blocked_slots(db, chosen, instructor_id=instructor_id)
-        if chosen is not None
-        else frozenset()
-    )
+    blocked: frozenset[int] = frozenset()
+    discouraged: dict[int, int] = {}
+    if chosen is not None:
+        blocked = repo.blocked_slots(db, chosen, instructor_id=instructor_id)
+        discouraged = repo.discouraged_slots(db, chosen, instructor_id=instructor_id)
+
     return page(
         request,
         "instructors/availability.html",
@@ -143,32 +152,51 @@ def availability(
         terms=terms,
         term_id=chosen,
         days=DAY_NAMES[: grid.days] if grid else (),
-        week=_week(grid, blocked) if grid else [],
+        week=_week(grid, blocked, discouraged) if grid else [],
         blocked_count=len(blocked),
+        discouraged_count=len(discouraged),
     )
 
 
 @router.post("/instructors/{instructor_id}/availability", include_in_schema=False)
-def set_availability(
-    request: Request,
-    db: Db,
-    instructor_id: int,
-    term_id: int = Form(...),
-    blocked: list[int] | None = Form(None),
-) -> Response:
+async def set_availability(request: Request, db: Db, instructor_id: int) -> Response:
     """Replace the whole week rather than diffing it.
 
-    A checkbox that is *off* is simply absent from the form, so there is no way to tell
-    "unticked" from "never shown" in a partial submission. Clearing the term and
-    re-blocking what came back is the only reading of the form that cannot silently keep
+    Every cell is submitted, including the free ones, because a control left at its
+    default is indistinguishable from one that was never shown. Clearing the term and
+    re-applying what came back is the only reading of the form that cannot silently keep
     a slot the user just freed.
+
+    The form is read directly rather than declared, because the field names carry the
+    slot number — one control per cell is what makes three states expressible at all,
+    and a hundred declared parameters would be worse in every way.
     """
+    form = await request.form()
+    term_id = int(str(form.get("term_id", 0)))
+    hard = [slot for slot, state in _states(form) if state == "hard"]
+    soft = [slot for slot, state in _states(form) if state == "soft"]
+
     try:
         repo.unblock_slots(db, term_id, kind="instructor", subject_id=instructor_id)
-        if blocked:
-            repo.block_slots(
-                db, term_id, kind="instructor", subject_id=instructor_id, slots=blocked
-            )
+        for slots, is_hard in ((hard, True), (soft, False)):
+            if slots:
+                repo.block_slots(
+                    db,
+                    term_id,
+                    kind="instructor",
+                    subject_id=instructor_id,
+                    slots=slots,
+                    is_hard=is_hard,
+                )
     except RepositoryError as error:
         return _render(request, db, problem=describe(error))
     return redirect(f"/console/instructors/{instructor_id}/availability?term_id={term_id}")
+
+
+def _states(form: Mapping[str, Any]) -> list[tuple[int, str]]:
+    """The `slot_<n>` fields, as (slot, state) pairs. Anything else is ignored."""
+    found = []
+    for name, value in form.items():
+        if name.startswith("slot_") and value:
+            found.append((int(name.removeprefix("slot_")), str(value)))
+    return found
