@@ -2284,6 +2284,34 @@
         "title": "ProgramUpdate",
         "type": "object"
       },
+      "ProjectCopied": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "ProjectCopied",
+        "type": "object"
+      },
+      "ProjectCopy": {
+        "properties": {
+          "destination": {
+            "description": "Where to write the copy. Must not already exist.",
+            "minLength": 1,
+            "title": "Destination",
+            "type": "string"
+          }
+        },
+        "required": [
+          "destination"
+        ],
+        "title": "ProjectCopy",
+        "type": "object"
+      },
       "Reference": {
         "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
         "properties": {
@@ -3189,6 +3217,82 @@
           "academic_year"
         ],
         "title": "TermDuplicate",
+        "type": "object"
+      },
+      "TermDuplicated": {
+        "description": "The new term, and what was actually carried into it.\n\nA receipt rather than an echo of the request. Four of `TermDuplicate`'s flags name\nthings that live above a term \u2014 rooms, instructors, groups, courses \u2014 so they are\navailable to the new term without being copied and cannot be withheld. Reporting the\nrequest back would describe an operation that did not run.\n\n**Extends `TermRead` rather than wrapping it.** The route was frozen in 1.4 answering\nwith a term, so a client written against that must keep working; a superset is\nadditive, where a body with the term nested one level down would silently break every\nreader of it.",
+        "properties": {
+          "academic_year": {
+            "title": "Academic Year",
+            "type": "string"
+          },
+          "carried": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Per item: 'copied', 'shared' (not term-scoped, so available anyway), or 'skipped'.",
+            "title": "Carried",
+            "type": "object"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "How many rows each copied item produced.",
+            "title": "Counts",
+            "type": "object"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "time_grid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "academic_year",
+          "name",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "TermDuplicated",
         "type": "object"
       },
       "TermRead": {
@@ -7459,6 +7563,60 @@
         ]
       }
     },
+    "/api/v1/project/copy": {
+      "post": {
+        "description": "Save a copy of the open project, while it is open.\n\nA snapshot rather than a byte copy, because with WAL the file on disk is not the\nwhole database. The original keeps serving throughout; nothing here writes to it.",
+        "operationId": "copy_project_api_v1_project_copy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCopy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCopied"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "ConflictError"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Validation failed"
+          }
+        },
+        "summary": "Copy Project",
+        "tags": [
+          "project"
+        ]
+      }
+    },
     "/api/v1/rooms": {
       "get": {
         "description": "Filtered so the solver and the room picker can ask for candidates directly\nrather than fetching every room and narrowing client-side.",
@@ -9626,7 +9784,7 @@
     },
     "/api/v1/terms/{term_id}/duplicate": {
       "post": {
-        "description": "Roll a term forward, carrying the structural data with it.\n\nThe feature that makes the application worth keeping: the first semester costs a day\nof data entry and every one after it costs an hour.",
+        "description": "Roll a term forward, carrying the structural data with it.\n\nThe feature that makes the application worth keeping: the first semester costs a day\nof data entry and every one after it costs an hour.\n\nAnswers with what was *carried* rather than what was *asked for*. Four of the flags\nname things that live above a term and are therefore available to the new one without\nbeing copied, so echoing the request back would describe a different operation.",
         "operationId": "duplicate_term_api_v1_terms__term_id__duplicate_post",
         "parameters": [
           {
@@ -9654,7 +9812,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TermRead"
+                  "$ref": "#/components/schemas/TermDuplicated"
                 }
               }
             },

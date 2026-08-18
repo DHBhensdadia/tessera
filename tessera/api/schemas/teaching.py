@@ -78,6 +78,31 @@ class TermDuplicate(Wire):
     copy_assignments: bool = False
 
 
+class TermDuplicated(TermRead):
+    """The new term, and what was actually carried into it.
+
+    A receipt rather than an echo of the request. Four of `TermDuplicate`'s flags name
+    things that live above a term — rooms, instructors, groups, courses — so they are
+    available to the new term without being copied and cannot be withheld. Reporting the
+    request back would describe an operation that did not run.
+
+    **Extends `TermRead` rather than wrapping it.** The route was frozen in 1.4 answering
+    with a term, so a client written against that must keep working; a superset is
+    additive, where a body with the term nested one level down would silently break every
+    reader of it.
+    """
+
+    carried: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Per item: 'copied', 'shared' (not term-scoped, so available anyway), or 'skipped'."
+        ),
+    )
+    counts: dict[str, int] = Field(
+        default_factory=dict, description="How many rows each copied item produced."
+    )
+
+
 class OfferingCreate(Wire):
     term_id: int
     course_id: int

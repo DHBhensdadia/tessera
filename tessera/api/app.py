@@ -26,6 +26,7 @@ from tessera.api.routers import (
     groups,
     health,
     imports,
+    project,
     rules,
     solving,
     structure,
@@ -165,7 +166,17 @@ def create_app(
 
     app.middleware("http")(console.guard_console)
 
-    for module in (health, structure, groups, teaching, rules, imports, solving, timetables):
+    for module in (
+        health,
+        structure,
+        groups,
+        teaching,
+        rules,
+        imports,
+        project,
+        solving,
+        timetables,
+    ):
         app.include_router(module.router)
     app.include_router(console.router)
 

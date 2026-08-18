@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session as DbSession
 
 from tessera.api.deps import Db
 from tessera.api.errors import problem_responses
-from tessera.api.routers._stubs import pending
 from tessera.api.schemas import (
     OfferingCreate,
     OfferingRead,
@@ -30,6 +29,7 @@ from tessera.api.schemas import (
     SessionUpdate,
     TermCreate,
     TermDuplicate,
+    TermDuplicated,
     TermRead,
     TermUpdate,
     TimeGridCreate,
@@ -38,7 +38,7 @@ from tessera.api.schemas import (
 from tessera.domain import entities as d
 from tessera.domain.time_grid import TimeGrid
 from tessera.repository import calendar as repo
-from tessera.repository import expansion
+from tessera.repository import duplication, expansion
 from tessera.repository import models as m
 from tessera.repository import sessions as sessions_repo
 
@@ -238,17 +238,38 @@ def delete_term(term_id: int, db: Db) -> None:
 
 @router.post(
     "/terms/{term_id}/duplicate",
-    response_model=TermRead,
+    response_model=TermDuplicated,
     status_code=status.HTTP_201_CREATED,
     responses=ERRORS,
 )
-def duplicate_term(term_id: int, payload: TermDuplicate) -> TermRead:
+def duplicate_term(term_id: int, payload: TermDuplicate, db: Db) -> TermDuplicated:
     """Roll a term forward, carrying the structural data with it.
 
     The feature that makes the application worth keeping: the first semester costs a day
     of data entry and every one after it costs an hour.
+
+    Answers with what was *carried* rather than what was *asked for*. Four of the flags
+    name things that live above a term and are therefore available to the new one without
+    being copied, so echoing the request back would describe a different operation.
     """
-    pending("2.9")
+    receipt = duplication.duplicate_term(
+        db,
+        term_id,
+        name=payload.name,
+        academic_year=payload.academic_year,
+        copy_rooms=payload.copy_rooms,
+        copy_instructors=payload.copy_instructors,
+        copy_groups=payload.copy_groups,
+        copy_courses=payload.copy_courses,
+        copy_constraints=payload.copy_constraints,
+        copy_offerings=payload.copy_offerings,
+        copy_assignments=payload.copy_assignments,
+    )
+    return TermDuplicated(
+        **_term_read(db, receipt.term).model_dump(),
+        carried={name: state.value for name, state in receipt.items.items()},
+        counts=dict(receipt.counts),
+    )
 
 
 # -- offerings and templates ----------------------------------------------------
