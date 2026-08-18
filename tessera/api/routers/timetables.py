@@ -41,7 +41,7 @@ ERRORS = problem_responses(404, 409, 422, 501)
 
 @router.get("/terms/{term_id}/timetables", response_model=Page[TimetableRead], responses=ERRORS)
 def list_timetables(term_id: int, status_filter: str | None = None) -> Page[TimetableRead]:
-    pending("2.9")
+    pending("4.7")
 
 
 @router.post(
@@ -51,24 +51,24 @@ def list_timetables(term_id: int, status_filter: str | None = None) -> Page[Time
     responses=ERRORS,
 )
 def create_timetable(term_id: int, payload: TimetableCreate) -> TimetableRead:
-    pending("2.9")
+    pending("4.7")
 
 
 @router.get("/timetables/{timetable_id}", response_model=TimetableRead, responses=ERRORS)
 def get_timetable(timetable_id: int) -> TimetableRead:
-    pending("2.9")
+    pending("4.7")
 
 
 @router.patch("/timetables/{timetable_id}", response_model=TimetableRead, responses=ERRORS)
 def update_timetable(timetable_id: int, payload: TimetableUpdate) -> TimetableRead:
-    pending("2.9")
+    pending("4.7")
 
 
 @router.delete(
     "/timetables/{timetable_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS
 )
 def delete_timetable(timetable_id: int) -> None:
-    pending("2.9")
+    pending("4.7")
 
 
 @router.post(

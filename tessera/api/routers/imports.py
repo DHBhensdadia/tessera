@@ -168,7 +168,7 @@ async def import_itc(
     Real institutional data to develop against before any is supplied, and a check that
     the schema generalises beyond the institution it was designed around.
     """
-    pending("2.7", "ITC import")
+    pending("4.0", "ITC import")
 
 
 @router.get("/{import_id}", response_model=ImportReport, responses=ERRORS)
