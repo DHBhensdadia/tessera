@@ -12,19 +12,32 @@ jobs:
   dmg:
     name: build and verify the disk image
     # Apple Silicon only (ADR-0011): PyInstaller cannot cross-compile, so the runner
-    # architecture is the artefact's architecture. macos-15 rather than macos-14
-    # because the client is Swift 6 and macos-14 ships Swift 5.10.
-    runs-on: macos-15
+    # architecture is the artefact's architecture.
+    #
+    # macos-26 because the SDK decides what the app looks like. An app built against the
+    # macOS 26 SDK adopts Liquid Glass; the same source built against an older one keeps
+    # the previous appearance — so while this pinned Xcode 16.4 on macos-15, the .dmg
+    # users downloaded did not look like the app built on the machine it was designed on.
+    # The deployment target is unchanged at macOS 14 (Package.swift); SDK and deployment
+    # target are independent axes.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
 
       # Pinned rather than left to the runner default, so a change to the image cannot
-      # silently move the language version the client is built against.
+      # silently move the SDK the client is built against — which is now a question about
+      # how the application looks, not only about which language features compile.
+      # 26.6 (build 17F113) is the image default and matches the development machine.
       - name: select xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s /Applications/Xcode.app
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app || sudo xcode-select -s /Applications/Xcode.app
 
+      # Recorded in the log rather than assumed, because "which SDK produced this
+      # artefact" is the question that started Phase 3.1.
       - name: report toolchain
-        run: swift --version
+        run: |
+          swift --version
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
 
       - uses: astral-sh/setup-uv@v7
         with:
