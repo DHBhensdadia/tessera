@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse
 from tessera.api.console.base import describe, page, redirect, router
 from tessera.api.deps import Db
 from tessera.repository import calendar as repo
+from tessera.repository import duplication
 from tessera.repository import structure as structure_repo
 from tessera.repository.errors import RepositoryError
 
@@ -167,6 +168,62 @@ def create_term(
     except ValueError:
         return _render_terms(request, db, problem="Those dates could not be read.")
     return redirect("/console/terms")
+
+
+@router.get("/terms/{term_id}/duplicate", include_in_schema=False)
+def duplicate_form(request: Request, db: Db, term_id: int) -> HTMLResponse:
+    """The checklist from P7 Act 11, with the boxes that cannot be unticked explained.
+
+    Four of the seven name things that live above a term — rooms, staff, groups, courses.
+    They are available to the new term whether or not the box is ticked, so the page says
+    so rather than offering a control that does nothing.
+    """
+    return page(
+        request,
+        "calendar/duplicate.html",
+        term=repo.get_term(db, term_id),
+        shared=duplication.SHARED_BY_NATURE,
+    )
+
+
+@router.post("/terms/{term_id}/duplicate", include_in_schema=False)
+def duplicate(
+    request: Request,
+    db: Db,
+    term_id: int,
+    name: str = Form(...),
+    academic_year: str = Form(...),
+    copy_offerings: bool = Form(False),
+    copy_constraints: bool = Form(False),
+    copy_instructors: bool = Form(False),
+    copy_rooms: bool = Form(False),
+) -> Response:
+    try:
+        receipt = duplication.duplicate_term(
+            db,
+            term_id,
+            name=name,
+            academic_year=academic_year,
+            copy_offerings=copy_offerings,
+            copy_constraints=copy_constraints,
+            copy_instructors=copy_instructors,
+            copy_rooms=copy_rooms,
+        )
+    except (RepositoryError, ValueError) as error:
+        return page(
+            request,
+            "calendar/duplicate.html",
+            term=repo.get_term(db, term_id),
+            shared=duplication.SHARED_BY_NATURE,
+            problem=describe(error),
+        )
+    return _render_terms(
+        request,
+        db,
+        carried={name: state.value for name, state in receipt.items.items()},
+        counts=receipt.counts,
+        made=receipt.term.name,
+    )
 
 
 @router.post("/terms/{term_id}/delete", include_in_schema=False)

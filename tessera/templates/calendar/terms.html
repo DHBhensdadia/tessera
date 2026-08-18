@@ -4,6 +4,17 @@
 <h1>Terms</h1>
 <p class="lede">One schedulable period. Everything a solver places belongs to exactly one.</p>
 
+{% if made %}
+{# What was actually carried, not what was asked for: four of the checklist's items name
+   things that live above a term, so they are reported as shared rather than copied. #}
+<p class="lede" style="background:#f2f7f2;padding:.6rem .8rem">
+  <strong>{{ made }}</strong> created.
+  {%- for item, state in carried.items() %}{% if state == 'copied' %}
+  {{ item }} ({{ counts.get(item, 0) }}) carried{% if not loop.last %} ·{% endif %}
+  {%- endif %}{% endfor %}
+</p>
+{% endif %}
+
 <table>
   <tr><th>Term</th><th>Year</th><th>Runs</th><th></th></tr>
   {% for term in terms %}
@@ -12,6 +23,7 @@
     <td>{{ term.academic_year }}</td>
     <td class="empty">{{ term.starts_on or '—' }} to {{ term.ends_on or '—' }}</td>
     <td>
+      <a href="/console/terms/{{ term.id }}/duplicate">Duplicate</a>
       <form class="inline" method="post" action="/console/terms/{{ term.id }}/delete">
         <button class="danger" type="submit">Delete</button>
       </form>

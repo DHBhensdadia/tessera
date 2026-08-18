@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Duplicate {{ term.name }} · Tessera console{% endblock %}
+{% block body %}
+<h1>New term from “{{ term.name }} {{ term.academic_year }}”</h1>
+<p class="lede">
+  The first semester costs a day of data entry. Every one after it should cost an hour —
+  which is what this is for.
+</p>
+
+{% if problem %}<p class="problem">{{ problem }}</p>{% endif %}
+
+<form method="post" action="/console/terms/{{ term.id }}/duplicate">
+  <fieldset>
+    <legend>New term</legend>
+    <label for="name">Name</label>
+    <input id="name" name="name" required placeholder="Spring">
+
+    <label for="academic_year">Academic year</label>
+    <input id="academic_year" name="academic_year" required
+           value="{{ term.academic_year }}">
+  </fieldset>
+
+  <fieldset>
+    <legend>Carry over</legend>
+    <label><input type="checkbox" name="copy_offerings" value="true" checked>
+      Offerings and their weekly patterns</label>
+    <label><input type="checkbox" name="copy_constraints" value="true" checked>
+      Rules and their weights</label>
+    <label><input type="checkbox" name="copy_instructors" value="true" checked>
+      Staff availability</label>
+    <label><input type="checkbox" name="copy_rooms" value="true" checked>
+      Room availability</label>
+
+    {# Not offered as controls. These live above the term, so the new term can already
+       see them and unticking a box could not remove them — a checkbox that cannot be
+       false is worse than a sentence saying so. #}
+    <p class="empty" style="margin-top:.75rem">
+      {{ shared|map('capitalize')|join(', ') }} are shared across terms, so the new term
+      has them already. Nothing to choose.
+    </p>
+    <p class="empty">
+      Timetables and their placements are not carried: a placement is a decision about
+      one semester's calendar.
+    </p>
+  </fieldset>
+
+  <p><button type="submit">Create term</button></p>
+</form>
+{% endblock %}
