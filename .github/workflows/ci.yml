@@ -90,3 +90,31 @@ jobs:
           name: coverage
           path: coverage.xml
           retention-days: 14
+
+  client:
+    name: swift (build, test)
+    # The same runner and the same Xcode the release uses, so what CI proves compiles is
+    # what CI later ships. Before 3.1 the client was compiled *only* when a tag was
+    # pushed, which meant a broken client was found at release time.
+    runs-on: macos-26
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: select xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: report toolchain
+        run: |
+          swift --version
+          xcrun --sdk macosx --show-sdk-version
+
+      # Builds all three targets, so the gallery cannot drift behind the components it
+      # exists to display.
+      - name: swift build
+        run: swift build --package-path client
+
+      - name: swift test
+        run: swift test --package-path client

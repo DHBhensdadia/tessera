@@ -38,6 +38,12 @@ run "ruff (format)"           uv run ruff format --check .
 run "mypy (strict)"           uv run mypy
 run "import boundaries"       uv run lint-imports
 run "pytest + coverage gate"  uv run pytest --cov --cov-fail-under=85 -q
+# The client used to be compiled only when a tag was pushed, which meant a broken client
+# was discovered at release time — the worst moment and the one Decision #49 was written
+# about for the Python half. `swift build` covers all three targets, including the
+# gallery, so a component the gallery no longer matches fails here rather than later.
+run "swift (build)"           swift build --package-path client
+run "swift (test)"            swift test --package-path client
 
 echo
 if [ "$FAILED" -eq 0 ]; then
