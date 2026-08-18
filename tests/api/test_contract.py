@@ -158,6 +158,49 @@ def test_no_field_has_been_removed_or_newly_required(
     )
 
 
+def response_models(spec: dict[str, Any]) -> dict[str, str]:
+    """Every operation mapped to the schema its success response references."""
+    found: dict[str, str] = {}
+    for path, methods in spec["paths"].items():
+        for method, operation in methods.items():
+            if method not in METHODS:
+                continue
+            for code, response in operation.get("responses", {}).items():
+                if not code.startswith("2"):
+                    continue
+                schema = response.get("content", {}).get("application/json", {}).get("schema", {})
+                if ref := schema.get("$ref"):
+                    found[f"{method.upper()} {path}"] = str(ref).rsplit("/", 1)[-1]
+    return found
+
+
+def test_no_route_has_changed_what_it_answers_with(app: FastAPI, snapshot: dict[str, Any]) -> None:
+    """The third thing this guard turned out not to cover.
+
+    1.4 compared paths, methods and operation ids; 2.2 added parameters (#46); 2.8 added
+    the fields inside a model (#83). A route can still keep its URL, its parameters and
+    every model in the document, and answer with a *different* model — which is breaking,
+    and passed silently. Found in 2.9 when `POST /terms/{id}/duplicate` was changed from
+    `TermRead` to `TermDuplicated` and the guard said nothing.
+
+    A change here is not always breaking — `TermDuplicated` extends `TermRead`, so that
+    one was additive — but it is never something to discover afterwards. Regenerating the
+    snapshot is the deliberate act that records the intent.
+    """
+    live = response_models(app.openapi())
+    committed = response_models(snapshot)
+
+    changed = sorted(
+        f"{route}: {committed[route]} -> {live[route]}"
+        for route in set(live) & set(committed)
+        if committed[route] != live[route]
+    )
+    assert not changed, (
+        f"routes now answer with a different model: {changed}\n"
+        "If intended, regenerate the snapshot: uv run tessera-openapi"
+    )
+
+
 def test_every_route_documents_its_error_shape(app: FastAPI) -> None:
     """Errors are RFC 9457 everywhere, and the schema must say so.
 
