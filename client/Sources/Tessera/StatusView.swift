@@ -1,3 +1,4 @@
+import DesignSystem
 import SwiftUI
 
 /// The whole interface, for now: whether the engine is up, and why not if it is not.
@@ -9,7 +10,7 @@ struct StatusView: View {
     let engine: EngineController
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: Spacing.loose.points) {
             Image(systemName: symbol)
                 .font(.system(size: 42, weight: .light))
                 .foregroundStyle(tint)
@@ -34,8 +35,8 @@ struct StatusView: View {
                             .textSelection(.enabled)
                     }
                     .frame(maxHeight: 120)
-                    .padding(8)
-                    .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 8))
+                    .padding(Spacing.snug.points)
+                    .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: Radius.control.points))
                 }
                 Button("Restart Engine") {
                     Task { await engine.start() }
@@ -43,7 +44,7 @@ struct StatusView: View {
                 .buttonStyle(.borderedProminent)
             }
         }
-        .padding(28)
+        .padding(Spacing.page.points)
         .frame(width: 420)
         .background(.ultraThinMaterial)
     }
@@ -51,16 +52,20 @@ struct StatusView: View {
     @ViewBuilder
     private var detail: some View {
         if case .running(let running) = engine.state, let health = running.health {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+            Grid(
+                alignment: .leading,
+                horizontalSpacing: Spacing.regular.points,
+                verticalSpacing: Spacing.tight.points
+            ) {
                 row("Project", health.project)
                 row("Version", health.version)
                 row("Database", health.database)
                 row("Port", String(running.port))
             }
-            .font(.system(.caption, design: .monospaced))
-            .padding(10)
+            .font(Typography.mono.font)
+            .padding(Spacing.regular.points)
             .frame(maxWidth: .infinity)
-            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 8))
+            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: Radius.control.points))
         }
     }
 
