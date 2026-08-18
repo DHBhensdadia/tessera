@@ -26,6 +26,13 @@ run() {  # run <name> <command...>
 }
 
 echo "running the gates"
+# First, because it is the one gate that can fail in CI while every other passes here.
+# CI installs with `uv sync --locked`, which refuses a lockfile that does not match
+# pyproject.toml. `uv run` quietly re-locks instead — so bumping the version left the
+# lockfile correct on disk, uncommitted, and green locally while CI went red on all three
+# jobs. Sibling of Decision #44: a local check that cannot see a failure CI will hit is
+# the kind of green that gets trusted.
+run "lockfile matches pyproject"  uv lock --check
 run "ruff (lint)"             uv run ruff check .
 run "ruff (format)"           uv run ruff format --check .
 run "mypy (strict)"           uv run mypy
