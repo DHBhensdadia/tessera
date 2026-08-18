@@ -27,7 +27,7 @@ from pathlib import Path
 import structlog
 import uvicorn
 
-from tessera import paths
+from tessera import paths, project
 from tessera.api.app import create_app
 from tessera.api.logging import configure_logging
 from tessera.repository.database import create_project_engine
@@ -113,7 +113,10 @@ def migrate(project_path: Path) -> None:
 
 def serve(project_path: Path, *, host: str = "127.0.0.1", port: int = 0) -> None:
     project_path.parent.mkdir(parents=True, exist_ok=True)
-    migrate(project_path)
+    # `--project` names the project; where the database sits inside it is this module's
+    # business and nobody else's. A bare file from v0.1.0 becomes a package here.
+    database = project.resolve(project_path)
+    migrate(database)
 
     # Bind before starting uvicorn, so the chosen port is knowable in time to be
     # announced. Letting uvicorn bind would mean the port only exists after the server
@@ -141,7 +144,7 @@ def serve(project_path: Path, *, host: str = "127.0.0.1", port: int = 0) -> None
 
     threading.Thread(target=watch_parent, daemon=True).start()
 
-    engine = create_project_engine(project_path)
+    engine = create_project_engine(database)
     app = create_app(engine=engine, project_path=project_path, token=token, configure_logs=False)
     uvicorn.Server(uvicorn.Config(app, log_config=None, access_log=False)).run(sockets=[sock])
 
