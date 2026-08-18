@@ -6,5 +6,5 @@ import Testing
 // resolves the module, and runs in the gates — because a suite that is not wired in is
 // discovered to be missing at the moment it was supposed to catch something.
 @Test func theModuleIsReachableFromItsTests() {
-    #expect(!DesignSystem.version.isEmpty)
+    #expect(!designSystemVersion.isEmpty)
 }

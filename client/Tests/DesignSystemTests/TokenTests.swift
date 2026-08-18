@@ -9,17 +9,17 @@ import Testing
 struct TokenTests {
     @Test(arguments: Appearance.colourRelevant)
     func everyTextRoleResolves(_ appearance: Appearance) {
-        for role in Text.allCases {
+        for role in TextRole.allCases {
             #expect(appearance.colour(role).opacity > 0, "\(role.rawValue) resolved to nothing")
         }
     }
 
     @Test(arguments: Appearance.colourRelevant)
     func everySurfaceAndLineResolves(_ appearance: Appearance) {
-        for role in Surface.allCases {
+        for role in SurfaceRole.allCases {
             #expect(appearance.colour(role).opacity > 0)
         }
-        for role in Line.allCases {
+        for role in LineRole.allCases {
             #expect(appearance.colour(role).opacity > 0)
         }
     }
@@ -30,10 +30,10 @@ struct TokenTests {
         let light = Appearance(scheme: .light)
         let dark = Appearance(scheme: .dark)
 
-        for role in Text.allCases {
+        for role in TextRole.allCases {
             #expect(light.colour(role) != dark.colour(role), "\(role.rawValue) is identical in both schemes")
         }
-        for role in Surface.allCases {
+        for role in SurfaceRole.allCases {
             #expect(light.colour(role) != dark.colour(role), "\(role.rawValue) is identical in both schemes")
         }
     }

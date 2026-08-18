@@ -58,9 +58,9 @@ struct ContrastTests {
     /// is next to it, or people cannot tell where the control is.
     @Test(arguments: Appearance.colourRelevant)
     func controlBoundariesAreVisible(_ appearance: Appearance) {
-        for line in Line.allCases {
+        for line in LineRole.allCases {
             guard let minimum = line.minimumContrast else { continue }
-            for surface: Surface in [.base, .raised, .sunken] {
+            for surface: SurfaceRole in [.base, .raised, .sunken] {
                 let ratio = appearance.colour(line).contrast(with: appearance.colour(surface))
                 #expect(
                     ratio >= minimum,

@@ -2,10 +2,10 @@ import SwiftUI
 
 /// What a colour is *for*, never what it looks like.
 ///
-/// `Text.secondary` rather than `warmGrey`. The names survive a rebrand, they read
+/// `TextRole.secondary` rather than `warmGrey`. The names survive a rebrand, they read
 /// correctly in both schemes, and — the practical part — they make the accessibility
 /// branches expressible in one place instead of at every call site.
-public enum Text: String, CaseIterable, Sendable {
+public enum TextRole: String, CaseIterable, Sendable {
     case primary, secondary, tertiary
     case onAccent
     case positive, warning, critical, info
@@ -20,7 +20,7 @@ public enum Text: String, CaseIterable, Sendable {
 }
 
 /// The planes content sits on.
-public enum Surface: String, CaseIterable, Sendable {
+public enum SurfaceRole: String, CaseIterable, Sendable {
     /// The window itself.
     case base
     /// A card or panel lifted off the window.
@@ -29,10 +29,15 @@ public enum Surface: String, CaseIterable, Sendable {
     case sunken
     /// A filled control — the one surface that is a colour rather than a neutral.
     case accent
+    /// The same control under the pointer, and while being pressed. Separate roles rather
+    /// than an opacity applied to `accent`, because a translucent control changes its
+    /// contrast against whatever is behind it while its label stays put.
+    case accentHover
+    case accentPressed
 }
 
 /// Lines: separators, control outlines, the focus ring.
-public enum Line: String, CaseIterable, Sendable {
+public enum LineRole: String, CaseIterable, Sendable {
     case border, borderStrong, focusRing
 
     /// A control's visual boundary must reach 3:1 against what is adjacent (WCAG 2.1

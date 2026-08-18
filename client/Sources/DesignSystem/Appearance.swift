@@ -26,16 +26,35 @@ public struct Appearance: Equatable, Sendable {
     /// are the reason; the setting is not about taste.
     public var reduceMotion: Bool
 
+    /// Whether this platform can draw Liquid Glass.
+    ///
+    /// Part of the value rather than queried at the point of drawing, so a test can ask
+    /// what *would* be rendered on either OS without running on both. Without it the
+    /// macOS 14 branch is unreachable from a suite running on macOS 26 — which is to say
+    /// untested on the only versions where it is used.
+    public var supportsLiquidGlass: Bool
+
     public init(
         scheme: Scheme = .light,
         reduceTransparency: Bool = false,
         increaseContrast: Bool = false,
-        reduceMotion: Bool = false
+        reduceMotion: Bool = false,
+        supportsLiquidGlass: Bool = Appearance.systemSupportsLiquidGlass
     ) {
         self.scheme = scheme
         self.reduceTransparency = reduceTransparency
         self.increaseContrast = increaseContrast
         self.reduceMotion = reduceMotion
+        self.supportsLiquidGlass = supportsLiquidGlass
+    }
+
+    /// Whether the machine this is running on can draw Liquid Glass. The default for
+    /// `supportsLiquidGlass`, which a test overrides to reach the other branch.
+    ///
+    /// Lives here rather than beside the material code because it is a fact about the
+    /// appearance, and because a default has to be defined wherever the property is.
+    public static var systemSupportsLiquidGlass: Bool {
+        if #available(macOS 26.0, *) { true } else { false }
     }
 
     /// Every combination, for the gallery and for tests that must cover all of them.
@@ -66,7 +85,7 @@ public struct Appearance: Equatable, Sendable {
 }
 
 extension Appearance {
-    public func colour(_ role: Text) -> Colour {
+    public func colour(_ role: TextRole) -> Colour {
         switch (role, scheme) {
         case (.primary, .light): Palette.lightTextPrimary
         case (.primary, .dark): Palette.darkTextPrimary
@@ -94,7 +113,7 @@ extension Appearance {
         }
     }
 
-    public func colour(_ role: Surface) -> Colour {
+    public func colour(_ role: SurfaceRole) -> Colour {
         switch (role, scheme) {
         case (.base, .light): Palette.lightBase
         case (.base, .dark): Palette.darkBase
@@ -104,10 +123,14 @@ extension Appearance {
         case (.sunken, .dark): Palette.darkSunken
         case (.accent, .light): Palette.lightAccent
         case (.accent, .dark): Palette.darkAccent
+        case (.accentHover, .light): Palette.lightAccentHover
+        case (.accentHover, .dark): Palette.darkAccentHover
+        case (.accentPressed, .light): Palette.lightAccentPressed
+        case (.accentPressed, .dark): Palette.darkAccentPressed
         }
     }
 
-    public func colour(_ role: Line) -> Colour {
+    public func colour(_ role: LineRole) -> Colour {
         switch (role, scheme) {
         // A hairline becomes a real line rather than a darker hairline: the point of the
         // setting is that the boundary can be seen at all.
@@ -120,9 +143,9 @@ extension Appearance {
         }
     }
 
-    public func swiftUI(_ role: Text) -> Color { colour(role).swiftUI }
-    public func swiftUI(_ role: Surface) -> Color { colour(role).swiftUI }
-    public func swiftUI(_ role: Line) -> Color { colour(role).swiftUI }
+    public func swiftUI(_ role: TextRole) -> Color { colour(role).swiftUI }
+    public func swiftUI(_ role: SurfaceRole) -> Color { colour(role).swiftUI }
+    public func swiftUI(_ role: LineRole) -> Color { colour(role).swiftUI }
 }
 
 /// A pairing the design system **promises** is legible.
@@ -132,10 +155,10 @@ extension Appearance {
 /// component should do) and a test that demanded they pass would push the palette around
 /// for no benefit. This list is the actual promise, and the test iterates it.
 public struct Pairing: Sendable {
-    public let foreground: Text
-    public let background: Surface
+    public let foreground: TextRole
+    public let background: SurfaceRole
 
-    public init(_ foreground: Text, on background: Surface) {
+    public init(_ foreground: TextRole, on background: SurfaceRole) {
         self.foreground = foreground
         self.background = background
     }
@@ -144,9 +167,10 @@ public struct Pairing: Sendable {
 extension Pairing {
     /// Every text-on-surface combination a component is allowed to use.
     public static let promised: [Pairing] = {
-        let neutrals: [Surface] = [.base, .raised, .sunken]
-        let onNeutral: [Text] = [.primary, .secondary, .tertiary, .positive, .warning, .critical, .info]
+        let neutrals: [SurfaceRole] = [.base, .raised, .sunken]
+        let onNeutral: [TextRole] = [.primary, .secondary, .tertiary, .positive, .warning, .critical, .info]
+        let filled: [SurfaceRole] = [.accent, .accentHover, .accentPressed]
         return neutrals.flatMap { surface in onNeutral.map { Pairing($0, on: surface) } }
-            + [Pairing(.onAccent, on: .accent)]
+            + filled.map { Pairing(.onAccent, on: $0) }
     }()
 }

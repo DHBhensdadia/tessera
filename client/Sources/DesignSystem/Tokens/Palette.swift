@@ -24,6 +24,11 @@ enum Palette {
     static let lightTextTertiary = Colour(hex: 0x6B6862)
 
     static let lightAccent = Colour(hex: 0x2F5FD0)
+    // A filled control needs its own hover and pressed values. Dimming the accent with
+    // opacity would change its contrast against the *window* rather than against its own
+    // label, so each state is a real colour that the contrast test covers.
+    static let lightAccentHover = Colour(hex: 0x2A55BC)
+    static let lightAccentPressed = Colour(hex: 0x24499E)
     static let lightPositive = Colour(hex: 0x1E7A46)
     static let lightWarning = Colour(hex: 0x8A5A00)
     static let lightCritical = Colour(hex: 0xB3261E)
@@ -42,6 +47,9 @@ enum Palette {
     static let darkTextTertiary = Colour(hex: 0x918E88)
 
     static let darkAccent = Colour(hex: 0x7EA6FF)
+    // Lighter rather than darker: on a dark ground, pressing something brings it forward.
+    static let darkAccentHover = Colour(hex: 0x93B4FF)
+    static let darkAccentPressed = Colour(hex: 0xA8C3FF)
     static let darkPositive = Colour(hex: 0x5FD08A)
     static let darkWarning = Colour(hex: 0xE0A93B)
     static let darkCritical = Colour(hex: 0xFF8A80)
