@@ -322,3 +322,18 @@ struct ElevationTests {
 }
 
 /// That the sheen stays a surface treatment rather than becoming a style.
+
+/// That the sheen stays a surface treatment rather than becoming a style.
+struct SheenTests {
+    /// Amplitude is the whole difference between "this plane is lit" and the decorative
+    /// gradient that is itself a generated-interface signature. Pinned low.
+    @Test func theSheenIsBelowTheThresholdOfBeingAGradient() {
+        #expect(Sheen.amplitude <= 0.03, "a wash people can name as a gradient is too strong")
+        #expect(Sheen.amplitude > 0, "a wash of zero is a wash nobody will notice is missing")
+    }
+
+    /// Lit from above in both schemes.
+    @Test func theLightComesFromAbove() {
+        #expect(Sheen.start.y < Sheen.end.y)
+    }
+}

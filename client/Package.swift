@@ -24,6 +24,11 @@ let package = Package(
             path: "Sources/Gallery"
         ),
         .executableTarget(
+            name: "Snapshot",
+            dependencies: ["DesignSystem"],
+            path: "Sources/Snapshot"
+        ),
+        .executableTarget(
             name: "Tessera",
             dependencies: ["DesignSystem"],
             path: "Sources/Tessera"
