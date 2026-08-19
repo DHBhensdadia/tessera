@@ -8,6 +8,43 @@ It is a separate SwiftPM target with no dependency on the app, which is the same
 discipline `import-linter` enforces on the Python side and for the same reason: a layer
 that can be used on its own can be reasoned about on its own.
 
+## The one rule the rest of it hangs off
+
+**Structure comes from division and tone. Elevation means "floating above", and nothing
+else.**
+
+Groups are separated by a rule and by a step in surface value. A shadow is a claim that
+something is above the window — a popover, a sheet, an object being dragged — and it is
+spent only where that claim is true.
+
+This replaced the obvious alternative, which the design had for two phases: a rounded
+rectangle with a fill and a soft shadow, one per group. That is
+`rounded-2xl shadow-lg p-6`, the most recognisable signature of generated interface code,
+and Devansh named it on sight. Two things made it indefensible rather than merely
+unfashionable:
+
+- **Not one of seventeen reference interfaces does it.** Four show a shadow at all; every
+  one is a window, a popover, a sheet, or — on a kanban board where every other card is
+  flat — the single card being dragged.
+- **Apple's own guidance**: drop shadows separate content in Light Mode and *stop working*
+  in Dark Mode, where the platform elevates with lighter material instead. A system whose
+  primary grouping device fails in one of two mandatory schemes is not a system. Our own
+  dark render proved it — the cards were visible there because they were a lighter grey,
+  not because of the shadow.
+
+Enforced rather than remembered: `surface()` cannot draw a shadow, `shadow(` appears
+exactly once in the client, and a test names the file and line of any second one.
+
+| | says | draws |
+|---|---|---|
+| `ContentSection` | *these belong together* | a label, the content, a full-bleed rule beneath |
+| `Panel` | *this is a thing* | a hairline, a faint fill, a small radius — no shadow |
+| `DataTable` | *this is a table* | a rule under the header, a rule between rows, no container |
+| `floating(_:)` | *this is above the window* | the only shadow in the application |
+
+The section owns its horizontal inset so its rule can be full-bleed. That is the whole
+difference between dividing a surface and underlining some text.
+
 ## Why colour is a value type and not `Color`
 
 SwiftUI's `Color` is opaque. Its components cannot be read back reliably without going
@@ -111,7 +148,7 @@ reuse.
 
 ## What the tests prove, and what they do not
 
-**34 tests, none of which look at a pixel.** Snapshot testing was considered and rejected:
+**61 tests, none of which look at a pixel.** Snapshot testing was considered and rejected:
 the exit test asks for correct rendering on macOS 14 *and* 26, two versions that are
 supposed to differ, so a pixel comparison would fail on exactly the thing the design
 intends. It goes to the backlog for when the layout settles.
@@ -131,14 +168,40 @@ stated rather than dressed up as a test.
 swift run --package-path client -c release Gallery
 ```
 
-It shows both schemes side by side — a design is reviewed by comparison, and flipping
-between them from memory is how a dark mode ships with one panel a shade wrong — with the
-accessibility settings and the Liquid Glass switch as live toggles, and the measured
-contrast ratio printed beside every text role.
+### The gallery is built out of the system it documents
+
+It was a specimen sheet first: every component listed in two columns, both schemes side by
+side. That version could answer *is this token correct* and could not answer the only
+question a design has to answer — *does this look like something a person would use* — for
+the same reason a paint chart cannot tell you what a room looks like.
+
+So it is an application now: an icon rail, a sidebar with the quiet grey section labels the
+references use, a content pane, and Liquid Glass on the window. Every part of it is drawn
+with the tokens, which means the gallery is now also a **witness**: any mistake in the
+system is a mistake visible in the tool that shows the system.
+
+The two things it deliberately keeps from the specimen sheet: the measured contrast ratio
+printed beside every text role, and the accessibility settings as live toggles rather than
+as a legend. Both are there so a claim can be checked while looking at the thing it is
+about.
+
+Three flags, because a design tool you cannot get into the state you want to review is a
+design tool you do not use:
+
+| | |
+|---|---|
+| `--light` / `--dark` | forces the scheme, so both are reviewable without changing the appearance of the whole machine |
+| `--entry <name>` | opens on one entry — `colour`, `buttons`, `tables`… |
+| `--capture` | pins the window to every Space, so a script can launch it and photograph it |
+
+`--capture` exists because of a genuine and confusing failure: launched from a terminal on a
+machine using full-screen apps, the window opens on the Space the *process* started on. It
+is then open, absent from the on-screen window list, and impossible to photograph — which
+looks exactly like an application that failed to start.
 
 ### What the gallery caught that the suite did not
 
-Three real defects, all found by looking:
+Six real defects, all found by looking. The first three came from the specimen sheet:
 
 1. A primary button returned the accent colour for **every** state, so a filled control had
    no hover or press feedback at all.
@@ -150,6 +213,63 @@ legible — no test asked whether they *differed*. `everyStateIsVisuallyDistinct
 and the accent family gained real hover and pressed colours rather than an opacity applied
 to one.
 
+The next three came from rebuilding it as an application, and each one needed the
+application shape to be visible at all:
+
+4. **Outlined controls had no boundary they were required to keep.** Secondary and
+   destructive buttons drew `border`, a decorative hairline with no contrast minimum, so
+   they read as floating text rather than as something pressable. They draw `borderStrong`
+   now, and `ControlBoundaryTests` fails if an outlined control ever picks a role that
+   promises nothing.
+5. **The sidebar and the content pane were both glass, so the boundary between them
+   vanished in light mode** — the hairline was a line drawn between two identical
+   materials. The fix was not a darker hairline: the content pane is an opaque surface and
+   only the chrome is glass, which is the split every reference makes, and it makes the
+   boundary a material change that survives both schemes.
+6. **A field that failed validation drew a heavier *neutral* outline**, which reads as
+   emphasis — the same emphasis focus uses — rather than as a fault; the red message
+   underneath was the only thing carrying the meaning. `LineRole.critical` exists now, and
+   because the contrast suite iterates `LineRole.allCases`, adding the case put it under
+   test in the same commit.
+
+Defect 5 is the one worth remembering. Two of the three fixes above changed a colour; that
+one changed the *structure*, because the defect was not that a token was wrong but that two
+different things had been given the same material.
+
+### The failure mode this design system actually has
+
+Three more defects came out of 3.1c, and with the two above they make a pattern worth
+naming, because every one of them was found by rendering and none of them could have been
+found by a value test.
+
+7. **Hover drew the *pane* colour.** D4 asked for hover to be "a faint fill" and no token
+   for one existed, so the first attempt reached for `panel`. In dark a pane is lighter
+   than the window, which is what hover wants. In light a pane is near-white — and a
+   hovered row came out as a white card floating on the list. The idiom the phase existed
+   to remove, walked back in through the hover state, in the same commit that removed it.
+8. **A selection drawn with `well` inverted.** A well is *deeper* than the surface in both
+   schemes, because a field is deeper in both. A selection has to **separate** from the
+   surface, and there is only one direction available in each scheme: darker in light,
+   lighter in dark.
+9. **The rule was 1.14:1 in light against 1.28:1 in dark** — a hairline noticeably fainter
+   in one scheme and absent where the sidebar is glass. Tolerable while a rule was
+   decoration; not once rules became the only thing grouping anything.
+
+Together with the vanishing hairline (5) and the neutral error outline (6), that is five
+defects of one shape: **a role used somewhere its meaning inverts, or evaporates, between
+the two schemes.** It is this design system's characteristic failure, it is invisible to
+any test that checks a value rather than a relationship, and the guards written for it now
+check *directions and symmetries* rather than numbers:
+
+```swift
+#expect((hover.relativeLuminance < base.relativeLuminance) == (scheme == .light))
+#expect(max(light, dark) / min(light, dark) <= 1.2)   // a rule, in both schemes
+```
+
+The general lesson, which is cheap to state and was expensive to learn: **a token has a
+value, but a role has a job, and the job can be scheme-dependent even when the value is
+not.**
+
 ## Files
 
 | | |
@@ -159,7 +279,10 @@ to one.
 | `client/Sources/DesignSystem/Appearance.swift` | roles resolved against scheme and settings |
 | `client/Sources/DesignSystem/Surfaces/Material.swift` | glass, material, solid — as a value |
 | `client/Sources/DesignSystem/Components/` | buttons, fields, rows, badges, cards, empty states |
-| `client/Sources/Gallery/` | every component, every state, both schemes |
+| `client/Sources/DesignSystem/Components/Grouping.swift` | `Rule`, `SectionLabel`, `ContentSection`, `Panel` |
+| `client/Sources/DesignSystem/Components/DataTable.swift` | a table as a grid of rules |
+| `client/Sources/Gallery/` | the system, shown as an application built out of itself |
+| `client/Sources/Snapshot/` | the same sheets rendered to PNG offscreen, with no display |
 
 ## See also
 
