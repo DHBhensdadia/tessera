@@ -121,6 +121,10 @@ extension Appearance {
         case (.panel, .dark): Palette.darkPanel
         case (.well, .light): Palette.lightWell
         case (.well, .dark): Palette.darkWell
+        case (.hover, .light): Palette.lightHover
+        case (.hover, .dark): Palette.darkHover
+        case (.selection, .light): Palette.lightSelection
+        case (.selection, .dark): Palette.darkSelection
         case (.accent, .light): Palette.lightAccent
         case (.accent, .dark): Palette.darkAccent
         case (.accentHover, .light): Palette.lightAccentHover
@@ -140,6 +144,10 @@ extension Appearance {
         case (.borderStrong, .dark): Palette.darkBorderStrong
         case (.focusRing, .light): Palette.lightFocus
         case (.focusRing, .dark): Palette.darkFocus
+        // The same red as the message below the field. One fault, one colour: a border
+        // in a near-but-different red would look like a second, unrelated state.
+        case (.critical, .light): Palette.lightCritical
+        case (.critical, .dark): Palette.darkCritical
         }
     }
 

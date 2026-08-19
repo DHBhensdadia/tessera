@@ -150,7 +150,8 @@ struct ControlStateTests {
 
         let surfaces = interactive.map { state in
             appearance.colour(
-                TokenButtonStyle(emphasis: emphasis, state: state, appearance: appearance).backgroundRole
+                TokenButtonStyle(emphasis: emphasis, source: .pinned(state), appearance: appearance)
+                    .backgroundRole(state)
             )
         }
 
@@ -176,9 +177,9 @@ struct ControlStateTests {
     func everyButtonPairingIsLegible(_ appearance: Appearance) {
         for emphasis in Emphasis.allCases {
             for state in ControlState.allCases {
-                let style = TokenButtonStyle(emphasis: emphasis, state: state, appearance: appearance)
+                let style = TokenButtonStyle(emphasis: emphasis, source: .pinned(state), appearance: appearance)
                 let ratio = appearance.colour(style.foregroundRole)
-                    .contrast(with: appearance.colour(style.backgroundRole))
+                    .contrast(with: appearance.colour(style.backgroundRole(state)))
                 #expect(
                     ratio >= 4.5,
                     "\(emphasis.rawValue)/\(state.rawValue) is \(String(format: "%.2f", ratio)):1 in \(appearance.scheme.rawValue)"
@@ -237,6 +238,48 @@ struct GlassTests {
 }
 
 /// The shape decisions, which no contrast or colour test can see.
+
+/// The shape decisions, which no contrast or colour test can see.
+struct ControlShapeTests {
+    /// Both light references make the one action a screen is for a capsule and leave the
+    /// rest rectangular. Shape distinguishes the primary action where colour cannot — in
+    /// monochrome, at a glance, or for someone who cannot separate a near-black fill from
+    /// the surface behind it.
+    @Test func onlyThePrimaryActionIsAPill() {
+        for state in ControlState.allCases {
+            let primary = TokenButtonStyle(emphasis: .primary, source: .pinned(state), appearance: Appearance())
+            #expect(primary.radius == .pill, "the primary action is not a pill when \(state.rawValue)")
+
+            for emphasis in [Emphasis.secondary, .destructive] {
+                let other = TokenButtonStyle(emphasis: emphasis, source: .pinned(state), appearance: Appearance())
+                #expect(other.radius == .control, "\(emphasis.rawValue) should not be a pill")
+            }
+        }
+    }
+}
+
+/// A control's outline is a boundary, not a separator.
+struct ControlBoundaryTests {
+    /// `border` carries no contrast minimum because a hairline between two rows of one
+    /// list is decoration. A button's edge is not: WCAG asks 3:1 for it, and drawing it
+    /// with the separator colour makes the control look like text.
+    @Test func outlinedControlsUseABoundaryThatMustBeVisible() {
+        for emphasis in [Emphasis.secondary, .destructive] {
+            let style = TokenButtonStyle(emphasis: emphasis, source: .pinned(.normal), appearance: Appearance())
+            #expect(style.borderRole.minimumContrast != nil,
+                    "\(emphasis.rawValue) is outlined with a role that promises no contrast")
+        }
+    }
+}
+
+/// That elevation stayed where 3.1c put it.
+///
+/// The defect this exists to prevent is not "a shadow that is too strong" — it is a
+/// shadow appearing under content *at all*, which is how an interface starts grouping by
+/// elevation and ends up looking like generated markup. None of the seventeen references
+/// does it once.
+///
+/// A value test cannot see this, because the mistake is a view modifier rather than a
 
 /// number. So it reads the source, the same way `NoLiteralsTests` does.
 struct ElevationTests {
