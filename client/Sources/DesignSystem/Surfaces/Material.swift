@@ -62,28 +62,42 @@ extension Appearance {
 
 extension View {
     /// Draw a surface. The only sanctioned way to put a background behind anything.
-    @ViewBuilder
+    ///
+    /// Two things travel together, and they are the whole difference between "translucent"
+    /// and "glass": the material itself, and a **hairline** so the plane has an edge
+    /// against whatever is behind it. A frosted rectangle with no edge is the tutorial
+    /// version.
+    ///
+    /// Grain rides on the translucent cases only. A solid fill has nothing to modulate.
     public func surface(
         _ material: Material,
         _ appearance: Appearance,
         radius: Radius = .card
     ) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius.points, style: .continuous)
+        let fill = appearance.fill(for: material)
 
-        switch appearance.fill(for: material) {
-        case .solid(let colour):
-            background(colour.swiftUI, in: shape)
-        case .systemMaterial:
-            background(.ultraThinMaterial, in: shape)
-        case .liquidGlass:
-            if #available(macOS 26.0, *) {
-                glassEffect(.regular, in: shape)
-            } else {
-                // Unreachable: `fill(for:)` only returns this when the platform supports
-                // it. Present because the compiler cannot know that, and because a
-                // `fatalError` in a view is a crash waiting for an OS upgrade.
-                background(.ultraThinMaterial, in: shape)
+        return background {
+            switch fill {
+            case .solid(let colour):
+                shape.fill(colour.swiftUI)
+            case .systemMaterial:
+                shape.fill(.ultraThinMaterial)
+            case .liquidGlass:
+                if #available(macOS 26.0, *) {
+                    // `Color.clear` carries the effect: `glassEffect` styles a view, and
+                    // the view it should style here is the shape itself rather than the
+                    // content sitting on top of it.
+                    Color.clear.glassEffect(.regular, in: shape)
+                } else {
+                    // Unreachable: `fill(for:)` returns this only where the platform has
+                    // it. Present because the compiler cannot know that, and because a
+                    // `fatalError` in a view is a crash waiting for an OS upgrade.
+                    shape.fill(.ultraThinMaterial)
+                }
             }
         }
+        .grained(shape, enabled: fill != .solid(appearance.colour(material.opaqueRole)))
+        .overlay(shape.strokeBorder(appearance.swiftUI(LineRole.border), lineWidth: 1))
     }
 }

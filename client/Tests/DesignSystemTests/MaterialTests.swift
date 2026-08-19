@@ -187,3 +187,53 @@ struct ControlStateTests {
         }
     }
 }
+
+/// What part 2 added, and the properties that keep it from becoming a frosted rectangle.
+struct GlassTests {
+    /// The rule Apple states and this system encodes structurally: glass belongs to the
+    /// functional layer. `.content` has no path to it, on any OS, with any setting.
+    @Test func contentIsNeverGlassOnAnyPlatform() {
+        for scheme in Appearance.Scheme.allCases {
+            for supportsGlass in [true, false] {
+                var appearance = Appearance(scheme: scheme)
+                appearance.supportsLiquidGlass = supportsGlass
+                #expect(
+                    appearance.fill(for: .content) == .solid(appearance.colour(SurfaceRole.raised)),
+                    "content resolved to something translucent"
+                )
+            }
+        }
+    }
+
+    /// Reduce Transparency outranks the platform. The other way round would mean the
+    /// newest OS was the one that ignored the setting.
+    @Test func reduceTransparencyBeatsLiquidGlass() {
+        var appearance = Appearance(scheme: .dark, reduceTransparency: true)
+        appearance.supportsLiquidGlass = true
+        for material in Material.allCases {
+            #expect(
+                appearance.fill(for: material) == .solid(appearance.colour(material.opaqueRole)),
+                "\(material.rawValue) stayed translucent under Reduce Transparency"
+            )
+        }
+    }
+
+    /// Grain is texture, not tint. Above a few percent it stops being a material and
+    /// starts being a grey wash over everything.
+    @Test func grainIsBarelyThere() {
+        #expect(Grain.opacity > 0, "no grain at all is the flat look it exists to break")
+        #expect(Grain.opacity < 0.06, "grain this strong reads as dirt")
+        #expect(Grain.tile != nil, "the texture failed to build")
+    }
+
+    /// A fixed seed, so two renders of the same view are identical. Noise that changes
+    /// between frames shimmers, and a snapshot that changes for no reason is one nobody
+    /// trusts.
+    @Test func theGrainIsDeterministic() throws {
+        let first = try #require(Grain.tile)
+        let second = try #require(Grain.tile)
+        #expect(first === second, "the tile is rebuilt per access")
+    }
+}
+
+/// The shape decisions, which no contrast or colour test can see.
