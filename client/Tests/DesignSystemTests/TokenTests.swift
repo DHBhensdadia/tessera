@@ -43,7 +43,7 @@ struct TokenTests {
         #expect(Typography.heading.rank < Typography.body.rank)
         #expect(Typography.body.rank < Typography.caption.rank)
         // Monospace is body-sized: it is a different voice, not a different level.
-        #expect(Typography.mono.rank == Typography.body.rank)
+        #expect(Typography.data.rank == Typography.body.rank)
     }
 
     @Test func spacingIsOrderedAndOnTheGrid() {
@@ -117,4 +117,58 @@ struct AccessibilityTests {
         #expect(Appearance.all.count == 16)
         #expect(Set(Appearance.all.map(\.scheme)).count == 2)
     }
+}
+
+/// That the palette has the character the references have, not merely legal contrast.
+///
+/// Every colour here would pass a contrast suite; a warm palette and a cool one of equal
+/// luminance pass identically. So the property that distinguishes this palette from the
+/// one it replaced needs a test of its own, or the next person adjusting a colour by eye
+/// will drift it back without anything objecting.
+struct PaletteCharacterTests {
+    /// Light neutrals are **cool** — blue above red. R6 §2.3: every reference does this,
+    /// and the earlier warm palette was the single clearest difference from them.
+    @Test func theLightNeutralsAreCool() {
+        let light = Appearance(scheme: .light)
+        for role in [SurfaceRole.base, .raised, .sunken] {
+            let c = light.colour(role)
+            #expect(c.blue > c.red, "\(role.rawValue) is not cool: r\(c.red) b\(c.blue)")
+        }
+        for role in [TextRole.primary, .secondary, .tertiary] {
+            let c = light.colour(role)
+            #expect(c.blue >= c.red, "\(role.rawValue) is warm")
+        }
+    }
+
+    /// Dark neutrals are **exactly neutral** — equal channels, as sampled from three
+    /// separate references. A three-point lean is invisible in a swatch and quite visible
+    /// across a window.
+    @Test func theDarkNeutralsAreNeutral() {
+        let dark = Appearance(scheme: .dark)
+        for role in [SurfaceRole.base, .raised, .sunken] {
+            let c = dark.colour(role)
+            #expect(abs(c.red - c.green) < 0.008 && abs(c.green - c.blue) < 0.008,
+                    "\(role.rawValue) is tinted: r\(c.red) g\(c.green) b\(c.blue)")
+        }
+    }
+
+    /// The accent is a neutral, not a hue. Colour is reserved for meaning — a violated
+    /// constraint, a published scenario — and an accent that competes with the status
+    /// roles beside it spends the budget on chrome.
+    @Test func theAccentIsNeutral() {
+        for scheme in Appearance.Scheme.allCases {
+            let c = Appearance(scheme: scheme).colour(SurfaceRole.accent)
+            let spread = max(c.red, c.green, c.blue) - min(c.red, c.green, c.blue)
+            #expect(spread < 0.08, "the \(scheme.rawValue) accent is a hue, not a neutral")
+        }
+    }
+
+    /// Blue survives in exactly one place, and it is the one the platform expects.
+    @Test func onlyTheFocusRingIsBlue() {
+        for scheme in Appearance.Scheme.allCases {
+            let ring = Appearance(scheme: scheme).colour(LineRole.focusRing)
+            #expect(ring.blue > ring.red + 0.1, "the focus ring is not blue in \(scheme.rawValue)")
+        }
+    }
+
 }

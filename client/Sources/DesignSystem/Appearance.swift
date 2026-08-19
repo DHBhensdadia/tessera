@@ -138,8 +138,8 @@ extension Appearance {
         case (.border, .dark): increaseContrast ? Palette.darkBorderStrong : Palette.darkBorder
         case (.borderStrong, .light): Palette.lightBorderStrong
         case (.borderStrong, .dark): Palette.darkBorderStrong
-        case (.focusRing, .light): Palette.lightAccent
-        case (.focusRing, .dark): Palette.darkAccent
+        case (.focusRing, .light): Palette.lightFocus
+        case (.focusRing, .dark): Palette.darkFocus
         }
     }
 

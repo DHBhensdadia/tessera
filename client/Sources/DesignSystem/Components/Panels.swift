@@ -69,7 +69,7 @@ public struct Row: View {
                 // Monospaced digits so a column of counts or times does not shuffle
                 // sideways as the numbers change.
                 SwiftUI.Text(value)
-                    .font(Typography.mono.font)
+                    .font(Typography.data.font)
                     .foregroundStyle(appearance.swiftUI(TextRole.secondary))
             }
         }

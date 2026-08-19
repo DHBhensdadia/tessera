@@ -170,7 +170,7 @@ struct GalleryWindow: View {
                             .font(Typography.caption.font)
                             .foregroundStyle(appearance.swiftUI(TextRole.primary))
                         Text(label(for: appearance.fill(for: material)))
-                            .font(Typography.mono.font)
+                            .font(Typography.data.font)
                             .foregroundStyle(appearance.swiftUI(TextRole.secondary))
                     }
                     .padding(Spacing.snug.points)
@@ -222,7 +222,7 @@ struct GalleryWindow: View {
                                 .font(Typography.caption.font)
                                 .foregroundStyle(appearance.swiftUI(role))
                             Text(String(format: "%.2f", ratio))
-                                .font(Typography.mono.font)
+                                .font(Typography.data.font)
                                 .foregroundStyle(appearance.swiftUI(role))
                         }
                     }
