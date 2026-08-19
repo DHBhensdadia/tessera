@@ -73,13 +73,6 @@ struct TokenTests {
     /// future `raised` or `card` arriving because one view wanted a little separation —
     /// which is exactly how the scale it replaced came to exist, and how content ends up
     /// grouped by shadow again.
-
-    /// Every elevation names something that genuinely floats above the window.
-    ///
-    /// Pinned as a list rather than left to review. The case this guards against is a
-    /// future `raised` or `card` arriving because one view wanted a little separation —
-    /// which is exactly how the scale it replaced came to exist, and how content ends up
-    /// grouped by shadow again.
     @Test func everyElevationDescribesSomethingThatFloats() {
         #expect(Set(Elevation.allCases.map(\.rawValue)) == ["flat", "popover", "sheet"])
     }
@@ -136,9 +129,9 @@ struct AccessibilityTests {
     }
 }
 
-/// That the palette has the character the references have, not merely legal contrast.
+/// That the palette keeps the character it was given.
 ///
-/// Every colour here would pass a contrast suite; a warm palette and a cool one of equal
+/// Contrast tests cannot see temperature: a warm neutral and a cool one of the same
 /// luminance pass identically. So the property that distinguishes this palette from the
 /// one it replaced needs a test of its own, or the next person adjusting a colour by eye
 /// will drift it back without anything objecting.
@@ -188,6 +181,14 @@ struct PaletteCharacterTests {
         }
     }
 
+    /// Radii pinned to the range the references actually use. Loosened in 3.1b when the
+    /// unit was a floating card, tightened in 3.1c when the card was removed.
+    @Test func shapesMatchTheReferenceLanguage() {
+        #expect(Radius.control.points == 6)
+        #expect(Radius.container.points == 10)
+        #expect(Elevation.popover.opacity <= 0.15, "a wide shadow must also be faint")
+    }
+
     /// The three neutral planes are genuinely three planes.
     ///
     /// New in 3.1c, and load-bearing in a way it was not before: until this phase a panel
@@ -215,43 +216,6 @@ struct PaletteCharacterTests {
                     "a well does not read as set into the surface in \(scheme.rawValue)")
         }
     }
-
-    /// Hover and selection separate from the plane behind them, in whichever direction
-    /// that scheme allows, and selection separates further than hover.
-    ///
-    /// Stated as a direction rather than as values because the direction is the part that
-    /// is easy to get wrong and impossible to see in a swatch. Drawing hover with the
-    /// *pane* colour looked correct in dark — where a pane is lighter, and lighter is what
-    /// hover wants — and in light produced a near-white card floating on the list. One
-    /// role, two schemes, opposite meanings.
-
-    /// Inline radii stay small and the window radius stays large. Stated as a relation
-    /// rather than as four numbers, so it survives a deliberate re-tune of the values.
-    @Test func inlineRadiiStaySmallerThanTheWindow() {
-        #expect(Radius.control.points < Radius.container.points)
-        #expect(Radius.container.points < Radius.sheet.points)
-        #expect(Radius.container.points <= 12,
-                "no inline radius in any reference reaches 14 — a container is not a card")
-    }
-
-    /// Radii pinned to the range the references actually use. Loosened in 3.1b when the
-    /// unit was a floating card, tightened in 3.1c when the card was removed.
-    @Test func shapesMatchTheReferenceLanguage() {
-        #expect(Radius.control.points == 6)
-        #expect(Radius.container.points == 10)
-        #expect(Elevation.popover.opacity <= 0.15, "a wide shadow must also be faint")
-    }
-
-    /// The three neutral planes are genuinely three planes.
-    ///
-    /// New in 3.1c, and load-bearing in a way it was not before: until this phase a panel
-    /// was separated from the window by a shadow, so the tone step underneath it could be
-    /// almost anything. It is now the *only* thing separating them. A palette edit that
-    /// collapsed two planes together used to cost a little flatness; it would now cost the
-    /// structure of every screen.
-    ///
-    /// This asserts they are ordered and distinct, not that the step is large enough —
-    /// "large enough" is judged by looking, and is recorded in the phase notes.
 
     /// Hover and selection separate from the plane behind them, in whichever direction
     /// that scheme allows, and selection separates further than hover.
@@ -293,18 +257,6 @@ struct PaletteCharacterTests {
     /// The floor is deliberately below WCAG's 3:1: a separator between two rows of one
     /// list is decoration and is exempt (that is what `border` and `borderStrong` are two
     /// roles *for*). What it may not be is absent.
-
-    /// A rule is visible in both schemes, and to a comparable degree.
-    ///
-    /// The device carrying every group boundary in the application, so it gets a floor and
-    /// a symmetry check rather than being left to the eye. Written after the light rule
-    /// was measured at 1.14:1 against the dark scheme's 1.28:1 — a difference invisible in
-    /// a swatch and obvious in a window, where the light sidebar's rule simply was not
-    /// there.
-    ///
-    /// The floor is deliberately below WCAG's 3:1: a separator between two rows of one
-    /// list is decoration and is exempt (that is what `border` and `borderStrong` are two
-    /// roles *for*). What it may not be is absent.
     @Test func aRuleIsVisibleInBothSchemes() {
         var strengths: [Appearance.Scheme: Double] = [:]
         for scheme in Appearance.Scheme.allCases {
@@ -324,4 +276,10 @@ struct PaletteCharacterTests {
 
     /// Inline radii stay small and the window radius stays large. Stated as a relation
     /// rather than as four numbers, so it survives a deliberate re-tune of the values.
+    @Test func inlineRadiiStaySmallerThanTheWindow() {
+        #expect(Radius.control.points < Radius.container.points)
+        #expect(Radius.container.points < Radius.sheet.points)
+        #expect(Radius.container.points <= 12,
+                "no inline radius in any reference reaches 14 — a container is not a card")
+    }
 }
