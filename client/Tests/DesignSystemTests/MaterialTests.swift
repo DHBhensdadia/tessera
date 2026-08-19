@@ -238,8 +238,6 @@ struct GlassTests {
 }
 
 /// The shape decisions, which no contrast or colour test can see.
-
-/// The shape decisions, which no contrast or colour test can see.
 struct ControlShapeTests {
     /// Both light references make the one action a screen is for a capsule and leave the
     /// rest rectangular. Shape distinguishes the primary action where colour cannot — in
@@ -280,7 +278,6 @@ struct ControlBoundaryTests {
 /// does it once.
 ///
 /// A value test cannot see this, because the mistake is a view modifier rather than a
-
 /// number. So it reads the source, the same way `NoLiteralsTests` does.
 struct ElevationTests {
     /// `shadow(` appears exactly once in the whole client, inside `floating(_:)`.
@@ -320,8 +317,6 @@ struct ElevationTests {
         #expect(source.contains("self.shadow("), "the only sanctioned shadow has gone missing")
     }
 }
-
-/// That the sheen stays a surface treatment rather than becoming a style.
 
 /// That the sheen stays a surface treatment rather than becoming a style.
 struct SheenTests {
