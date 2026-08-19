@@ -27,9 +27,9 @@ public struct Card<Content: View>: View {
         }
         .padding(Spacing.loose.points)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .surface(.content, appearance, radius: .card)
+        .surface(.content, appearance, radius: .container)
         .overlay(
-            RoundedRectangle(cornerRadius: Radius.card.points, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.container.points, style: .continuous)
                 .strokeBorder(appearance.swiftUI(LineRole.border), lineWidth: 1)
         )
     }
@@ -110,7 +110,7 @@ public struct Badge: View {
             .foregroundStyle(appearance.swiftUI(tone.text))
             .padding(.horizontal, Spacing.snug.points)
             .padding(.vertical, Spacing.hairline.points)
-            .background(appearance.swiftUI(SurfaceRole.sunken), in: Capsule())
+            .background(appearance.swiftUI(SurfaceRole.well), in: Capsule())
             .overlay(Capsule().strokeBorder(appearance.swiftUI(LineRole.border), lineWidth: 1))
     }
 }
@@ -191,7 +191,7 @@ public struct Field: View {
                 .foregroundStyle(appearance.swiftUI(TextRole.primary))
                 .padding(.horizontal, Spacing.snug.points)
                 .padding(.vertical, Spacing.snug.points)
-                .background(appearance.swiftUI(SurfaceRole.sunken), in: shape)
+                .background(appearance.swiftUI(SurfaceRole.well), in: shape)
                 .overlay(shape.strokeBorder(appearance.swiftUI(outline), lineWidth: problem == nil ? 1 : 2))
                 .disabled(!state.isEnabled)
                 .opacity(state == .disabled ? 0.45 : 1)

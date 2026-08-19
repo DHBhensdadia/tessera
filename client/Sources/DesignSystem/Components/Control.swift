@@ -108,9 +108,9 @@ struct TokenButtonStyle: ButtonStyle {
         case (.primary, .hover): .accentHover
         case (.primary, .pressed): .accentPressed
         case (.primary, _): .accent
-        case (_, .hover): .sunken
+        case (_, .hover): .well
         case (_, .pressed): .base
-        default: .raised
+        default: .panel
         }
     }
 

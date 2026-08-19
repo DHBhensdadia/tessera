@@ -25,9 +25,9 @@ public enum Material: String, CaseIterable, Sendable {
     /// The neutral this role falls back to when translucency is off or unavailable.
     var opaqueRole: SurfaceRole {
         switch self {
-        case .chrome: .sunken
-        case .content: .raised
-        case .overlay: .raised
+        case .chrome: .well
+        case .content: .panel
+        case .overlay: .panel
         }
     }
 }
@@ -63,16 +63,21 @@ extension Appearance {
 extension View {
     /// Draw a surface. The only sanctioned way to put a background behind anything.
     ///
-    /// Two things travel together, and they are the whole difference between "translucent"
-    /// and "glass": the material itself, and a **hairline** so the plane has an edge
-    /// against whatever is behind it. A frosted rectangle with no edge is the tutorial
-    /// version.
+    /// Two things travel together: the material itself, and a **hairline** so the plane
+    /// has an edge against whatever is behind it.
+    ///
+    /// **There is no third.** Until 3.1c this also applied a shadow to every surface that
+    /// used it, which meant every card, panel and field in the application was floating by
+    /// default. That is the `rounded-2xl shadow-lg` idiom, and removing the parameter is
+    /// the point rather than a side effect: a rule enforced by a default is a rule until
+    /// somebody passes an argument. Shadows now live in `floating(_:)`, which reads as a
+    /// claim about z-position at the call site, and which content has no reason to call.
     ///
     /// Grain rides on the translucent cases only. A solid fill has nothing to modulate.
     public func surface(
         _ material: Material,
         _ appearance: Appearance,
-        radius: Radius = .card
+        radius: Radius = .container
     ) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius.points, style: .continuous)
         let fill = appearance.fill(for: material)
@@ -99,5 +104,25 @@ extension View {
         }
         .grained(shape, enabled: fill != .solid(appearance.colour(material.opaqueRole)))
         .overlay(shape.strokeBorder(appearance.swiftUI(LineRole.border), lineWidth: 1))
+    }
+
+    /// State that this view is **above** the window rather than part of it.
+    ///
+    /// The only place in the design system that draws a shadow, and the reason it is a
+    /// separate modifier rather than an argument: a shadow at a call site should be a
+    /// sentence somebody wrote on purpose, not something inherited from a default. There
+    /// are three legitimate callers — a popover, a sheet, and the proxy that follows the
+    /// pointer while something is being dragged.
+    ///
+    /// `flat` is accepted and draws nothing, so a view whose elevation is computed does
+    /// not need a branch around this.
+    public func floating(_ elevation: Elevation) -> some View {
+        // `self.` rather than the bare call: the guard below looks for this spelling, and
+        // an implicit-self call is invisible to it. Found by watching the guard fail.
+        self.shadow(
+            color: .black.opacity(elevation.opacity),
+            radius: elevation.radius,
+            y: elevation.yOffset
+        )
     }
 }

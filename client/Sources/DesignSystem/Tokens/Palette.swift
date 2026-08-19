@@ -29,8 +29,8 @@ enum Palette {
     // lifts and desaturates rather than tinting. So `raised` is brighter than `base`, and
     // `sunken` — a field, pressed into the surface — is darker than both.
     static let lightBase = Colour(hex: 0xECF0F4)
-    static let lightRaised = Colour(hex: 0xF4F7F9)
-    static let lightSunken = Colour(hex: 0xE1E7EC)
+    static let lightPanel = Colour(hex: 0xF4F7F9)
+    static let lightWell = Colour(hex: 0xE1E7EC)
 
     static let lightTextPrimary = Colour(hex: 0x12161C)
     static let lightTextSecondary = Colour(hex: 0x4A5259)
@@ -49,8 +49,8 @@ enum Palette {
 
     // -- dark -------------------------------------------------------------------
     static let darkBase = Colour(hex: 0x1A1A1A)
-    static let darkRaised = Colour(hex: 0x242424)
-    static let darkSunken = Colour(hex: 0x121212)
+    static let darkPanel = Colour(hex: 0x242424)
+    static let darkWell = Colour(hex: 0x121212)
 
     static let darkTextPrimary = Colour(hex: 0xF2F2F2)
     static let darkTextSecondary = Colour(hex: 0xADADAD)

@@ -175,7 +175,7 @@ struct GalleryWindow: View {
                     }
                     .padding(Spacing.snug.points)
                     .background(
-                        appearance.swiftUI(SurfaceRole.raised),
+                        appearance.swiftUI(SurfaceRole.panel),
                         in: RoundedRectangle(cornerRadius: Radius.control.points)
                     )
                     .padding(Spacing.loose.points)
@@ -213,7 +213,7 @@ struct GalleryWindow: View {
     private func palette(_ appearance: Appearance) -> some View {
         VStack(alignment: .leading, spacing: Spacing.snug.points) {
             section("Contrast, measured", appearance)
-            ForEach([SurfaceRole.base, .raised, .sunken], id: \.self) { surface in
+            ForEach([SurfaceRole.base, .panel, .well], id: \.self) { surface in
                 HStack(spacing: Spacing.regular.points) {
                     ForEach(TextRole.allCases.filter { $0 != .onAccent }, id: \.self) { role in
                         let ratio = appearance.colour(role).contrast(with: appearance.colour(surface))

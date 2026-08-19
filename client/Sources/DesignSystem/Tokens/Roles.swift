@@ -20,13 +20,18 @@ public enum TextRole: String, CaseIterable, Sendable {
 }
 
 /// The planes content sits on.
+///
+/// Three values, not three heights. `raised` and `sunken` were named for a z-position
+/// they no longer have — with elevation gone from content (3.1c D1), the only thing
+/// separating one plane from another is its *value*, and the names now say so.
 public enum SurfaceRole: String, CaseIterable, Sendable {
     /// The window itself.
     case base
-    /// A card or panel lifted off the window.
-    case raised
-    /// A well or inset field, pushed into it.
-    case sunken
+    /// A pane or bounded object sitting on the window: a sidebar, a rail, a table.
+    case panel
+    /// A well — a field, or anything the eye should read as set into the surface rather
+    /// than laid on top of it.
+    case well
     /// A filled control — the one surface that is a colour rather than a neutral.
     case accent
     /// The same control under the pointer, and while being pressed. Separate roles rather
