@@ -58,13 +58,30 @@ struct TokenTests {
     }
 
     @Test func elevationIncreasesConsistently() {
-        let ordered: [Elevation] = [.flat, .raised, .floating, .modal]
+        let ordered: [Elevation] = [.flat, .popover, .sheet]
         for (lower, higher) in zip(ordered, ordered.dropFirst()) {
             #expect(lower.radius < higher.radius)
             #expect(lower.opacity < higher.opacity)
             #expect(lower.yOffset < higher.yOffset)
         }
         #expect(Elevation.flat.opacity == 0, "a flat surface must cast no shadow at all")
+    }
+
+    /// Every elevation names something that genuinely floats above the window.
+    ///
+    /// Pinned as a list rather than left to review. The case this guards against is a
+    /// future `raised` or `card` arriving because one view wanted a little separation —
+    /// which is exactly how the scale it replaced came to exist, and how content ends up
+    /// grouped by shadow again.
+
+    /// Every elevation names something that genuinely floats above the window.
+    ///
+    /// Pinned as a list rather than left to review. The case this guards against is a
+    /// future `raised` or `card` arriving because one view wanted a little separation —
+    /// which is exactly how the scale it replaced came to exist, and how content ends up
+    /// grouped by shadow again.
+    @Test func everyElevationDescribesSomethingThatFloats() {
+        #expect(Set(Elevation.allCases.map(\.rawValue)) == ["flat", "popover", "sheet"])
     }
 }
 
@@ -130,7 +147,7 @@ struct PaletteCharacterTests {
     /// and the earlier warm palette was the single clearest difference from them.
     @Test func theLightNeutralsAreCool() {
         let light = Appearance(scheme: .light)
-        for role in [SurfaceRole.base, .raised, .sunken] {
+        for role in [SurfaceRole.base, .panel, .well] {
             let c = light.colour(role)
             #expect(c.blue > c.red, "\(role.rawValue) is not cool: r\(c.red) b\(c.blue)")
         }
@@ -145,7 +162,7 @@ struct PaletteCharacterTests {
     /// across a window.
     @Test func theDarkNeutralsAreNeutral() {
         let dark = Appearance(scheme: .dark)
-        for role in [SurfaceRole.base, .raised, .sunken] {
+        for role in [SurfaceRole.base, .panel, .well] {
             let c = dark.colour(role)
             #expect(abs(c.red - c.green) < 0.008 && abs(c.green - c.blue) < 0.008,
                     "\(role.rawValue) is tinted: r\(c.red) g\(c.green) b\(c.blue)")
@@ -171,4 +188,68 @@ struct PaletteCharacterTests {
         }
     }
 
+    /// The three neutral planes are genuinely three planes.
+    ///
+    /// New in 3.1c, and load-bearing in a way it was not before: until this phase a panel
+    /// was separated from the window by a shadow, so the tone step underneath it could be
+    /// almost anything. It is now the *only* thing separating them. A palette edit that
+    /// collapsed two planes together used to cost a little flatness; it would now cost the
+    /// structure of every screen.
+    ///
+    /// This asserts they are ordered and distinct, not that the step is large enough —
+    /// "large enough" is judged by looking, and is recorded in the phase notes.
+    @Test func theThreeNeutralPlanesAreDistinct() {
+        for scheme in Appearance.Scheme.allCases {
+            let appearance = Appearance(scheme: scheme)
+            let planes = [SurfaceRole.base, .panel, .well].map { appearance.colour($0) }
+            for (a, b) in [(planes[0], planes[1]), (planes[0], planes[2]), (planes[1], planes[2])] {
+                #expect(a.contrast(with: b) > 1.0,
+                        "two planes resolve to the same value in \(scheme.rawValue)")
+            }
+            // A panel is lighter than the window in light, and lighter in dark too: both
+            // schemes add light to lift a plane. Darkening works in one and vanishes in
+            // the other, which is the asymmetry that made shadows unusable for grouping.
+            #expect(planes[1].relativeLuminance > planes[0].relativeLuminance,
+                    "a panel does not read as a panel in \(scheme.rawValue)")
+            #expect(planes[2].relativeLuminance < planes[0].relativeLuminance,
+                    "a well does not read as set into the surface in \(scheme.rawValue)")
+        }
+    }
+
+    /// Hover and selection separate from the plane behind them, in whichever direction
+    /// that scheme allows, and selection separates further than hover.
+    ///
+    /// Stated as a direction rather than as values because the direction is the part that
+    /// is easy to get wrong and impossible to see in a swatch. Drawing hover with the
+    /// *pane* colour looked correct in dark — where a pane is lighter, and lighter is what
+    /// hover wants — and in light produced a near-white card floating on the list. One
+    /// role, two schemes, opposite meanings.
+
+    /// Inline radii stay small and the window radius stays large. Stated as a relation
+    /// rather than as four numbers, so it survives a deliberate re-tune of the values.
+    @Test func inlineRadiiStaySmallerThanTheWindow() {
+        #expect(Radius.control.points < Radius.container.points)
+        #expect(Radius.container.points < Radius.sheet.points)
+        #expect(Radius.container.points <= 12,
+                "no inline radius in any reference reaches 14 — a container is not a card")
+    }
+
+    /// Radii pinned to the range the references actually use. Loosened in 3.1b when the
+    /// unit was a floating card, tightened in 3.1c when the card was removed.
+    @Test func shapesMatchTheReferenceLanguage() {
+        #expect(Radius.control.points == 6)
+        #expect(Radius.container.points == 10)
+        #expect(Elevation.popover.opacity <= 0.15, "a wide shadow must also be faint")
+    }
+
+    /// The three neutral planes are genuinely three planes.
+    ///
+    /// New in 3.1c, and load-bearing in a way it was not before: until this phase a panel
+    /// was separated from the window by a shadow, so the tone step underneath it could be
+    /// almost anything. It is now the *only* thing separating them. A palette edit that
+    /// collapsed two planes together used to cost a little flatness; it would now cost the
+    /// structure of every screen.
+    ///
+    /// This asserts they are ordered and distinct, not that the step is large enough —
+    /// "large enough" is judged by looking, and is recorded in the phase notes.
 }

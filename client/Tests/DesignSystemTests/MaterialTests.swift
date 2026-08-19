@@ -198,7 +198,7 @@ struct GlassTests {
                 var appearance = Appearance(scheme: scheme)
                 appearance.supportsLiquidGlass = supportsGlass
                 #expect(
-                    appearance.fill(for: .content) == .solid(appearance.colour(SurfaceRole.raised)),
+                    appearance.fill(for: .content) == .solid(appearance.colour(SurfaceRole.panel)),
                     "content resolved to something translucent"
                 )
             }
@@ -237,3 +237,45 @@ struct GlassTests {
 }
 
 /// The shape decisions, which no contrast or colour test can see.
+
+/// number. So it reads the source, the same way `NoLiteralsTests` does.
+struct ElevationTests {
+    /// `shadow(` appears exactly once in the whole client, inside `floating(_:)`.
+    ///
+    /// Scoped to a spelling rather than to a semantic because that is what makes it
+    /// enforceable: there is one way to draw a shadow in SwiftUI, and one place allowed
+    /// to use it.
+    ///
+    /// Matched **without** a leading dot. The first version of this looked for `.shadow(`
+    /// and the sanctioned call was an implicit-self `shadow(` — so the guard would have
+    /// been blind to exactly the spelling it was written to catch. Watching it fail is
+    /// what surfaced that; a guard that had passed on the first run would have shipped.
+    @Test func onlyTheFloatingModifierDrawsAShadow() throws {
+        let permitted = "Surfaces/Material.swift"
+
+        var offences: [String] = []
+        for file in NoLiteralsTests.swiftFiles(under: "Sources") {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            for (number, line) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated()
+            where line.contains("shadow(") {
+                if file.path.hasSuffix(permitted) { continue }
+                offences.append("\(file.lastPathComponent):\(number + 1) — \(line.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        #expect(offences.isEmpty, "content does not float:\n\(offences.joined(separator: "\n"))")
+    }
+
+    /// And that the one permitted use is still there.
+    ///
+    /// Without this, deleting `floating(_:)` outright would make the check above pass for
+    /// the wrong reason — the same failure mode as a scan that finds no files.
+    @Test func theFloatingModifierStillExists() throws {
+        let file = NoLiteralsTests.packageRoot
+            .appending(path: "Sources/DesignSystem/Surfaces/Material.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        #expect(source.contains("public func floating(_ elevation: Elevation)"))
+        #expect(source.contains("self.shadow("), "the only sanctioned shadow has gone missing")
+    }
+}
+
+/// That the sheen stays a surface treatment rather than becoming a style.

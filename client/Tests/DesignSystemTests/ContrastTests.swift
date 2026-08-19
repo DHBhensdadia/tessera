@@ -60,7 +60,7 @@ struct ContrastTests {
     func controlBoundariesAreVisible(_ appearance: Appearance) {
         for line in LineRole.allCases {
             guard let minimum = line.minimumContrast else { continue }
-            for surface: SurfaceRole in [.base, .raised, .sunken] {
+            for surface: SurfaceRole in [.base, .panel, .well] {
                 let ratio = appearance.colour(line).contrast(with: appearance.colour(surface))
                 #expect(
                     ratio >= minimum,

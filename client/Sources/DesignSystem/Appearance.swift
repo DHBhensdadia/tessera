@@ -117,10 +117,10 @@ extension Appearance {
         switch (role, scheme) {
         case (.base, .light): Palette.lightBase
         case (.base, .dark): Palette.darkBase
-        case (.raised, .light): Palette.lightRaised
-        case (.raised, .dark): Palette.darkRaised
-        case (.sunken, .light): Palette.lightSunken
-        case (.sunken, .dark): Palette.darkSunken
+        case (.panel, .light): Palette.lightPanel
+        case (.panel, .dark): Palette.darkPanel
+        case (.well, .light): Palette.lightWell
+        case (.well, .dark): Palette.darkWell
         case (.accent, .light): Palette.lightAccent
         case (.accent, .dark): Palette.darkAccent
         case (.accentHover, .light): Palette.lightAccentHover
@@ -167,7 +167,7 @@ public struct Pairing: Sendable {
 extension Pairing {
     /// Every text-on-surface combination a component is allowed to use.
     public static let promised: [Pairing] = {
-        let neutrals: [SurfaceRole] = [.base, .raised, .sunken]
+        let neutrals: [SurfaceRole] = [.base, .panel, .well]
         let onNeutral: [TextRole] = [.primary, .secondary, .tertiary, .positive, .warning, .critical, .info]
         let filled: [SurfaceRole] = [.accent, .accentHover, .accentPressed]
         return neutrals.flatMap { surface in onNeutral.map { Pairing($0, on: surface) } }
