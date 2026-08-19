@@ -32,6 +32,16 @@ public enum SurfaceRole: String, CaseIterable, Sendable {
     /// A well — a field, or anything the eye should read as set into the surface rather
     /// than laid on top of it.
     case well
+    /// The plane under the pointer.
+    case hover
+    /// The plane under whatever is currently chosen.
+    ///
+    /// Separate from `well` because they move in different directions. A well is *deeper*
+    /// than the surface in both schemes; a selection has to **separate** from it, which
+    /// means darker in light and lighter in dark. Drawing a selection with `well` looked
+    /// right in light and inverted in dark, where the chosen row came out darker than
+    /// everything around it.
+    case selection
     /// A filled control — the one surface that is a colour rather than a neutral.
     case accent
     /// The same control under the pointer, and while being pressed. Separate roles rather
@@ -44,6 +54,16 @@ public enum SurfaceRole: String, CaseIterable, Sendable {
 /// Lines: separators, control outlines, the focus ring.
 public enum LineRole: String, CaseIterable, Sendable {
     case border, borderStrong, focusRing
+    /// The outline of a control the user must fix before going on.
+    ///
+    /// Separate from `borderStrong` because a field that failed validation was drawing a
+    /// heavier *neutral* outline, which on screen reads as emphasis — the same emphasis
+    /// focus uses — rather than as a fault. The message underneath was the only thing
+    /// that carried the meaning, and a message is easy to look past.
+    ///
+    /// The outline is never the *only* signal: the explanation below the field says what
+    /// is wrong in words, so nothing here depends on distinguishing red (WCAG 1.4.1).
+    case critical
 
     /// A control's visual boundary must reach 3:1 against what is adjacent (WCAG 2.1
     /// "Non-text Contrast"). A hairline separator between two rows of the same list is
@@ -52,7 +72,7 @@ public enum LineRole: String, CaseIterable, Sendable {
     public var minimumContrast: Double? {
         switch self {
         case .border: nil
-        case .borderStrong, .focusRing: 3.0
+        case .borderStrong, .focusRing, .critical: 3.0
         }
     }
 }

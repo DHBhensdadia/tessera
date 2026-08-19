@@ -32,6 +32,18 @@ enum Palette {
     static let lightPanel = Colour(hex: 0xF4F7F9)
     static let lightWell = Colour(hex: 0xE1E7EC)
 
+    // Hover and selection **separate from** the plane they sit on, and which direction
+    // that is depends on the scheme. A pane is lighter than the window in both, because
+    // glass lifts; a selected row is *darker* in light and *lighter* in dark, because what
+    // it has to do is stand out from whatever is around it, and there is only one way to
+    // go in each.
+    //
+    // Getting this wrong is visible immediately and invisible to a value test: drawing
+    // hover with `panel` made a hovered row read as a near-white card floating on the
+    // list — the exact idiom this phase removed, reintroduced by the hover state.
+    static let lightHover = Colour(hex: 0xE5EAEF)
+    static let lightSelection = Colour(hex: 0xD8E0E7)
+
     static let lightTextPrimary = Colour(hex: 0x12161C)
     static let lightTextSecondary = Colour(hex: 0x4A5259)
     /// Adjusted from the sampled `#646D75`, which reached only 4.23:1 on `sunken`.
@@ -51,6 +63,9 @@ enum Palette {
     static let darkBase = Colour(hex: 0x1A1A1A)
     static let darkPanel = Colour(hex: 0x242424)
     static let darkWell = Colour(hex: 0x121212)
+
+    static let darkHover = Colour(hex: 0x232323)
+    static let darkSelection = Colour(hex: 0x2E2E2E)
 
     static let darkTextPrimary = Colour(hex: 0xF2F2F2)
     static let darkTextSecondary = Colour(hex: 0xADADAD)

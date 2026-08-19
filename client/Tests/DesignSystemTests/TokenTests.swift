@@ -252,4 +252,45 @@ struct PaletteCharacterTests {
     ///
     /// This asserts they are ordered and distinct, not that the step is large enough —
     /// "large enough" is judged by looking, and is recorded in the phase notes.
+
+    /// Hover and selection separate from the plane behind them, in whichever direction
+    /// that scheme allows, and selection separates further than hover.
+    ///
+    /// Stated as a direction rather than as values because the direction is the part that
+    /// is easy to get wrong and impossible to see in a swatch. Drawing hover with the
+    /// *pane* colour looked correct in dark — where a pane is lighter, and lighter is what
+    /// hover wants — and in light produced a near-white card floating on the list. One
+    /// role, two schemes, opposite meanings.
+    @Test func hoverAndSelectionSeparateFromTheSurface() {
+        for scheme in Appearance.Scheme.allCases {
+            let appearance = Appearance(scheme: scheme)
+            let base = appearance.colour(SurfaceRole.base)
+            let hover = appearance.colour(SurfaceRole.hover)
+            let selection = appearance.colour(SurfaceRole.selection)
+
+            #expect(base.contrast(with: hover) > 1.0, "hover is invisible in \(scheme.rawValue)")
+            #expect(base.contrast(with: selection) > base.contrast(with: hover),
+                    "selection is no stronger than hover in \(scheme.rawValue)")
+
+            // Light darkens, dark lightens. Both move away from the surface; there is only
+            // one direction available in each.
+            let darkens = scheme == .light
+            #expect((hover.relativeLuminance < base.relativeLuminance) == darkens,
+                    "hover moves the wrong way in \(scheme.rawValue)")
+            #expect((selection.relativeLuminance < base.relativeLuminance) == darkens,
+                    "selection moves the wrong way in \(scheme.rawValue)")
+        }
+    }
+
+    /// A rule is visible in both schemes, and to a comparable degree.
+    ///
+    /// The device carrying every group boundary in the application, so it gets a floor and
+    /// a symmetry check rather than being left to the eye. Written after the light rule
+    /// was measured at 1.14:1 against the dark scheme's 1.28:1 — a difference invisible in
+    /// a swatch and obvious in a window, where the light sidebar's rule simply was not
+    /// there.
+    ///
+    /// The floor is deliberately below WCAG's 3:1: a separator between two rows of one
+    /// list is decoration and is exempt (that is what `border` and `borderStrong` are two
+    /// roles *for*). What it may not be is absent.
 }
