@@ -9,6 +9,19 @@ import SwiftUI
 struct StatusView: View {
     let engine: EngineController
 
+    // Read here rather than on the `App`: environment values are resolved per view, and an
+    // `App` is not one — the read compiles there and never updates when the system
+    // appearance changes.
+    @Environment(\.colorScheme) private var colourScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private var appearance: Appearance {
+        Appearance(
+            scheme: colourScheme == .dark ? .dark : .light,
+            reduceTransparency: reduceTransparency
+        )
+    }
+
     var body: some View {
         VStack(spacing: Spacing.loose.points) {
             Image(systemName: symbol)
@@ -38,15 +51,21 @@ struct StatusView: View {
                     .padding(Spacing.snug.points)
                     .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: Radius.control.points))
                 }
-                Button("Restart Engine") {
+                // The design system's button rather than `.borderedProminent`, which is
+                // system blue — in an application whose accent is deliberately a neutral,
+                // that one control was the only saturated colour on screen.
+                ActionButton(emphasis: .primary, appearance: appearance) {
                     Task { await engine.start() }
+                } label: {
+                    Text("Restart Engine")
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
         .padding(Spacing.page.points)
         .frame(width: 420)
-        .background(.ultraThinMaterial)
+        // The window is the glass, rather than a frosted card sitting on an opaque one.
+        // That is the difference between using a material and looking like the references.
+        .windowGlass(appearance)
     }
 
     @ViewBuilder
