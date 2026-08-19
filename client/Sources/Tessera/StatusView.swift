@@ -62,7 +62,7 @@ struct StatusView: View {
                 row("Database", health.database)
                 row("Port", String(running.port))
             }
-            .font(Typography.mono.font)
+            .font(Typography.data.font)
             .padding(Spacing.regular.points)
             .frame(maxWidth: .infinity)
             .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: Radius.control.points))

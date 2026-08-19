@@ -4,67 +4,97 @@ import SwiftUI
 ///
 /// Everything else names a *role* — `.textSecondary`, `.surfaceRaised` — and roles are
 /// resolved through `Appearance`. That indirection is what makes a dark scheme, an
-/// increased-contrast scheme and a future rebrand each a change to this one file rather
-/// than a search through every view.
+/// increased-contrast scheme and a rebrand each a change to this one file rather than a
+/// search through every view. A test scans the sources and fails if a literal colour
+/// appears anywhere else.
 ///
-/// A test scans the sources and fails if a literal colour appears anywhere else, because
-/// the rule is only worth having if it is enforced rather than remembered.
+/// ## Where these values come from
 ///
-/// The values are warm rather than neutral — `0xFBFAF8` instead of `0xFFFFFF` for the
-/// window — because a timetable is a dense grid of text that people read for an hour at a
-/// time, and a pure-white field under that much black text is fatiguing.
+/// Sampled from the reference set rather than chosen, then adjusted where WCAG required
+/// it — see R6. Two properties recur across every reference and are the whole character
+/// of the palette:
+///
+/// **Light is cool.** Blue sits above red in every neutral. The earlier palette was warm
+/// on the reasoning that a dense grid of text is easier on the eye against cream; that was
+/// a real argument and it is not what the references do, so it loses.
+///
+/// **Dark is exactly neutral.** `#212121`, `#373737`, `#555555` — equal channels, evenly
+/// spaced. A three-point blue lean is invisible in a swatch and quite visible across a
+/// window.
 enum Palette {
     // -- light ------------------------------------------------------------------
-    static let lightBase = Colour(hex: 0xFBFAF8)
-    static let lightRaised = Colour(hex: 0xFFFFFF)
-    static let lightSunken = Colour(hex: 0xF1EFEA)
+    //
+    // The reference states its own tokens in its form fields — background `#ECF0F4` — and
+    // a panel drawn on it comes out *lighter* than its backdrop, because frosted glass
+    // lifts and desaturates rather than tinting. So `raised` is brighter than `base`, and
+    // `sunken` — a field, pressed into the surface — is darker than both.
+    static let lightBase = Colour(hex: 0xECF0F4)
+    static let lightRaised = Colour(hex: 0xF4F7F9)
+    static let lightSunken = Colour(hex: 0xE1E7EC)
 
-    static let lightTextPrimary = Colour(hex: 0x1A1A1C)
-    static let lightTextSecondary = Colour(hex: 0x55524C)
-    static let lightTextTertiary = Colour(hex: 0x6B6862)
+    static let lightTextPrimary = Colour(hex: 0x12161C)
+    static let lightTextSecondary = Colour(hex: 0x4A5259)
+    /// Adjusted from the sampled `#646D75`, which reached only 4.23:1 on `sunken`.
+    static let lightTextTertiary = Colour(hex: 0x5E676F)
 
-    static let lightAccent = Colour(hex: 0x2F5FD0)
-    // A filled control needs its own hover and pressed values. Dimming the accent with
-    // opacity would change its contrast against the *window* rather than against its own
-    // label, so each state is a real colour that the contrast test covers.
-    static let lightAccentHover = Colour(hex: 0x2A55BC)
-    static let lightAccentPressed = Colour(hex: 0x24499E)
-    static let lightPositive = Colour(hex: 0x1E7A46)
-    static let lightWarning = Colour(hex: 0x8A5A00)
-    static let lightCritical = Colour(hex: 0xB3261E)
-    static let lightInfo = Colour(hex: 0x1F5C8C)
+    static let lightPositive = Colour(hex: 0x146B3A)
+    static let lightWarning = Colour(hex: 0x7A4E00)
+    static let lightCritical = Colour(hex: 0xA81F16)
+    static let lightInfo = Colour(hex: 0x14527E)
 
-    static let lightBorder = Colour(hex: 0xD9D5CD)
-    static let lightBorderStrong = Colour(hex: 0x8C887F)
+    static let lightBorder = Colour(hex: 0xDCE2E7)
+    /// Adjusted from `#8A939B`, which reached only 2.50:1 against `sunken` — a control
+    /// outline nobody could locate. WCAG asks 3:1 for a non-text boundary.
+    static let lightBorderStrong = Colour(hex: 0x767F87)
 
     // -- dark -------------------------------------------------------------------
-    static let darkBase = Colour(hex: 0x17171A)
-    static let darkRaised = Colour(hex: 0x1F1F23)
-    static let darkSunken = Colour(hex: 0x101012)
+    static let darkBase = Colour(hex: 0x1A1A1A)
+    static let darkRaised = Colour(hex: 0x242424)
+    static let darkSunken = Colour(hex: 0x121212)
 
-    static let darkTextPrimary = Colour(hex: 0xF2F1EE)
-    static let darkTextSecondary = Colour(hex: 0xB4B1AB)
-    static let darkTextTertiary = Colour(hex: 0x918E88)
+    static let darkTextPrimary = Colour(hex: 0xF2F2F2)
+    static let darkTextSecondary = Colour(hex: 0xADADAD)
+    /// Adjusted from `#8A8A8A`, which landed exactly on 4.50:1 — passing by nothing.
+    static let darkTextTertiary = Colour(hex: 0x909090)
 
-    static let darkAccent = Colour(hex: 0x7EA6FF)
-    // Lighter rather than darker: on a dark ground, pressing something brings it forward.
-    static let darkAccentHover = Colour(hex: 0x93B4FF)
-    static let darkAccentPressed = Colour(hex: 0xA8C3FF)
     static let darkPositive = Colour(hex: 0x5FD08A)
     static let darkWarning = Colour(hex: 0xE0A93B)
     static let darkCritical = Colour(hex: 0xFF8A80)
     static let darkInfo = Colour(hex: 0x7FC4F0)
 
-    static let darkBorder = Colour(hex: 0x3A3A40)
-    static let darkBorderStrong = Colour(hex: 0x8A8A93)
+    static let darkBorder = Colour(hex: 0x2E2E2E)
+    static let darkBorderStrong = Colour(hex: 0x8A8A8A)
 
-    // -- text that sits on the accent -------------------------------------------
+    // -- the accent -------------------------------------------------------------
     //
-    // Not the same in both schemes, and this is the sort of thing a palette gets wrong
-    // by assuming. White on the light accent is 5.72:1 and passes; white on the *dark*
-    // accent is 2.39:1 and fails badly, because the dark accent is a light blue. Black
-    // on it is 8.79:1. So the token is per-scheme, and the contrast test is what would
-    // catch anyone "simplifying" it back to white.
+    // Near-black in light, near-white in dark: the filled control is whatever the
+    // background is not. Both light references reach that conclusion — the primary action
+    // is `#080917`, not a brand colour — and both dark references answer it with a white
+    // pill.
+    //
+    // The reason is not fashion. A timetable is a dense grid where colour has to *mean*
+    // something: a violated constraint, a pinned session, a published scenario. Spending
+    // the loudest colour on chrome leaves nothing for meaning, and puts the accent in
+    // direct competition with the status roles sitting beside it.
+    static let lightAccent = Colour(hex: 0x14181F)
+    static let darkAccent = Colour(hex: 0xF2F2F2)
+
+    // Hover lifts toward the surface behind it, pressed sinks away from it — so a filled
+    // control reads as rising to meet the pointer and being pushed in. Real colours
+    // rather than an opacity on the accent, because a translucent control changes its
+    // contrast against whatever happens to be behind it while its label stays put.
+    static let lightAccentHover = Colour(hex: 0x232936)
+    static let lightAccentPressed = Colour(hex: 0x0A0C10)
+    static let darkAccentHover = Colour(hex: 0xFFFFFF)
+    static let darkAccentPressed = Colour(hex: 0xD4D4D4)
     static let onLightAccent = Colour(hex: 0xFFFFFF)
-    static let onDarkAccent = Colour(hex: 0x10131A)
+    static let onDarkAccent = Colour(hex: 0x17171A)
+
+    // -- focus ------------------------------------------------------------------
+    //
+    // Blue, and the one place blue survives. macOS uses it for focus and the references
+    // agree: in all twelve, blue appears only on the element that is actually selected or
+    // focused. Keeping the accent neutral is what leaves that signal legible.
+    static let lightFocus = Colour(hex: 0x2F6BD8)
+    static let darkFocus = Colour(hex: 0x7EA6FF)
 }

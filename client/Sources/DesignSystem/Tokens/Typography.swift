@@ -10,6 +10,11 @@ import SwiftUI
 /// The scale is deliberately short. A design system with fourteen text styles has, in
 /// practice, no text styles: nobody can hold the distinctions, so people pick by eye and
 /// the scale stops meaning anything.
+///
+/// `data` earns its place because this application is a timetable. Slot times, room codes,
+/// capacities and headcounts all sit in columns, and a proportional font makes `09:30` and
+/// `11:00` different widths — which is exactly the reference that sets an entire table in
+/// monospace with right-aligned figures.
 public enum Typography: String, CaseIterable, Sendable {
     /// A window or sheet title.
     case title
@@ -19,8 +24,12 @@ public enum Typography: String, CaseIterable, Sendable {
     case body
     /// Supporting detail: counts, timestamps, helper text under a field.
     case caption
-    /// Slot times, room codes, anything that must line up in a column.
-    case mono
+    /// **Figures, times, codes — anything that must line up in a column.**
+    ///
+    /// Named for the job rather than for the typeface, like every other role here. It is
+    /// monospaced because that is what makes `09:30` and `11:00` the same width, not
+    /// because monospace is a style.
+    case data
 
     public var font: Font {
         switch self {
@@ -30,7 +39,7 @@ public enum Typography: String, CaseIterable, Sendable {
         case .caption: .system(.caption)
         // Tabular figures, so a column of times does not shuffle sideways as the digits
         // change. This is the whole reason a monospaced role exists.
-        case .mono: .system(.body, design: .monospaced).monospacedDigit()
+        case .data: .system(.body, design: .monospaced).monospacedDigit()
         }
     }
 
@@ -42,7 +51,7 @@ public enum Typography: String, CaseIterable, Sendable {
         case .title: 0
         case .heading: 1
         case .body: 2
-        case .mono: 2
+        case .data: 2
         case .caption: 3
         }
     }
