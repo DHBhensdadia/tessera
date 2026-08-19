@@ -1,40 +1,5 @@
 import SwiftUI
 
-/// A titled block of content on a raised plane.
-///
-/// `Material.content`, which means it is never glass however new the operating system —
-/// Apple's own guidance keeps glass out of the content layer, and here that is a property
-/// of the role rather than a thing to remember.
-public struct Card<Content: View>: View {
-    private let title: String?
-    private let appearance: Appearance
-    private let content: Content
-
-    public init(title: String? = nil, appearance: Appearance, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.appearance = appearance
-        self.content = content()
-    }
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.snug.points) {
-            if let title {
-                SwiftUI.Text(title)
-                    .font(Typography.heading.font)
-                    .foregroundStyle(appearance.swiftUI(TextRole.primary))
-            }
-            content
-        }
-        .padding(Spacing.loose.points)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .surface(.content, appearance, radius: .container)
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.container.points, style: .continuous)
-                .strokeBorder(appearance.swiftUI(LineRole.border), lineWidth: 1)
-        )
-    }
-}
-
 /// One line in a list: a name, optional detail, optional trailing value.
 ///
 /// The shape almost every screen in this application is made of — rooms, instructors,
