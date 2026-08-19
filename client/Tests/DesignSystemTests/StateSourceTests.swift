@@ -49,7 +49,7 @@ struct StateSourceTests {
     /// `ControlState` existed, was enumerated, was proved distinct, and was never fed by
     /// anything. So this reads the source for the one API that can feed it.
     @Test func everyInteractiveComponentInstallsAHoverSource() throws {
-        for component in ["Control.swift", "Panels.swift"] {
+        for component in ["Control.swift", "Panels.swift", "DataTable.swift"] {
             let file = NoLiteralsTests.packageRoot
                 .appending(path: "Sources/DesignSystem/Components/\(component)")
             let source = try String(contentsOf: file, encoding: .utf8)

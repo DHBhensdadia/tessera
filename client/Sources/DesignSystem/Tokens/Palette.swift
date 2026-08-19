@@ -54,7 +54,15 @@ enum Palette {
     static let lightCritical = Colour(hex: 0xA81F16)
     static let lightInfo = Colour(hex: 0x14527E)
 
-    static let lightBorder = Colour(hex: 0xDCE2E7)
+    /// Strengthened in 3.1c from the sampled `#DCE2E7`, which reached **1.14:1** on the
+    /// window against the dark scheme's 1.28:1 — a hairline noticeably fainter in light
+    /// than in dark, and invisible where the sidebar is glass.
+    ///
+    /// That was tolerable while a rule was decoration. It stopped being tolerable the
+    /// moment rules became the only thing grouping anything (#112): a structural device
+    /// that works in one of two mandatory schemes is the same failure as the drop shadow
+    /// this phase removed, wearing different clothes.
+    static let lightBorder = Colour(hex: 0xC9D2DA)
     /// Adjusted from `#8A939B`, which reached only 2.50:1 against `sunken` — a control
     /// outline nobody could locate. WCAG asks 3:1 for a non-text boundary.
     static let lightBorderStrong = Colour(hex: 0x767F87)

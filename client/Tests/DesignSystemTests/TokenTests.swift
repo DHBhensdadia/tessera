@@ -293,4 +293,35 @@ struct PaletteCharacterTests {
     /// The floor is deliberately below WCAG's 3:1: a separator between two rows of one
     /// list is decoration and is exempt (that is what `border` and `borderStrong` are two
     /// roles *for*). What it may not be is absent.
+
+    /// A rule is visible in both schemes, and to a comparable degree.
+    ///
+    /// The device carrying every group boundary in the application, so it gets a floor and
+    /// a symmetry check rather than being left to the eye. Written after the light rule
+    /// was measured at 1.14:1 against the dark scheme's 1.28:1 — a difference invisible in
+    /// a swatch and obvious in a window, where the light sidebar's rule simply was not
+    /// there.
+    ///
+    /// The floor is deliberately below WCAG's 3:1: a separator between two rows of one
+    /// list is decoration and is exempt (that is what `border` and `borderStrong` are two
+    /// roles *for*). What it may not be is absent.
+    @Test func aRuleIsVisibleInBothSchemes() {
+        var strengths: [Appearance.Scheme: Double] = [:]
+        for scheme in Appearance.Scheme.allCases {
+            let appearance = Appearance(scheme: scheme)
+            let strength = appearance.colour(LineRole.border)
+                .contrast(with: appearance.colour(SurfaceRole.base))
+            strengths[scheme] = strength
+            #expect(strength >= 1.25,
+                    "a rule is \(String(format: "%.2f", strength)):1 in \(scheme.rawValue) — barely there")
+        }
+
+        let light = strengths[.light] ?? 0
+        let dark = strengths[.dark] ?? 0
+        #expect(max(light, dark) / min(light, dark) <= 1.2,
+                "the rule is much stronger in one scheme than the other: light \(light), dark \(dark)")
+    }
+
+    /// Inline radii stay small and the window radius stays large. Stated as a relation
+    /// rather than as four numbers, so it survives a deliberate re-tune of the values.
 }

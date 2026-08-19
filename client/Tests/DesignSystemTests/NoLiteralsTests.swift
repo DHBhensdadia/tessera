@@ -136,6 +136,11 @@ struct NamingTests {
     static let reserved = [
         "Text", "Button", "Image", "Color", "Font", "Label", "View", "Shape",
         "Divider", "Spacer", "Group", "List", "Section", "Toggle", "Picker",
+        // Added in 3.1c. SwiftUI has had `Table` since Monterey and the list did not
+        // know — which came within one commit of mattering, because the table this phase
+        // builds wanted exactly that name. A reserved list is only as good as its last
+        // reading of the framework.
+        "Table", "Form", "Grid", "Menu", "Slider", "Stepper", "Link", "Gauge",
     ]
 
     @Test func noPublicTypeShadowsSwiftUI() throws {
