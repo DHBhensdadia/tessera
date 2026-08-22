@@ -90,6 +90,7 @@ struct ProjectWindow: View {
             await applySetupIfNew()
             if case .running(let running) = engine.state {
                 await summary.load(from: EngineAPI(port: running.port, token: running.token))
+                LaunchClock.shared.noteFirstUsableWindow()
             }
         }
         // Not `.onDisappear` — see `WindowLifetime`. A view leaving a hierarchy is not a
