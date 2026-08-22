@@ -38,12 +38,26 @@ class NotAProjectError(Exception):
     """The path is a directory, but not one this application wrote."""
 
 
+class ProjectMissingError(Exception):
+    """A project that was supposed to already exist is not there.
+
+    Raised only when the caller says it is *reopening* something. Creating what is
+    missing is right for a new project and quietly destructive for a reopen: a stale
+    entry in Recent Projects, or a window restored by macOS after the file was moved to
+    another disk, would otherwise produce an empty project wearing a familiar name — and
+    the person who notices is someone who believes they have lost a semester's work.
+
+    The caller knows the intent and this module cannot infer it, which is why it is a
+    parameter rather than a heuristic.
+    """
+
+
 def database_path(path: Path) -> Path:
     """Where the SQLite database lives inside a package."""
     return path / DATABASE_NAME
 
 
-def resolve(path: Path) -> Path:
+def resolve(path: Path, *, must_exist: bool = False) -> Path:
     """Turn what the user named into the database to open.
 
     Handles all four states a path can be in, because every one of them is reachable:
@@ -53,15 +67,31 @@ def resolve(path: Path) -> Path:
     Converting rather than refusing is deliberate. The alternative — telling someone
     their existing project is the wrong shape and asking them to do something about it —
     is a migration prompt for a change they neither asked for nor can act on.
+
+    `must_exist` says the caller is reopening rather than creating. It turns the two
+    states that would otherwise be *filled in* — a path that is not there, and an empty
+    directory — into refusals. See `ProjectMissingError` for why that distinction is
+    worth a parameter.
     """
     if path.is_dir():
         inside = database_path(path)
-        if not inside.exists() and any(path.iterdir()):
-            raise NotAProjectError(f"{path} is a directory but does not contain {DATABASE_NAME}")
+        if not inside.exists():
+            if any(path.iterdir()):
+                raise NotAProjectError(
+                    f"{path} is a directory but does not contain {DATABASE_NAME}"
+                )
+            # An empty directory is indistinguishable from a project whose contents were
+            # deleted, and treating it as a blank canvas is the same trap by another
+            # route: the folder is still called "Autumn 2026" and it still opens.
+            if must_exist:
+                raise ProjectMissingError(f"{path} is empty — there is no project here")
         return inside
 
     if path.exists():
         return _convert(path)
+
+    if must_exist:
+        raise ProjectMissingError(f"{path} does not exist")
 
     path.mkdir(parents=True, exist_ok=True)
     return database_path(path)

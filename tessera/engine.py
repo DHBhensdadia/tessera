@@ -111,11 +111,19 @@ def migrate(project_path: Path) -> None:
     command.upgrade(config, "head")
 
 
-def serve(project_path: Path, *, host: str = "127.0.0.1", port: int = 0) -> None:
+#: The path named a project that is not there. The client offers to forget it.
+EXIT_PROJECT_MISSING = 3
+#: The path exists and holds something that is not one of ours. The client says so.
+EXIT_NOT_A_PROJECT = 4
+
+
+def serve(
+    project_path: Path, *, host: str = "127.0.0.1", port: int = 0, must_exist: bool = False
+) -> None:
     project_path.parent.mkdir(parents=True, exist_ok=True)
     # `--project` names the project; where the database sits inside it is this module's
     # business and nobody else's. A bare file from v0.1.0 becomes a package here.
-    database = project.resolve(project_path)
+    database = project.resolve(project_path, must_exist=must_exist)
     migrate(database)
 
     # Bind before starting uvicorn, so the chosen port is knowable in time to be
@@ -164,6 +172,13 @@ def main() -> None:
         default=0,
         help="0 lets the kernel choose, which is what the desktop application wants.",
     )
+    parser.add_argument(
+        "--must-exist",
+        action="store_true",
+        help="Refuse to create anything. What the client passes when it is reopening a "
+        "project rather than making one, so a stale entry in Recent Projects fails "
+        "loudly instead of quietly producing an empty project with a familiar name.",
+    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
 
@@ -173,7 +188,23 @@ def main() -> None:
         # on a network interface, and this is the only way it gets there.
         logger.warning("binding_beyond_loopback", host=args.host)
 
-    serve(args.project or default_project(), host=args.host, port=args.port)
+    # Distinct exit codes rather than one failure with a message. The client has to tell
+    # "this project is gone, offer to forget it" apart from "the engine broke", and
+    # matching on the text of an error is a coupling that survives exactly until somebody
+    # improves the wording.
+    try:
+        serve(
+            args.project or default_project(),
+            host=args.host,
+            port=args.port,
+            must_exist=args.must_exist,
+        )
+    except project.ProjectMissingError as missing:
+        logger.error("project_missing", path=str(args.project), detail=str(missing))
+        raise SystemExit(EXIT_PROJECT_MISSING) from missing
+    except project.NotAProjectError as wrong:
+        logger.error("not_a_project", path=str(args.project), detail=str(wrong))
+        raise SystemExit(EXIT_NOT_A_PROJECT) from wrong
 
 
 if __name__ == "__main__":

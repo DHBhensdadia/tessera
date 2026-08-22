@@ -191,3 +191,61 @@ class TestSavingACopy:
             assert rows_in(project.database_path(written))[-1] == "and edited"
         finally:
             engine.dispose()
+
+
+class TestReopening:
+    """That reopening something that is gone fails instead of inventing it.
+
+    The whole of this class exists for one trap. `resolve` creates what is missing,
+    which is right when the user has just chosen a filename and destructive when the
+    path came from Recent Projects or from macOS restoring a window: the folder is still
+    called "Autumn 2026", it still opens, and it is empty.
+
+    It is one boolean, it is invisible when wrong, and the person who finds out is
+    someone who thinks they have lost a semester of work. So it is tested before it has
+    a button.
+    """
+
+    def test_a_path_that_is_not_there_is_refused(self, tmp_path: Path) -> None:
+        with pytest.raises(project.ProjectMissingError):
+            project.resolve(tmp_path / "Gone.tessera", must_exist=True)
+
+    def test_and_nothing_is_created_on_the_way_out(self, tmp_path: Path) -> None:
+        gone = tmp_path / "Gone.tessera"
+        with pytest.raises(project.ProjectMissingError):
+            project.resolve(gone, must_exist=True)
+        assert not gone.exists(), "refusing to open it still left something behind"
+
+    def test_an_empty_directory_is_refused_too(self, tmp_path: Path) -> None:
+        """The same trap by another route.
+
+        A project whose contents were deleted leaves the package directory behind. It is
+        empty, so the not-a-project check passes it, and without this it would be filled
+        in with a fresh database under the original name.
+        """
+        emptied = tmp_path / "Emptied.tessera"
+        emptied.mkdir()
+        with pytest.raises(project.ProjectMissingError):
+            project.resolve(emptied, must_exist=True)
+
+    def test_a_real_project_still_opens(self, tmp_path: Path) -> None:
+        package = tmp_path / "Real.tessera"
+        package.mkdir()
+        bare_database(project.database_path(package))
+        assert project.resolve(package, must_exist=True) == project.database_path(package)
+
+    def test_a_v010_file_still_converts(self, tmp_path: Path) -> None:
+        """Reopening is not a reason to refuse the one-time upgrade.
+
+        A bare `v0.1.0` database is a project that exists — it is simply the older shape.
+        Refusing it under `must_exist` would break exactly the users the conversion path
+        was written for.
+        """
+        bare = bare_database(tmp_path / "Old.tessera")
+        database = project.resolve(bare, must_exist=True)
+        assert rows_in(database) == ["row 0", "row 1", "row 2"]
+
+    def test_creating_is_unaffected(self, tmp_path: Path) -> None:
+        fresh = tmp_path / "New.tessera"
+        assert project.resolve(fresh) == project.database_path(fresh)
+        assert fresh.is_dir()
