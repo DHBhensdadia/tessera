@@ -227,12 +227,26 @@ public struct Field: View {
                 .font(Typography.caption.font)
                 .foregroundStyle(appearance.swiftUI(TextRole.secondary))
 
-            TextField(placeholder, text: $value)
+            TextField("", text: $value)
                 .textFieldStyle(.plain)
                 .font(Typography.body.font)
                 .foregroundStyle(appearance.swiftUI(TextRole.primary))
                 .padding(.horizontal, Spacing.snug.points)
                 .padding(.vertical, Spacing.snug.points)
+                // The placeholder is drawn rather than handed to `TextField`, because
+                // `foregroundStyle` on the field styles the placeholder too: an example
+                // value came out at full strength, identical to something the user had
+                // typed. On a three-step sheet that reads as "I filled this in" while the
+                // Continue button stays disabled, and nothing on screen explains why.
+                .overlay(alignment: .leading) {
+                    if value.isEmpty && !placeholder.isEmpty {
+                        SwiftUI.Text(placeholder)
+                            .font(Typography.body.font)
+                            .foregroundStyle(appearance.swiftUI(Field.placeholderRole))
+                            .padding(.horizontal, Spacing.snug.points)
+                            .allowsHitTesting(false)
+                    }
+                }
                 .background(appearance.swiftUI(SurfaceRole.well), in: shape)
                 .overlay(shape.strokeBorder(appearance.swiftUI(outline), lineWidth: problem == nil ? 1 : 2))
                 .focused($isFocused)
@@ -249,6 +263,12 @@ public struct Field: View {
         .animation(Motion.control.animation(appearance), value: problem)
         .animation(Motion.control.animation(appearance), value: state)
     }
+
+    /// An example is not an answer, and has to look like one.
+    ///
+    /// Not private, for the same reason the button's role choices are not: it is a
+    /// decision, and a decision with no test is one that gets undone by accident.
+    static let placeholderRole = TextRole.tertiary
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: Radius.control.points, style: .continuous)

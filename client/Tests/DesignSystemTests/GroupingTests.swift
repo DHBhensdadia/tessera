@@ -69,3 +69,34 @@ struct GroupingTests {
         #expect(offences.isEmpty, "the card is back:\n\(offences.joined(separator: "\n"))")
     }
 }
+
+/// That an example value cannot be mistaken for an answer.
+///
+/// The first render of the three-step project sheet showed "Sardar Patel University" in
+/// the institution field at full strength, with Continue disabled and nothing on screen
+/// explaining why — because `foregroundStyle` on a `TextField` styles its placeholder too.
+struct FieldPlaceholderTests {
+    @Test func aPlaceholderIsQuieterThanAnAnswer() {
+        #expect(Field.placeholderRole != .primary)
+        for scheme in Appearance.Scheme.allCases {
+            let appearance = Appearance(scheme: scheme)
+            let placeholder = appearance.colour(Field.placeholderRole)
+            let typed = appearance.colour(TextRole.primary)
+            #expect(
+                placeholder.contrast(with: appearance.colour(SurfaceRole.well))
+                    < typed.contrast(with: appearance.colour(SurfaceRole.well)),
+                "a placeholder is as loud as a real answer in \(scheme.rawValue)"
+            )
+        }
+    }
+
+    /// Quieter, but still readable — it is the only description of what the field wants.
+    @Test func andIsStillLegible() {
+        for scheme in Appearance.Scheme.allCases {
+            let appearance = Appearance(scheme: scheme)
+            let ratio = appearance.colour(Field.placeholderRole)
+                .contrast(with: appearance.colour(SurfaceRole.well))
+            #expect(ratio >= Field.placeholderRole.minimumContrast)
+        }
+    }
+}
