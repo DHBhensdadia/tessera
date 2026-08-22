@@ -101,6 +101,10 @@ struct StatusView: View {
         case .starting(let step): step
         case .running: "Engine connected"
         case .failed(let error): error.description
+        // `ProjectWindow` shows this state itself, because it is about the user's file
+        // rather than about the engine. Answered here anyway: a switch that cannot be
+        // exhaustive without a default is one that stops warning when a case is added.
+        case .unopenable(let problem): problem.message
         }
     }
 
@@ -108,7 +112,7 @@ struct StatusView: View {
         switch engine.state {
         case .idle, .starting: "circle.dotted"
         case .running: "checkmark.circle.fill"
-        case .failed: "exclamationmark.triangle.fill"
+        case .failed, .unopenable: "exclamationmark.triangle.fill"
         }
     }
 
@@ -116,7 +120,7 @@ struct StatusView: View {
         switch engine.state {
         case .idle, .starting: .secondary
         case .running: .green
-        case .failed: .orange
+        case .failed, .unopenable: .orange
         }
     }
 }

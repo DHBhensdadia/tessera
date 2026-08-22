@@ -38,5 +38,10 @@ let package = Package(
             dependencies: ["DesignSystem"],
             path: "Tests/DesignSystemTests"
         ),
+        .testTarget(
+            name: "TesseraTests",
+            dependencies: ["Tessera"],
+            path: "Tests/TesseraTests"
+        ),
     ]
 )

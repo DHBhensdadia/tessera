@@ -2,11 +2,22 @@ import Foundation
 import Observation
 import os
 
-/// Launches the bundled engine and keeps the application's view of it current.
+/// Launches the bundled engine for **one project** and keeps the window's view of it
+/// current.
 ///
 /// The engine is a frozen Python process shipped inside the app bundle. It binds a
 /// loopback port the kernel chooses and writes one JSON line to stdout before serving
 /// anything, so the port and token are discovered rather than agreed in advance.
+///
+/// **One engine serves one project for its whole life**, which is a rule the engine set
+/// in 2.9 rather than a convenience here: an endpoint that swapped the project underneath
+/// a running server would make the engine's identity mutable, invalidate every open
+/// session, and give the token a second meaning. So a controller is owned by a project
+/// window, created when it opens and stopped when it closes — not by the application.
+///
+/// The cost is stated rather than engineered around: *n* open projects means *n* Python
+/// processes at roughly 40–60 MB each. Three or four is realistic; the alternative is a
+/// multi-project engine, which is precisely what 2.9 argued against.
 ///
 /// Every failure path here ends in a message naming what went wrong. An engine that
 /// cannot start must never leave the interface on a spinner.
@@ -18,6 +29,10 @@ final class EngineController {
         case starting(String)
         case running(Engine)
         case failed(EngineError)
+        /// The project could not be opened, and it is the user's file rather than a bug.
+        /// Kept apart from `failed` because the sentence and the offer are different: one
+        /// of these is something to report, the other is something to fix.
+        case unopenable(ProjectProblem)
 
         var isPending: Bool {
             if case .starting = self { return true }
@@ -48,13 +63,36 @@ final class EngineController {
         let project: String
     }
 
+    let location: ProjectLocation
     private(set) var state: State = .idle
-    private var process: Process?
+    private var hasLaunched = false
+
+    /// Held outside the actor so that a controller dropped without `stop()` — a path
+    /// nobody intends — still takes its subprocess with it. A Python process outliving
+    /// the window it belonged to is not a leak the user can see or clean up.
+    private let launched = LaunchedProcess()
+
+    init(location: ProjectLocation) {
+        self.location = location
+    }
 
     // MARK: - Lifecycle
 
+    /// Launch the engine, at most once.
+    ///
+    /// The guard is the whole point. `start()` is called from `.task`, and SwiftUI will
+    /// run that more than once for what the user thinks of as one window — a second
+    /// project opening, a re-evaluation, a restored scene settling. Without it, two calls
+    /// both found `state == .idle`, both got past `stop()` with nothing to stop, and both
+    /// launched: **two projects produced four engines**, one of each pair orphaned the
+    /// moment the second overwrote the reference to the first.
+    ///
+    /// Set before the first `await`, so there is no window between the check and the
+    /// claim — on the main actor that makes it atomic without a lock.
     func start() async {
-        stop()
+        guard !hasLaunched else { return }
+        hasLaunched = true
+
         state = .starting("Locating engine…")
 
         guard let executable = Self.locateEngine() else {
@@ -77,15 +115,48 @@ final class EngineController {
                 )
             )
         } catch let error as EngineError {
-            state = .failed(error)
+            // An exit status the engine defines for a file the user moved or replaced is
+            // not an engine failure, and must not be reported as one.
+            if case .exited(let status, _) = error,
+               let problem = ProjectProblem(exitStatus: status, location: location) {
+                state = .unopenable(problem)
+            } else {
+                state = .failed(error)
+            }
         } catch {
             state = .failed(.unexpected(String(describing: error)))
         }
     }
 
+    /// The engine is fine and the project it opened could not be set up.
+    ///
+    /// Its own state rather than a variant of `failed`, because the engine did start: the
+    /// window can still be used, and the thing that went wrong is one step of creation.
+    func reportSetupFailure(_ detail: String) {
+        state = .failed(.unexpected("The project was created but could not be set up. \(detail)"))
+    }
+
     func stop() {
-        process?.terminate()
-        process = nil
+        hasLaunched = false
+        launched.terminate()
+    }
+
+    /// What the engine is told, given what it is being asked to open.
+    ///
+    /// A static function rather than three lines inside `launch` so it can be tested: the
+    /// intent crossing this boundary is the only thing standing between "this project has
+    /// moved" and an empty project wearing its name, and it is exactly the kind of thing
+    /// that is fixed once and quietly reverted later.
+    ///
+    /// The path is passed unescaped. `URL.path` percent-encodes, and a Mac path with a
+    /// space in it — which is most of them — would arrive at the engine as a literal
+    /// `%20` and open a project nobody has.
+    nonisolated static func arguments(for location: ProjectLocation) -> [String] {
+        var arguments = ["--project", location.url.path(percentEncoded: false)]
+        if location.intent == .reopen {
+            arguments.append("--must-exist")
+        }
+        return arguments
     }
 
     private static func locateEngine() -> URL? {
@@ -118,11 +189,12 @@ final class EngineController {
     private func launch(_ executable: URL) async throws -> Handshake {
         let process = Process()
         process.executableURL = executable
+        process.arguments = Self.arguments(for: location)
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
-        self.process = process
+        launched.hold(process)
 
         let outHandle = stdout.fileHandleForReading
         let errHandle = stderr.fileHandleForReading
@@ -214,6 +286,28 @@ final class EngineController {
         }
         throw EngineError.neverHealthy(lastError)
     }
+}
+
+/// A subprocess that terminates itself if it is ever dropped.
+///
+/// Not an over-abstraction: `deinit` on a `@MainActor` class cannot touch isolated state,
+/// and the one thing that must survive every path out of this file is that the engine dies
+/// with the thing that started it.
+private final class LaunchedProcess: @unchecked Sendable {
+    private let lock = OSAllocatedUnfairLock(initialState: Process?.none)
+
+    func hold(_ process: Process) {
+        lock.withLock { $0 = process }
+    }
+
+    func terminate() {
+        lock.withLock { held -> Process? in
+            defer { held = nil }
+            return held
+        }?.terminate()
+    }
+
+    deinit { terminate() }
 }
 
 enum EngineError: Error, CustomStringConvertible {
