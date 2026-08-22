@@ -277,3 +277,70 @@ struct TimeGridSetupTests {
         #expect(!ProjectChooser.suggestedName(for: ProjectSetup()).isEmpty)
     }
 }
+
+/// That the navigator and the checklist cannot disagree with each other, or fall behind
+/// the screens 3.4 adds.
+struct DestinationTests {
+    /// Every destination has a *written* empty state. Generated ones ("No rooms") say the
+    /// noun back and nothing else, which is the blank page they were supposed to replace.
+    @Test func everyDestinationSaysSomethingUsefulWhenEmpty() {
+        for destination in Destination.allCases {
+            let empty = destination.emptyState
+            #expect(!empty.title.isEmpty)
+            #expect(
+                empty.explanation.split(separator: " ").count >= 6,
+                "\(destination.rawValue) has an explanation too short to explain anything"
+            )
+        }
+    }
+
+    /// Overview stands alone; everything else is filed. A destination with no section that
+    /// is not Overview would silently join the top group.
+    @Test func onlyOverviewStandsOutsideASection() {
+        for destination in Destination.allCases where destination != .overview {
+            #expect(destination.section != nil, "\(destination.rawValue) has no heading")
+        }
+    }
+
+    /// Restoration goes through the raw value, so a renamed case silently resets everybody's
+    /// window to Overview. Pinned so the rename has to be deliberate.
+    @Test func theStoredNamesAreStable() {
+        #expect(
+            Set(Destination.allCases.map(\.rawValue))
+                == ["overview", "rooms", "instructors", "courses", "groups", "constraints", "timetables"]
+        )
+    }
+
+    @Test func anUnknownStoredNameFallsBackRatherThanCrashing() {
+        #expect(Destination(rawValue: "sessions-by-fortnight") == nil)
+    }
+
+    /// Counts belong to collections. Overview is a summary and Timetables counts scenarios,
+    /// which is 5.x's business.
+    @Test func onlyCollectionsCarryACount() {
+        #expect(Destination.overview.countsEntity == nil)
+        #expect(Destination.timetables.countsEntity == nil)
+        #expect(Destination.rooms.countsEntity == .rooms)
+    }
+}
+
+/// That "we have not asked yet" never renders as "there are none".
+struct ChecklistTests {
+    @Test func anUnknownCountIsNotAnEmptyOne() {
+        #expect(ChecklistStep(.rooms, nil, verb: "Add rooms").status == .unknown)
+        #expect(ChecklistStep(.rooms, 0, verb: "Add rooms").status == .empty)
+        #expect(ChecklistStep(.rooms, 12, verb: "Add rooms").status == .done)
+    }
+
+    /// A checklist that briefly claims you have no rooms is one people learn to distrust.
+    @Test func andItDoesNotLookFinishedEither() {
+        #expect(ChecklistStep(.rooms, nil, verb: "Add rooms").status != .done)
+    }
+
+    /// Constraints are seeded with defaults when a term is created (2.8), so the honest
+    /// word is "review" and the honest state is satisfied.
+    @Test func seededRowsStartSatisfied() {
+        #expect(ChecklistStep(.constraints, 0, verb: "Review", seeded: true).status == .done)
+        #expect(ChecklistStep(.constraints, 14, verb: "Review", seeded: true).detail == "Using defaults")
+    }
+}

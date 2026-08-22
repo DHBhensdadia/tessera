@@ -92,7 +92,62 @@ struct EngineAPI: Sendable {
         )
     }
 
+    /// The terms this project has, for the toolbar's switcher.
+    func listTerms() async throws -> [Term] {
+        try await get("terms", as: Page<Term>.self).items
+    }
+
+    /// How many of something there are, without fetching them.
+    ///
+    /// Every list endpoint answers with a `Page` carrying a `total`, so a count is one
+    /// request with `limit=1` rather than a download of every row to call `.count` on.
+    /// That matters at the scale P1 plans for — five thousand sessions, a thousand
+    /// instructors — where the difference is a sidebar that appears and one that arrives.
+    func count(path: String) async throws -> Int {
+        try await get(path, query: [URLQueryItem(name: "limit", value: "1")], as: Count.self).total
+    }
+
+    /// A page of results, as the engine spells it.
+    struct Page<Item: Decodable & Sendable>: Decodable, Sendable {
+        let items: [Item]
+        let total: Int
+    }
+
+    /// The same page, with the rows ignored.
+    ///
+    /// A separate type rather than `Page<Something>`, because decoding a page *requires*
+    /// decoding its items: counting rooms through `Page<Term>` asks the decoder to read a
+    /// room as a term, which throws, and `try?` turns that into a count that never arrives.
+    /// Every number in the sidebar and the checklist rendered as "…" — visibly wrong only
+    /// because "not asked yet" is drawn differently from zero.
+    struct Count: Decodable, Sendable {
+        let total: Int
+    }
+
     // MARK: - Plumbing
+
+    private func get<Response: Decodable>(
+        _ path: String,
+        query: [URLQueryItem] = [],
+        as type: Response.Type = Response.self
+    ) async throws -> Response {
+        var components = URLComponents(
+            url: base.appending(path: path), resolvingAgainstBaseURL: false
+        )!
+        if !query.isEmpty { components.queryItems = query }
+
+        var request = URLRequest(url: components.url!)
+        request.setValue(token, forHTTPHeaderField: "x-tessera-token")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            throw APIError(status: status, body: String(decoding: data, as: UTF8.self))
+        }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(Response.self, from: data)
+    }
 
     private func post<Response: Decodable>(
         _ path: String,

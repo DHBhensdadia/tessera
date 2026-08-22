@@ -37,6 +37,30 @@ struct ProjectWindow: View {
     /// `@SceneStorage` attractive — two projects each remember their own place, which is
     /// what anybody with a draft and a published term open side by side expects — and adds
     /// the one it was chosen for and did not have.
+    @AppStorage private var storedDestination: String
+    @AppStorage private var isSidebarVisible: Bool
+
+    @State private var summary = ProjectSummary()
+
+    init(location: ProjectLocation) {
+        self.location = location
+        let key = location.url.path(percentEncoded: false)
+        _storedDestination = AppStorage(
+            wrappedValue: Destination.overview.rawValue, "destination:\(key)"
+        )
+        // Decision #27: hidden-by-default is the right end state, but a project opened for
+        // the first time shows the sidebar, because an empty window with a hidden navigator
+        // is disorienting to somebody who has never seen the application.
+        _isSidebarVisible = AppStorage(wrappedValue: true, "sidebar:\(key)")
+    }
+
+    private var destination: Binding<Destination> {
+        Binding(
+            get: { Destination(rawValue: storedDestination) ?? .overview },
+            set: { storedDestination = $0.rawValue }
+        )
+    }
+
     private var engine: EngineController { registry.controller(for: location) }
 
     private var appearance: Appearance {
@@ -45,25 +69,103 @@ struct ProjectWindow: View {
 
     var body: some View {
         Group {
-            if case .unopenable(let problem) = engine.state {
+            switch engine.state {
+            case .unopenable(let problem):
                 UnopenableProject(problem: problem, appearance: appearance)
-            } else {
+            case .failed:
                 StatusView(engine: engine)
+            case .running:
+                shell
+            case .idle, .starting:
+                StartingUp(engine: engine, appearance: appearance)
             }
         }
         .frame(minWidth: 860, minHeight: 560)
         .navigationTitle(location.name)
         // The path is what makes the proxy icon and the title-bar menu work, and what
-        // tells the Finder which file this window is showing. It is also how the
-        // application answers "is this project already open" — see `EngineRegistry`.
+        // tells the Finder which file this window is showing.
         .navigationDocument(location.url)
         .task(id: location) {
             await engine.start()
             await applySetupIfNew()
+            if case .running(let running) = engine.state {
+                await summary.load(from: EngineAPI(port: running.port, token: running.token))
+            }
         }
         // Not `.onDisappear` — see `WindowLifetime`. A view leaving a hierarchy is not a
         // window closing, and treating it as one leaked engines.
         .onWindowClose { registry.release(location) }
+    }
+
+    /// The shell: chrome around a destination.
+    ///
+    /// The sidebar is glass and the content pane is opaque — the split every reference
+    /// makes, and the one that keeps the boundary between them a *material* change rather
+    /// than a hairline that vanishes in light mode (#112).
+    private var shell: some View {
+        HStack(spacing: 0) {
+            if isSidebarVisible {
+                ProjectSidebar(
+                    selection: destination,
+                    summary: summary,
+                    appearance: appearance
+                )
+                .frame(width: 232)
+                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+            content
+        }
+        .windowGlass(appearance)
+        .animation(Motion.panel.animation(appearance), value: isSidebarVisible)
+        .toolbar { toolbar }
+    }
+
+    private var content: some View {
+        ScrollView {
+            Group {
+                if destination.wrappedValue == .overview {
+                    Overview(summary: summary, appearance: appearance) { destination.wrappedValue = $0 }
+                } else {
+                    DestinationPlaceholder(
+                        destination: destination.wrappedValue,
+                        appearance: appearance
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appearance.swiftUI(SurfaceRole.base))
+        .overlay(alignment: .leading) {
+            if isSidebarVisible {
+                Rectangle()
+                    .fill(appearance.swiftUI(LineRole.border))
+                    .frame(width: 1)
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button {
+                isSidebarVisible.toggle()
+            } label: {
+                Image(systemName: "sidebar.left")
+            }
+            .help("Hide or show the sidebar")
+            .keyboardShortcut("0", modifiers: .command)
+        }
+        ToolbarItem(placement: .principal) {
+            TermSwitcher(summary: summary, appearance: appearance)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            // Disabled rather than absent: the solver is Stage 5, and a toolbar that gains
+            // its most important button late is a layout somebody has to redesign.
+            Button("Generate") {}
+                .disabled(true)
+                .help("Generating a timetable arrives with the solver")
+        }
     }
 
     /// Fill a brand-new project with what the sheet collected.
