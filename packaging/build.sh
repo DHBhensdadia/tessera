@@ -49,6 +49,39 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key>     <string>14.0</string>
     <key>NSHighResolutionCapable</key>    <true/>
     <key>LSApplicationCategoryType</key>  <string>public.app-category.productivity</string>
+
+    <!-- What makes a .tessera one item in the Finder rather than a folder.
+         Decision #25 said a project is a real file you can email, archive and
+         double-click; without these two declarations that has been true on paper and
+         false in every build since Stage 0. `com.apple.package` is the conformance that
+         tells the Finder to present the directory as a document. -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>          <string>com.dhbhensdadia.tessera.project</string>
+            <key>UTTypeDescription</key>         <string>Tessera Project</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>com.apple.package</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>tessera</string></array>
+            </dict>
+        </dict>
+    </array>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>          <string>Tessera Project</string>
+            <key>CFBundleTypeRole</key>          <string>Editor</string>
+            <key>LSHandlerRank</key>             <string>Owner</string>
+            <key>LSTypeIsPackage</key>           <true/>
+            <key>LSItemContentTypes</key>
+            <array><string>com.dhbhensdadia.tessera.project</string></array>
+        </dict>
+    </array>
 </dict>
 </plist>
 PLIST
