@@ -19,6 +19,53 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
+        if CommandLine.arguments.contains("--capture") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Self.pinToEverySpace() }
+        }
+        if let seconds = Self.closeAfter {
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { Self.closeOneProject() }
+        }
+    }
+
+    /// `--capture` pins every window to all Spaces, so a script can photograph one.
+    ///
+    /// A process launched from a terminal opens its windows on the Space it *started* on,
+    /// which on a machine using full-screen apps is routinely not the one in front. The
+    /// window is then genuinely open, absent from the on-screen window list, and impossible
+    /// to capture — which looks exactly like an application that failed to start. The
+    /// gallery learned this in 3.1b; the application needs it for the same reason, and will
+    /// need it more once 3.4 has screens worth looking at.
+    ///
+    /// Behind a flag because a window that follows you between desktops is wrong for
+    /// ordinary use.
+    /// `--close-after <seconds>` closes one project window on a timer.
+    ///
+    /// Exists to verify the one thing about engine teardown that has no other headless
+    /// route: that closing a window actually stops its engine. `performClose` is precisely
+    /// what ⌘W sends, so the `NSWindow.willCloseNotification` this exercises is the same
+    /// one a person triggers — the alternative was to assume it, and this phase has already
+    /// found four lifecycle faults that looked correct until they were measured.
+    static var closeAfter: Double? {
+        guard let index = CommandLine.arguments.firstIndex(of: "--close-after"),
+              index + 1 < CommandLine.arguments.count
+        else { return nil }
+        return Double(CommandLine.arguments[index + 1])
+    }
+
+    @MainActor
+    private static func closeOneProject() {
+        // A project window is one carrying a represented URL; the welcome window has none.
+        NSApplication.shared.windows
+            .first { $0.representedURL != nil && $0.isVisible }?
+            .performClose(nil)
+    }
+
+    @MainActor
+    private static func pinToEverySpace() {
+        for window in NSApplication.shared.windows {
+            window.collectionBehavior.insert(.canJoinAllSpaces)
+            window.orderFrontRegardless()
+        }
     }
 
     /// Closing the last project window leaves the welcome window, not an empty Dock icon
