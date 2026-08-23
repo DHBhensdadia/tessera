@@ -12,9 +12,12 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request, Response
+from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute
 from sqlalchemy import Engine
 
 import tessera
@@ -36,6 +39,43 @@ from tessera.api.routers import (
 from tessera.repository.database import create_project_engine, session_factory
 
 logger = structlog.get_logger(__name__)
+
+
+def operation_id(route: APIRoute) -> str:
+    """The name this endpoint carries in the OpenAPI document.
+
+    FastAPI's default appends the path and the method, producing
+    `list_rooms_api_v1_rooms_get` — which is unique, unreadable, and, worse, puts the URL
+    inside the name. Anything generating a client from this document then hands every
+    caller a method with the route baked into it, so moving a route renames a method at
+    every call site. A typed client exists to insulate callers from the wire; a name like
+    that does the opposite.
+
+    The function name alone is enough here: all 109 operations have distinct names, which
+    is checked by a test rather than hoped for. The path is what FastAPI adds to guarantee
+    uniqueness, and dropping it is only safe while that holds.
+    """
+    head, *rest = route.name.split("_")
+    return head + "".join(word.capitalize() for word in rest)
+
+
+#: How the engine expects to be given its per-launch token.
+#:
+#: Declared so the published document says so. Authentication is enforced by middleware
+#: rather than by a dependency, and FastAPI can only describe what it is told about — so
+#: without this the contract advertises an API that needs no credentials and refuses every
+#: request that arrives without one.
+TOKEN_SCHEME = {
+    "TesseraToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-tessera-token",
+        "description": (
+            "Issued once per engine launch and printed on stdout with the port. "
+            "The console additionally accepts it as a cookie."
+        ),
+    }
+}
 
 DESCRIPTION = """
 The Tessera engine: timetable data, constraint solving, and export.
@@ -101,7 +141,31 @@ def create_app(
         docs_url="/docs",
         redoc_url=None,
         openapi_url="/openapi.json",
+        generate_unique_id_function=operation_id,
     )
+
+    def describe_authentication() -> dict[str, Any]:
+        """Add the security scheme FastAPI cannot infer, once, and cache it.
+
+        Enforcement lives in middleware, which the framework does not inspect, so the
+        document has to be told. Applied globally rather than per route because the
+        middleware is global — the two open paths are the interactive docs, which are not
+        part of the API surface a client generates from.
+        """
+        if app.openapi_schema is not None:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        schema.setdefault("components", {})["securitySchemes"] = TOKEN_SCHEME
+        schema["security"] = [{"TesseraToken": []}]
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = describe_authentication  # type: ignore[method-assign]
 
     @app.middleware("http")
     async def request_context(

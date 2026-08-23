@@ -139,7 +139,7 @@
         "title": "AssignmentUpdate",
         "type": "object"
       },
-      "Body_import_itc_api_v1_imports_itc_post": {
+      "Body_importItc": {
         "properties": {
           "file": {
             "contentMediaType": "application/octet-stream",
@@ -151,10 +151,10 @@
         "required": [
           "file"
         ],
-        "title": "Body_import_itc_api_v1_imports_itc_post",
+        "title": "Body_importItc",
         "type": "object"
       },
-      "Body_import_spreadsheet_api_v1_imports_spreadsheet_post": {
+      "Body_importSpreadsheet": {
         "properties": {
           "file": {
             "contentMediaType": "application/octet-stream",
@@ -172,7 +172,7 @@
         "required": [
           "file"
         ],
-        "title": "Body_import_spreadsheet_api_v1_imports_spreadsheet_post",
+        "title": "Body_importSpreadsheet",
         "type": "object"
       },
       "BuildingCreate": {
@@ -3934,18 +3934,26 @@
         "title": "ViolationReport",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "TesseraToken": {
+        "description": "Issued once per engine launch and printed on stdout with the port. The console additionally accepts it as a cookie.",
+        "in": "header",
+        "name": "x-tessera-token",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
     "description": "The Tessera engine: timetable data, constraint solving, and export.\n\nOne engine serves exactly one project, because a project *is* a file. There is\ntherefore no project identifier in any path.\n\nEndpoints answering **501** are declared but not yet implemented. The contract is fixed\nahead of the handlers so that later work plugs into a known shape and clients can be\nbuilt against it; the response names the phase that implements each one.\n\nErrors follow RFC 9457 Problem Details, on every route including framework failures.",
     "title": "Tessera",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "openapi": "3.1.0",
   "paths": {
     "/api/v1/assignments/{assignment_id}": {
       "delete": {
-        "operationId": "delete_assignment_api_v1_assignments__assignment_id__delete",
+        "operationId": "deleteAssignment",
         "parameters": [
           {
             "in": "path",
@@ -4013,7 +4021,7 @@
       },
       "patch": {
         "description": "Where a drag lands, and where pinning is toggled.",
-        "operationId": "update_assignment_api_v1_assignments__assignment_id__patch",
+        "operationId": "updateAssignment",
         "parameters": [
           {
             "in": "path",
@@ -4099,7 +4107,7 @@
     },
     "/api/v1/buildings": {
       "get": {
-        "operationId": "list_buildings_api_v1_buildings_get",
+        "operationId": "listBuildings",
         "parameters": [
           {
             "in": "query",
@@ -4180,7 +4188,7 @@
         ]
       },
       "post": {
-        "operationId": "create_building_api_v1_buildings_post",
+        "operationId": "createBuilding",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4255,7 +4263,7 @@
     },
     "/api/v1/buildings/{building_id}": {
       "delete": {
-        "operationId": "delete_building_api_v1_buildings__building_id__delete",
+        "operationId": "deleteBuilding",
         "parameters": [
           {
             "in": "path",
@@ -4322,7 +4330,7 @@
         ]
       },
       "get": {
-        "operationId": "get_building_api_v1_buildings__building_id__get",
+        "operationId": "getBuilding",
         "parameters": [
           {
             "in": "path",
@@ -4396,7 +4404,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_building_api_v1_buildings__building_id__patch",
+        "operationId": "updateBuilding",
         "parameters": [
           {
             "in": "path",
@@ -4482,7 +4490,7 @@
     },
     "/api/v1/constraints/{constraint_id}": {
       "delete": {
-        "operationId": "delete_constraint_api_v1_constraints__constraint_id__delete",
+        "operationId": "deleteConstraint",
         "parameters": [
           {
             "in": "path",
@@ -4539,7 +4547,7 @@
       },
       "patch": {
         "description": "Where the weight sliders write to.\n\nDifferent institutions genuinely disagree about how these should be balanced, so the\nargument is settled by the user rather than by us.",
-        "operationId": "update_constraint_api_v1_constraints__constraint_id__patch",
+        "operationId": "updateConstraint",
         "parameters": [
           {
             "in": "path",
@@ -4614,7 +4622,7 @@
     },
     "/api/v1/courses": {
       "get": {
-        "operationId": "list_courses_api_v1_courses_get",
+        "operationId": "listCourses",
         "parameters": [
           {
             "in": "query",
@@ -4695,7 +4703,7 @@
         ]
       },
       "post": {
-        "operationId": "create_course_api_v1_courses_post",
+        "operationId": "createCourse",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4770,7 +4778,7 @@
     },
     "/api/v1/courses/{course_id}": {
       "delete": {
-        "operationId": "delete_course_api_v1_courses__course_id__delete",
+        "operationId": "deleteCourse",
         "parameters": [
           {
             "in": "path",
@@ -4837,7 +4845,7 @@
         ]
       },
       "get": {
-        "operationId": "get_course_api_v1_courses__course_id__get",
+        "operationId": "getCourse",
         "parameters": [
           {
             "in": "path",
@@ -4911,7 +4919,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_course_api_v1_courses__course_id__patch",
+        "operationId": "updateCourse",
         "parameters": [
           {
             "in": "path",
@@ -4997,7 +5005,7 @@
     },
     "/api/v1/departments": {
       "get": {
-        "operationId": "list_departments_api_v1_departments_get",
+        "operationId": "listDepartments",
         "parameters": [
           {
             "in": "query",
@@ -5078,7 +5086,7 @@
         ]
       },
       "post": {
-        "operationId": "create_department_api_v1_departments_post",
+        "operationId": "createDepartment",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5154,7 +5162,7 @@
     "/api/v1/departments/{department_id}": {
       "delete": {
         "description": "Refused while programmes belong to it, but **not** for courses: a course with no\ndepartment is a state the catalogue is designed for (Decision #50).",
-        "operationId": "delete_department_api_v1_departments__department_id__delete",
+        "operationId": "deleteDepartment",
         "parameters": [
           {
             "in": "path",
@@ -5221,7 +5229,7 @@
         ]
       },
       "get": {
-        "operationId": "get_department_api_v1_departments__department_id__get",
+        "operationId": "getDepartment",
         "parameters": [
           {
             "in": "path",
@@ -5295,7 +5303,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_department_api_v1_departments__department_id__patch",
+        "operationId": "updateDepartment",
         "parameters": [
           {
             "in": "path",
@@ -5381,7 +5389,7 @@
     },
     "/api/v1/features": {
       "get": {
-        "operationId": "list_features_api_v1_features_get",
+        "operationId": "listFeatures",
         "parameters": [
           {
             "in": "query",
@@ -5462,7 +5470,7 @@
         ]
       },
       "post": {
-        "operationId": "create_feature_api_v1_features_post",
+        "operationId": "createFeature",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5537,7 +5545,7 @@
     },
     "/api/v1/features/{feature_id}": {
       "delete": {
-        "operationId": "delete_feature_api_v1_features__feature_id__delete",
+        "operationId": "deleteFeature",
         "parameters": [
           {
             "in": "path",
@@ -5604,7 +5612,7 @@
         ]
       },
       "get": {
-        "operationId": "get_feature_api_v1_features__feature_id__get",
+        "operationId": "getFeature",
         "parameters": [
           {
             "in": "path",
@@ -5678,7 +5686,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_feature_api_v1_features__feature_id__patch",
+        "operationId": "updateFeature",
         "parameters": [
           {
             "in": "path",
@@ -5765,7 +5773,7 @@
     "/api/v1/imports/itc": {
       "post": {
         "description": "Load a competition instance.\n\nReal institutional data to develop against before any is supplied, and a check that\nthe schema generalises beyond the institution it was designed around.",
-        "operationId": "import_itc_api_v1_imports_itc_post",
+        "operationId": "importItc",
         "parameters": [
           {
             "in": "query",
@@ -5782,7 +5790,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_import_itc_api_v1_imports_itc_post"
+                "$ref": "#/components/schemas/Body_importItc"
               }
             }
           },
@@ -5853,7 +5861,7 @@
     "/api/v1/imports/spreadsheet": {
       "post": {
         "description": "Read a spreadsheet, and either report on it or apply it.\n\n`term_id` names the institution rather than scoping the data: rooms and staff belong\nto an institution, not a term, but a project file may hold more than one institution\nand `Block A` at one is not `Block A` at the other.",
-        "operationId": "import_spreadsheet_api_v1_imports_spreadsheet_post",
+        "operationId": "importSpreadsheet",
         "parameters": [
           {
             "in": "query",
@@ -5881,7 +5889,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_import_spreadsheet_api_v1_imports_spreadsheet_post"
+                "$ref": "#/components/schemas/Body_importSpreadsheet"
               }
             }
           },
@@ -5952,7 +5960,7 @@
     "/api/v1/imports/{import_id}": {
       "get": {
         "description": "A report from earlier in this session.\n\nReports do not survive a restart, and should not: by then the spreadsheet has either\nbeen corrected or abandoned, and a stale list of problems about a file nobody has any\nmore is worse than nothing.",
-        "operationId": "get_import_api_v1_imports__import_id__get",
+        "operationId": "getImport",
         "parameters": [
           {
             "in": "path",
@@ -6028,7 +6036,7 @@
     },
     "/api/v1/institutions": {
       "get": {
-        "operationId": "list_institutions_api_v1_institutions_get",
+        "operationId": "listInstitutions",
         "responses": {
           "200": {
             "content": {
@@ -6091,7 +6099,7 @@
         ]
       },
       "post": {
-        "operationId": "create_institution_api_v1_institutions_post",
+        "operationId": "createInstitution",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6167,7 +6175,7 @@
     "/api/v1/institutions/{institution_id}": {
       "delete": {
         "description": "Refused while anything belongs to it \u2014 an institution is the root of five cascade\nchains, so this would otherwise empty a project from one dialog.",
-        "operationId": "delete_institution_api_v1_institutions__institution_id__delete",
+        "operationId": "deleteInstitution",
         "parameters": [
           {
             "in": "path",
@@ -6234,7 +6242,7 @@
         ]
       },
       "get": {
-        "operationId": "get_institution_api_v1_institutions__institution_id__get",
+        "operationId": "getInstitution",
         "parameters": [
           {
             "in": "path",
@@ -6309,7 +6317,7 @@
       },
       "patch": {
         "description": "Added in 2.4b. The 1.4 freeze gave the \"just a name\" entities list and create and\nnothing else, so until now a mistyped institution name was permanent.",
-        "operationId": "update_institution_api_v1_institutions__institution_id__patch",
+        "operationId": "updateInstitution",
         "parameters": [
           {
             "in": "path",
@@ -6395,7 +6403,7 @@
     },
     "/api/v1/instructors": {
       "get": {
-        "operationId": "list_instructors_api_v1_instructors_get",
+        "operationId": "listInstructors",
         "parameters": [
           {
             "in": "query",
@@ -6476,7 +6484,7 @@
         ]
       },
       "post": {
-        "operationId": "create_instructor_api_v1_instructors_post",
+        "operationId": "createInstructor",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6551,7 +6559,7 @@
     },
     "/api/v1/instructors/{instructor_id}": {
       "delete": {
-        "operationId": "delete_instructor_api_v1_instructors__instructor_id__delete",
+        "operationId": "deleteInstructor",
         "parameters": [
           {
             "in": "path",
@@ -6618,7 +6626,7 @@
         ]
       },
       "get": {
-        "operationId": "get_instructor_api_v1_instructors__instructor_id__get",
+        "operationId": "getInstructor",
         "parameters": [
           {
             "in": "path",
@@ -6692,7 +6700,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_instructor_api_v1_instructors__instructor_id__patch",
+        "operationId": "updateInstructor",
         "parameters": [
           {
             "in": "path",
@@ -6778,7 +6786,7 @@
     },
     "/api/v1/meta": {
       "get": {
-        "operationId": "meta_api_v1_meta_get",
+        "operationId": "meta",
         "responses": {
           "200": {
             "content": {
@@ -6799,7 +6807,7 @@
     },
     "/api/v1/offerings/{offering_id}": {
       "delete": {
-        "operationId": "delete_offering_api_v1_offerings__offering_id__delete",
+        "operationId": "deleteOffering",
         "parameters": [
           {
             "in": "path",
@@ -6867,7 +6875,7 @@
       },
       "get": {
         "description": "Added in 2.4b. An offering could be created, listed, expanded and deleted, but\nnot fetched on its own.",
-        "operationId": "get_offering_api_v1_offerings__offering_id__get",
+        "operationId": "getOffering",
         "parameters": [
           {
             "in": "path",
@@ -6944,7 +6952,7 @@
     "/api/v1/offerings/{offering_id}/expand": {
       "post": {
         "description": "Turn templates into the sessions the solver will place.\n\nExplicit rather than automatic on template change, because it is a **reconciliation**\nagainst sessions that may already be scheduled and pinned: it adds what is missing,\nremoves what is no longer wanted, and leaves everything else untouched. Running it\ntwice changes nothing the second time.\n\nRefused, in full, when it would remove a session somebody has placed.",
-        "operationId": "expand_offering_api_v1_offerings__offering_id__expand_post",
+        "operationId": "expandOffering",
         "parameters": [
           {
             "in": "path",
@@ -7020,7 +7028,7 @@
     },
     "/api/v1/offerings/{offering_id}/templates": {
       "get": {
-        "operationId": "list_templates_api_v1_offerings__offering_id__templates_get",
+        "operationId": "listTemplates",
         "parameters": [
           {
             "in": "path",
@@ -7095,7 +7103,7 @@
       },
       "post": {
         "description": "The offering is named twice, as with offerings themselves \u2014 path and body must\nagree rather than one silently winning.",
-        "operationId": "create_template_api_v1_offerings__offering_id__templates_post",
+        "operationId": "createTemplate",
         "parameters": [
           {
             "in": "path",
@@ -7181,7 +7189,7 @@
     },
     "/api/v1/programs": {
       "get": {
-        "operationId": "list_programs_api_v1_programs_get",
+        "operationId": "listPrograms",
         "parameters": [
           {
             "in": "query",
@@ -7262,7 +7270,7 @@
         ]
       },
       "post": {
-        "operationId": "create_program_api_v1_programs_post",
+        "operationId": "createProgram",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7338,7 +7346,7 @@
     "/api/v1/programs/{program_id}": {
       "delete": {
         "description": "Added in 2.3. The frozen contract could create programmes and never remove one \u2014\nthe same gap fixed for buildings and features in 2.1.",
-        "operationId": "delete_program_api_v1_programs__program_id__delete",
+        "operationId": "deleteProgram",
         "parameters": [
           {
             "in": "path",
@@ -7405,7 +7413,7 @@
         ]
       },
       "get": {
-        "operationId": "get_program_api_v1_programs__program_id__get",
+        "operationId": "getProgram",
         "parameters": [
           {
             "in": "path",
@@ -7479,7 +7487,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_program_api_v1_programs__program_id__patch",
+        "operationId": "updateProgram",
         "parameters": [
           {
             "in": "path",
@@ -7566,7 +7574,7 @@
     "/api/v1/project/copy": {
       "post": {
         "description": "Save a copy of the open project, while it is open.\n\nA snapshot rather than a byte copy, because with WAL the file on disk is not the\nwhole database. The original keeps serving throughout; nothing here writes to it.",
-        "operationId": "copy_project_api_v1_project_copy_post",
+        "operationId": "copyProject",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7620,7 +7628,7 @@
     "/api/v1/rooms": {
       "get": {
         "description": "Filtered so the solver and the room picker can ask for candidates directly\nrather than fetching every room and narrowing client-side.",
-        "operationId": "list_rooms_api_v1_rooms_get",
+        "operationId": "listRooms",
         "parameters": [
           {
             "in": "query",
@@ -7738,7 +7746,7 @@
         ]
       },
       "post": {
-        "operationId": "create_room_api_v1_rooms_post",
+        "operationId": "createRoom",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7813,7 +7821,7 @@
     },
     "/api/v1/rooms/{room_id}": {
       "delete": {
-        "operationId": "delete_room_api_v1_rooms__room_id__delete",
+        "operationId": "deleteRoom",
         "parameters": [
           {
             "in": "path",
@@ -7880,7 +7888,7 @@
         ]
       },
       "get": {
-        "operationId": "get_room_api_v1_rooms__room_id__get",
+        "operationId": "getRoom",
         "parameters": [
           {
             "in": "path",
@@ -7955,7 +7963,7 @@
       },
       "patch": {
         "description": "``exclude_unset`` is what makes this a PATCH rather than a replace.\n\nIt reports only the fields the client actually sent, so an absent field is left\nalone while a field explicitly set to null is cleared. Checking for None instead\nwould make those two indistinguishable.",
-        "operationId": "update_room_api_v1_rooms__room_id__patch",
+        "operationId": "updateRoom",
         "parameters": [
           {
             "in": "path",
@@ -8041,7 +8049,7 @@
     },
     "/api/v1/sessions/{session_id}": {
       "get": {
-        "operationId": "get_session_api_v1_sessions__session_id__get",
+        "operationId": "getSession",
         "parameters": [
           {
             "in": "path",
@@ -8116,7 +8124,7 @@
       },
       "patch": {
         "description": "Lets one session diverge from its template. Refused while it is scheduled, since\nevery editable field here changes whether an existing placement is still legal.",
-        "operationId": "update_session_api_v1_sessions__session_id__patch",
+        "operationId": "updateSession",
         "parameters": [
           {
             "in": "path",
@@ -8202,7 +8210,7 @@
     },
     "/api/v1/solve/{job_id}": {
       "get": {
-        "operationId": "solve_status_api_v1_solve__job_id__get",
+        "operationId": "solveStatus",
         "parameters": [
           {
             "in": "path",
@@ -8278,7 +8286,7 @@
     },
     "/api/v1/solve/{job_id}/cancel": {
       "post": {
-        "operationId": "cancel_solve_api_v1_solve__job_id__cancel_post",
+        "operationId": "cancelSolve",
         "parameters": [
           {
             "in": "path",
@@ -8348,7 +8356,7 @@
     "/api/v1/solve/{job_id}/result": {
       "get": {
         "description": "The explanation when no valid timetable exists.\n\nNot \"no solution found\": the minimal set of requirements that cannot hold together,\neach linked to the screen that can relax one.",
-        "operationId": "solve_result_api_v1_solve__job_id__result_get",
+        "operationId": "solveResult",
         "parameters": [
           {
             "in": "path",
@@ -8424,7 +8432,7 @@
     "/api/v1/solve/{job_id}/stream": {
       "get": {
         "description": "Emits an event per improved solution, carrying score and elapsed time.\n\nA native property of the solver rather than a simulated progress bar: CP-SAT calls\nback on every improvement, and those callbacks are what this forwards.",
-        "operationId": "solve_stream_api_v1_solve__job_id__stream_get",
+        "operationId": "solveStream",
         "parameters": [
           {
             "in": "path",
@@ -8481,7 +8489,7 @@
     },
     "/api/v1/student-groups": {
       "get": {
-        "operationId": "list_groups_api_v1_student_groups_get",
+        "operationId": "listGroups",
         "parameters": [
           {
             "in": "query",
@@ -8562,7 +8570,7 @@
         ]
       },
       "post": {
-        "operationId": "create_group_api_v1_student_groups_post",
+        "operationId": "createGroup",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8638,7 +8646,7 @@
     "/api/v1/student-groups/tree": {
       "get": {
         "description": "The hierarchy already resolved, for the outline view.\n\nSeparate from the flat listing because the client would otherwise rebuild the tree\nitself \u2014 a second implementation of the parent/child rules, and a second place for\nthem to be wrong.\n\nCohorts appear as additional roots with no children. They have no parent by\ndefinition \u2014 an elective drawing from three intakes is nobody's child \u2014 and omitting\nthem would hide exactly the groups most likely to cause conflicts. `kind` tells the\ntwo apart so the interface can render electives in their own section.",
-        "operationId": "group_tree_api_v1_student_groups_tree_get",
+        "operationId": "groupTree",
         "parameters": [
           {
             "in": "query",
@@ -8665,7 +8673,7 @@
                   "items": {
                     "$ref": "#/components/schemas/StudentGroupTree"
                   },
-                  "title": "Response Group Tree Api V1 Student Groups Tree Get",
+                  "title": "Response Grouptree",
                   "type": "array"
                 }
               }
@@ -8725,7 +8733,7 @@
     },
     "/api/v1/student-groups/{group_id}": {
       "delete": {
-        "operationId": "delete_group_api_v1_student_groups__group_id__delete",
+        "operationId": "deleteGroup",
         "parameters": [
           {
             "in": "path",
@@ -8792,7 +8800,7 @@
         ]
       },
       "get": {
-        "operationId": "get_group_api_v1_student_groups__group_id__get",
+        "operationId": "getGroup",
         "parameters": [
           {
             "in": "path",
@@ -8866,7 +8874,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_group_api_v1_student_groups__group_id__patch",
+        "operationId": "updateGroup",
         "parameters": [
           {
             "in": "path",
@@ -8953,7 +8961,7 @@
     "/api/v1/student-groups/{group_id}/conflicts": {
       "get": {
         "description": "Groups that share students with this one and so cannot be taught opposite it.\n\nAnswered by the domain rather than by a query \u2014 the solver reads the same relation\nfrom the same place, which is what stops the two disagreeing.",
-        "operationId": "group_conflicts_api_v1_student_groups__group_id__conflicts_get",
+        "operationId": "groupConflicts",
         "parameters": [
           {
             "in": "path",
@@ -8973,7 +8981,7 @@
                   "items": {
                     "type": "integer"
                   },
-                  "title": "Response Group Conflicts Api V1 Student Groups  Group Id  Conflicts Get",
+                  "title": "Response Groupconflicts",
                   "type": "array"
                 }
               }
@@ -9034,7 +9042,7 @@
     "/api/v1/templates/{template_id}": {
       "delete": {
         "description": "Removes the component and the sessions it generated. Refused while any of those\nare scheduled \u2014 see `repository.sessions.delete_template`.",
-        "operationId": "delete_template_api_v1_templates__template_id__delete",
+        "operationId": "deleteTemplate",
         "parameters": [
           {
             "in": "path",
@@ -9101,7 +9109,7 @@
         ]
       },
       "get": {
-        "operationId": "get_template_api_v1_templates__template_id__get",
+        "operationId": "getTemplate",
         "parameters": [
           {
             "in": "path",
@@ -9176,7 +9184,7 @@
       },
       "patch": {
         "description": "Added in 2.4. Without it a component could be created and deleted but never\nadjusted, and reconciliation would have nothing to reconcile.\n\nMultiplicity only \u2014 see `SessionTemplateUpdate`. This changes no sessions; expanding\nafterwards is what reconciles them, and keeping the two separate is what lets the\ncaller find out what an edit would cost before paying it.",
-        "operationId": "update_template_api_v1_templates__template_id__patch",
+        "operationId": "updateTemplate",
         "parameters": [
           {
             "in": "path",
@@ -9262,7 +9270,7 @@
     },
     "/api/v1/terms": {
       "get": {
-        "operationId": "list_terms_api_v1_terms_get",
+        "operationId": "listTerms",
         "parameters": [
           {
             "in": "query",
@@ -9343,7 +9351,7 @@
         ]
       },
       "post": {
-        "operationId": "create_term_api_v1_terms_post",
+        "operationId": "createTerm",
         "requestBody": {
           "content": {
             "application/json": {
@@ -9418,7 +9426,7 @@
     },
     "/api/v1/terms/{term_id}": {
       "delete": {
-        "operationId": "delete_term_api_v1_terms__term_id__delete",
+        "operationId": "deleteTerm",
         "parameters": [
           {
             "in": "path",
@@ -9485,7 +9493,7 @@
         ]
       },
       "get": {
-        "operationId": "get_term_api_v1_terms__term_id__get",
+        "operationId": "getTerm",
         "parameters": [
           {
             "in": "path",
@@ -9560,7 +9568,7 @@
       },
       "patch": {
         "description": "Name and dates only. `TermUpdate` carries no `time_grid_id`, deliberately \u2014\nrepointing a term at a differently-shaped grid has the same effect as editing one.",
-        "operationId": "update_term_api_v1_terms__term_id__patch",
+        "operationId": "updateTerm",
         "parameters": [
           {
             "in": "path",
@@ -9646,7 +9654,7 @@
     },
     "/api/v1/terms/{term_id}/constraints": {
       "get": {
-        "operationId": "list_constraints_api_v1_terms__term_id__constraints_get",
+        "operationId": "listConstraints",
         "parameters": [
           {
             "in": "path",
@@ -9709,7 +9717,7 @@
         ]
       },
       "post": {
-        "operationId": "create_constraint_api_v1_terms__term_id__constraints_post",
+        "operationId": "createConstraint",
         "parameters": [
           {
             "in": "path",
@@ -9785,7 +9793,7 @@
     "/api/v1/terms/{term_id}/duplicate": {
       "post": {
         "description": "Roll a term forward, carrying the structural data with it.\n\nThe feature that makes the application worth keeping: the first semester costs a day\nof data entry and every one after it costs an hour.\n\nAnswers with what was *carried* rather than what was *asked for*. Four of the flags\nname things that live above a term and are therefore available to the new one without\nbeing copied, so echoing the request back would describe a different operation.",
-        "operationId": "duplicate_term_api_v1_terms__term_id__duplicate_post",
+        "operationId": "duplicateTerm",
         "parameters": [
           {
             "in": "path",
@@ -9871,7 +9879,7 @@
     },
     "/api/v1/terms/{term_id}/offerings": {
       "get": {
-        "operationId": "list_offerings_api_v1_terms__term_id__offerings_get",
+        "operationId": "listOfferings",
         "parameters": [
           {
             "in": "path",
@@ -9946,7 +9954,7 @@
       },
       "post": {
         "description": "The term is named twice \u2014 once in the path, once in the body.\n\n`OfferingCreate` carries a `term_id` because the contract was frozen in 1.4, before\nthe handlers existed. Rather than pick a winner silently, a disagreement is refused:\nwhichever one the caller meant, they believe the offering went somewhere it did not,\nand that belief surfaces much later as a course missing from a timetable.",
-        "operationId": "create_offering_api_v1_terms__term_id__offerings_post",
+        "operationId": "createOffering",
         "parameters": [
           {
             "in": "path",
@@ -10033,7 +10041,7 @@
     "/api/v1/terms/{term_id}/preflight": {
       "post": {
         "description": "Structural problems findable without solving, in milliseconds.\n\nFailing after two minutes for a reason detectable in fifty milliseconds is the\nbehaviour this exists to prevent.",
-        "operationId": "preflight_api_v1_terms__term_id__preflight_post",
+        "operationId": "preflight",
         "parameters": [
           {
             "in": "path",
@@ -10110,7 +10118,7 @@
     "/api/v1/terms/{term_id}/sessions": {
       "get": {
         "description": "Filtered server-side so the client can draw one person's or one group's week\nwithout fetching a whole department and narrowing locally.",
-        "operationId": "list_sessions_api_v1_terms__term_id__sessions_get",
+        "operationId": "listSessions",
         "parameters": [
           {
             "in": "path",
@@ -10234,7 +10242,7 @@
     },
     "/api/v1/terms/{term_id}/solve": {
       "post": {
-        "operationId": "start_solve_api_v1_terms__term_id__solve_post",
+        "operationId": "startSolve",
         "parameters": [
           {
             "in": "path",
@@ -10320,7 +10328,7 @@
     },
     "/api/v1/terms/{term_id}/timetables": {
       "get": {
-        "operationId": "list_timetables_api_v1_terms__term_id__timetables_get",
+        "operationId": "listTimetables",
         "parameters": [
           {
             "in": "path",
@@ -10410,7 +10418,7 @@
         ]
       },
       "post": {
-        "operationId": "create_timetable_api_v1_terms__term_id__timetables_post",
+        "operationId": "createTimetable",
         "parameters": [
           {
             "in": "path",
@@ -10497,7 +10505,7 @@
     "/api/v1/terms/{term_id}/unavailability": {
       "delete": {
         "description": "Free slots again.\n\nWithout `slot` this clears everything for the subject, which is what it always did.\nWith it, only those slots are freed \u2014 which is what dragging across blocked cells to\nrelease them actually needs.",
-        "operationId": "clear_unavailability_api_v1_terms__term_id__unavailability_delete",
+        "operationId": "clearUnavailability",
         "parameters": [
           {
             "in": "path",
@@ -10592,7 +10600,7 @@
         ]
       },
       "get": {
-        "operationId": "list_unavailability_api_v1_terms__term_id__unavailability_get",
+        "operationId": "listUnavailability",
         "parameters": [
           {
             "in": "path",
@@ -10688,7 +10696,7 @@
       },
       "post": {
         "description": "Takes a list of slots rather than one.\n\nAvailability is edited by dragging across a grid, so a single interaction produces\na range; one request per slot would mean dozens per gesture.\n\nBlocking an already-blocked slot is a no-op rather than a conflict: dragging across\na partly-blocked range is ordinary use.",
-        "operationId": "add_unavailability_api_v1_terms__term_id__unavailability_post",
+        "operationId": "addUnavailability",
         "parameters": [
           {
             "in": "path",
@@ -10763,7 +10771,7 @@
     },
     "/api/v1/time-grids": {
       "get": {
-        "operationId": "list_time_grids_api_v1_time_grids_get",
+        "operationId": "listTimeGrids",
         "parameters": [
           {
             "in": "query",
@@ -10844,7 +10852,7 @@
         ]
       },
       "post": {
-        "operationId": "create_time_grid_api_v1_time_grids_post",
+        "operationId": "createTimeGrid",
         "requestBody": {
           "content": {
             "application/json": {
@@ -10920,7 +10928,7 @@
     "/api/v1/time-grids/{grid_id}": {
       "delete": {
         "description": "Added in 2.4. The frozen contract could create grids and never remove one \u2014 the\nsame gap fixed for buildings and features in 2.1 and programmes in 2.3.",
-        "operationId": "delete_time_grid_api_v1_time_grids__grid_id__delete",
+        "operationId": "deleteTimeGrid",
         "parameters": [
           {
             "in": "path",
@@ -10987,7 +10995,7 @@
         ]
       },
       "get": {
-        "operationId": "get_time_grid_api_v1_time_grids__grid_id__get",
+        "operationId": "getTimeGrid",
         "parameters": [
           {
             "in": "path",
@@ -11063,7 +11071,7 @@
     },
     "/api/v1/timetables/compare": {
       "get": {
-        "operationId": "compare_api_v1_timetables_compare_get",
+        "operationId": "compare",
         "parameters": [
           {
             "in": "query",
@@ -11148,7 +11156,7 @@
     },
     "/api/v1/timetables/{timetable_id}": {
       "delete": {
-        "operationId": "delete_timetable_api_v1_timetables__timetable_id__delete",
+        "operationId": "deleteTimetable",
         "parameters": [
           {
             "in": "path",
@@ -11215,7 +11223,7 @@
         ]
       },
       "get": {
-        "operationId": "get_timetable_api_v1_timetables__timetable_id__get",
+        "operationId": "getTimetable",
         "parameters": [
           {
             "in": "path",
@@ -11289,7 +11297,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_timetable_api_v1_timetables__timetable_id__patch",
+        "operationId": "updateTimetable",
         "parameters": [
           {
             "in": "path",
@@ -11375,7 +11383,7 @@
     },
     "/api/v1/timetables/{timetable_id}/assignments": {
       "get": {
-        "operationId": "list_assignments_api_v1_timetables__timetable_id__assignments_get",
+        "operationId": "listAssignments",
         "parameters": [
           {
             "in": "path",
@@ -11497,7 +11505,7 @@
         ]
       },
       "post": {
-        "operationId": "create_assignment_api_v1_timetables__timetable_id__assignments_post",
+        "operationId": "createAssignment",
         "parameters": [
           {
             "in": "path",
@@ -11584,7 +11592,7 @@
     "/api/v1/timetables/{timetable_id}/commands": {
       "get": {
         "description": "The change history. Also the audit trail \u2014 one mechanism, both uses.",
-        "operationId": "list_commands_api_v1_timetables__timetable_id__commands_get",
+        "operationId": "listCommands",
         "parameters": [
           {
             "in": "path",
@@ -11661,7 +11669,7 @@
     "/api/v1/timetables/{timetable_id}/duplicate": {
       "post": {
         "description": "Fork a candidate, so alternatives can be generated and compared.",
-        "operationId": "duplicate_timetable_api_v1_timetables__timetable_id__duplicate_post",
+        "operationId": "duplicateTimetable",
         "parameters": [
           {
             "in": "path",
@@ -11747,7 +11755,7 @@
     },
     "/api/v1/timetables/{timetable_id}/export": {
       "post": {
-        "operationId": "export_api_v1_timetables__timetable_id__export_post",
+        "operationId": "export",
         "parameters": [
           {
             "in": "path",
@@ -11828,7 +11836,7 @@
     "/api/v1/timetables/{timetable_id}/grid": {
       "get": {
         "description": "The same timetable read by group, by instructor, or by room.\n\nThree pivots because those are the three documents a timetabling committee actually\nproduces and hands out.",
-        "operationId": "grid_view_api_v1_timetables__timetable_id__grid_get",
+        "operationId": "gridView",
         "parameters": [
           {
             "in": "path",
@@ -11928,7 +11936,7 @@
     "/api/v1/timetables/{timetable_id}/publish": {
       "post": {
         "description": "Mark a timetable authoritative and lock it. Editing afterwards forks a draft.",
-        "operationId": "publish_timetable_api_v1_timetables__timetable_id__publish_post",
+        "operationId": "publishTimetable",
         "parameters": [
           {
             "in": "path",
@@ -12004,7 +12012,7 @@
     },
     "/api/v1/timetables/{timetable_id}/redo": {
       "post": {
-        "operationId": "redo_api_v1_timetables__timetable_id__redo_post",
+        "operationId": "redo",
         "parameters": [
           {
             "in": "path",
@@ -12080,7 +12088,7 @@
     },
     "/api/v1/timetables/{timetable_id}/undo": {
       "post": {
-        "operationId": "undo_api_v1_timetables__timetable_id__undo_post",
+        "operationId": "undo",
         "parameters": [
           {
             "in": "path",
@@ -12157,7 +12165,7 @@
     "/api/v1/timetables/{timetable_id}/validate-move": {
       "post": {
         "description": "Whether one session may sit in one cell, and why not if it may not.\n\nPOST for a read, deliberately: this is kept consistent with the viewport check\nbelow, whose payload cannot fit in a query string.",
-        "operationId": "validate_move_api_v1_timetables__timetable_id__validate_move_post",
+        "operationId": "validateMove",
         "parameters": [
           {
             "in": "path",
@@ -12244,7 +12252,7 @@
     "/api/v1/timetables/{timetable_id}/validate-viewport": {
       "post": {
         "description": "Legality of every cell currently on screen, for one session.\n\nCalled once when a drag begins; the interface then renders green and red from the\nresult and makes no further calls while the pointer moves. Around 600 times less\ntransport than checking each cell as the cursor crosses it.\n\nThe request must name its rooms and period range. There is no unscoped form \u2014\nsee the module docstring.",
-        "operationId": "validate_viewport_api_v1_timetables__timetable_id__validate_viewport_post",
+        "operationId": "validateViewport",
         "parameters": [
           {
             "in": "path",
@@ -12330,7 +12338,7 @@
     },
     "/api/v1/timetables/{timetable_id}/violations": {
       "get": {
-        "operationId": "list_violations_api_v1_timetables__timetable_id__violations_get",
+        "operationId": "listViolations",
         "parameters": [
           {
             "in": "path",
@@ -12406,7 +12414,7 @@
     },
     "/health": {
       "get": {
-        "operationId": "health_health_get",
+        "operationId": "health",
         "responses": {
           "200": {
             "content": {
@@ -12425,5 +12433,10 @@
         ]
       }
     }
-  }
+  },
+  "security": [
+    {
+      "TesseraToken": []
+    }
+  ]
 }

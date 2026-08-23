@@ -19,6 +19,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import tessera
+
 SNAPSHOT = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
 METHODS = {"get", "post", "put", "patch", "delete"}
 
@@ -257,3 +259,54 @@ def test_stubs_answer_501_and_name_their_phase(
     assert problem["type"].endswith("/not-implemented")
     assert "phase" in problem["detail"]
     assert response.headers["content-type"].startswith("application/problem+json")
+
+
+def test_every_operation_id_is_readable_and_unique(app: FastAPI) -> None:
+    """The names a generated client turns into methods.
+
+    FastAPI's default appends the path and the method, which is unique by construction and
+    puts the URL inside the name — so a generated client hands every caller a method with
+    the route baked into it, and moving a route renames a method at every call site.
+    `operation_id` drops the path, which is only safe while the endpoint function names are
+    distinct. That is the thing this checks.
+
+    Read from the **generated document** rather than from `app.routes`. The first version
+    walked the route objects looking for `APIRoute`, found none — this FastAPI keeps
+    `_IncludedRouter` wrappers there — and passed on an empty list. It stayed green with
+    the id function replaced by one returning raw `snake_case` names. The document is also
+    the honest source: it is what a client generator actually reads.
+    """
+    ids = [
+        operation["operationId"]
+        for path in app.openapi()["paths"].values()
+        for method, operation in path.items()
+        if isinstance(operation, dict) and "operationId" in operation
+    ]
+    assert len(ids) > 50, (
+        f"only found {len(ids)} operations, so this check is passing on nothing — "
+        "the document is not being read the way this test assumes"
+    )
+
+    duplicates = sorted({name for name in ids if ids.count(name) > 1})
+    assert not duplicates, (
+        "two routes share an operation id, so a generated client would lose one of them:\n"
+        f"  {duplicates}\n"
+        "Rename one of the endpoint functions — the id is derived from the function name."
+    )
+
+    malformed = sorted(name for name in ids if not name[0].islower() or not name.isalnum())
+    assert not malformed, f"these are not lowerCamelCase: {malformed[:8]}"
+
+
+def test_the_snapshot_is_not_stale(snapshot: dict[str, Any]) -> None:
+    """The committed document describes the version it was generated from.
+
+    Found by regenerating: the snapshot still said `0.1.0` long after `v0.2.0` shipped,
+    because every other check compares *shape* and the version is not shape. A document
+    published with a Docker image and a CLI that names the wrong version is wrong in the
+    one field a consumer reads first.
+    """
+    assert snapshot["info"]["version"] == tessera.__version__, (
+        f"the snapshot says {snapshot['info']['version']} and the package is "
+        f"{tessera.__version__} — regenerate it: uv run tessera-openapi"
+    )
