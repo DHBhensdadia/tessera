@@ -32,7 +32,13 @@ public struct EngineConnection: Sendable {
         client = Client(
             serverURL: base,
             transport: URLSessionTransport(configuration: .init(session: session)),
-            middlewares: [TokenMiddleware(token: token)]
+            // `Problem` mapping sits outside the token so a refusal is turned into a
+            // decision before anything else looks at it; the token goes on last so every
+            // request carries it.
+            middlewares: [
+                ProblemMiddleware(),
+                TokenMiddleware(token: token),
+            ]
         )
     }
 }
