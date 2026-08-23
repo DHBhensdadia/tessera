@@ -32,10 +32,13 @@ public struct EngineConnection: Sendable {
         client = Client(
             serverURL: base,
             transport: URLSessionTransport(configuration: .init(session: session)),
-            // `Problem` mapping sits outside the token so a refusal is turned into a
-            // decision before anything else looks at it; the token goes on last so every
-            // request carries it.
+            // Order matters and is the reasoning, not a preference. Retry is outermost, so
+            // it sees a transport failure before anything has interpreted it; `Problem`
+            // mapping sits inside it, so a refusal becomes a decision that retry then knows
+            // not to repeat; the token goes on last, so every attempt — including retries —
+            // carries it.
             middlewares: [
+                RetryMiddleware(),
                 ProblemMiddleware(),
                 TokenMiddleware(token: token),
             ]
