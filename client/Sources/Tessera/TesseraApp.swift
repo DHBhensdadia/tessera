@@ -22,6 +22,9 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--capture") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Self.pinToEverySpace() }
         }
+        if CommandLine.arguments.contains("--probe") {
+            Task { await Probe.run() }
+        }
         if let seconds = Self.closeAfter {
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { Self.closeOneProject() }
         }
