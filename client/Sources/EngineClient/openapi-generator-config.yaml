@@ -1,0 +1,12 @@
+# What the SwiftPM build plugin generates, and where it comes from.
+#
+# `types` and `client` only — the server half of the generator has nothing to do here, and
+# leaving it out is a smaller build.
+#
+# The output is produced at build time and never committed: a generated 100 KB of Swift in
+# the repository would be the largest "file nobody wrote" in a project whose whole premise
+# is that it reads as somebody's work.
+generate:
+  - types
+  - client
+accessModifier: public

@@ -16,8 +16,33 @@ let package = Package(
     // The *deployment* target, not the SDK. Built with the macOS 26 SDK and run on
     // anything from 14 up; 26-only API sits behind `if #available`.
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // Apple's generator turns the committed OpenAPI document into a typed client at
+        // build time. The alternative was ~4,000 hand-written lines for 109 operations,
+        // and a hand-written client can fall behind the contract without anything saying
+        // so — here, drift is a compile error.
+        .package(url: "https://github.com/apple/swift-openapi-generator", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.0.0"),
+    ],
     targets: [
         .target(name: "DesignSystem", path: "Sources/DesignSystem"),
+        .target(
+            name: "EngineClient",
+            dependencies: [
+                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
+                .product(name: "OpenAPIURLSession", package: "swift-openapi-urlsession"),
+            ],
+            // The document lives here rather than in `docs/` because SwiftPM plugins are
+            // sandboxed to the package directory. `tessera-openapi` writes both copies and
+            // `scripts/check.sh` fails if they differ.
+            //
+            // Deliberately **not** `exclude`d: the plugin discovers them as its inputs, and
+            // excluding them produced a target with no sources, no generated code, and a
+            // green build — an empty module compiles perfectly.
+            path: "Sources/EngineClient",
+            plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")]
+        ),
         .executableTarget(
             name: "Gallery",
             dependencies: ["DesignSystem"],
@@ -30,7 +55,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Tessera",
-            dependencies: ["DesignSystem"],
+            dependencies: ["DesignSystem", "EngineClient"],
             path: "Sources/Tessera"
         ),
         .testTarget(

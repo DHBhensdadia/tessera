@@ -33,6 +33,12 @@ echo "running the gates"
 # jobs. Sibling of Decision #44: a local check that cannot see a failure CI will hit is
 # the kind of green that gets trusted.
 run "lockfile matches pyproject"  uv lock --check
+# The OpenAPI document exists twice: `docs/` is the one people read, and the copy inside
+# the Swift package is the one the generator plugin reads, because SwiftPM plugins are
+# sandboxed to their package directory. `tessera-openapi` writes both in one function —
+# this is the gate that says so, because "two copies that must agree" has been the shape of
+# enough defects in this project to stop being a convention.
+run "openapi copies agree"    cmp -s docs/openapi.json client/Sources/EngineClient/openapi.json
 run "ruff (lint)"             uv run ruff check .
 run "ruff (format)"           uv run ruff format --check .
 run "mypy (strict)"           uv run mypy
