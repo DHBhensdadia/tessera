@@ -64,6 +64,11 @@ let package = Package(
             path: "Tests/DesignSystemTests"
         ),
         .testTarget(
+            name: "EngineClientTests",
+            dependencies: ["EngineClient"],
+            path: "Tests/EngineClientTests"
+        ),
+        .testTarget(
             name: "TesseraTests",
             dependencies: ["Tessera"],
             path: "Tests/TesseraTests"
