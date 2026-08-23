@@ -52,7 +52,7 @@ struct Overview: View {
 
     private var headline: String {
         guard let term = summary.selectedTerm else { return "Let's set up this project" }
-        return "Let's set up \(term.name) \(term.academicYear)"
+        return "Let's set up \(term.name) \(term.academic_year)"
     }
 
     private var steps: [ChecklistStep] {

@@ -1,4 +1,5 @@
 import DesignSystem
+import EngineClient
 import SwiftUI
 
 /// One open project, and the engine that serves it.
@@ -89,7 +90,7 @@ struct ProjectWindow: View {
             await engine.start()
             await applySetupIfNew()
             if case .running(let running) = engine.state {
-                await summary.load(from: EngineAPI(port: running.port, token: running.token))
+                await summary.load(from: EngineConnection(port: running.port, token: running.token))
                 LaunchClock.shared.noteFirstUsableWindow()
             }
         }
@@ -178,25 +179,33 @@ struct ProjectWindow: View {
     /// the solver has nothing to solve.
     private func applySetupIfNew() async {
         guard let setup = location.setup, case .running(let running) = engine.state else { return }
-        let api = EngineAPI(port: running.port, token: running.token)
+        let connection = EngineConnection(port: running.port, token: running.token)
         do {
-            let institution = try await api.createInstitution(name: setup.institution)
-            let grid = try await api.createTimeGrid(
-                institution: institution.id,
-                days: setup.grid.days,
-                slotsPerDay: setup.grid.slotsPerDay,
-                slotMinutes: setup.grid.slotMinutes,
-                dayStartMinute: setup.grid.startMinute,
-                breakSlots: setup.grid.breakSlots
-            )
-            _ = try await api.createTerm(
-                institution: institution.id,
-                timeGrid: grid.id,
-                academicYear: setup.academicYear,
-                name: setup.termName
-            )
+            let institution = try await connection.run {
+                try await $0.createInstitution(body: .json(.init(name: setup.institution)))
+                    .created.body.json
+            }
+            let grid = try await connection.run {
+                try await $0.createTimeGrid(body: .json(.init(
+                    break_slots: setup.grid.breakSlots,
+                    day_start_minute: setup.grid.startMinute,
+                    days: setup.grid.days,
+                    institution_id: institution.id,
+                    slot_minutes: setup.grid.slotMinutes,
+                    slots_per_day: setup.grid.slotsPerDay
+                ))).created.body.json
+            }
+            _ = try await connection.run {
+                try await $0.createTerm(body: .json(.init(
+                    academic_year: setup.academicYear,
+                    institution_id: institution.id,
+                    name: setup.termName,
+                    time_grid_id: grid.id
+                ))).created.body.json
+            }
         } catch {
-            engine.reportSetupFailure(String(describing: error))
+            // The engine's own sentence, not a description of a Swift error type.
+            engine.reportSetupFailure(EngineFailure.unwrap(error).message)
         }
     }
 }

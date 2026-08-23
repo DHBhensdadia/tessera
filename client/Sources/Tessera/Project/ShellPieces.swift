@@ -60,6 +60,10 @@ struct TermSwitcher: View {
     let summary: ProjectSummary
     let appearance: Appearance
 
+    private func label(_ term: ProjectSummary.Term) -> String {
+        "\(term.name) \(term.academic_year)"
+    }
+
     var body: some View {
         if summary.terms.isEmpty {
             // A project with no terms is mid-creation or broken; either way an empty menu
@@ -70,10 +74,10 @@ struct TermSwitcher: View {
         } else {
             Menu {
                 ForEach(summary.terms, id: \.id) { term in
-                    Button("\(term.name) \(term.academicYear)") { summary.select(term) }
+                    Button(label(term)) { summary.select(term) }
                 }
             } label: {
-                Text(summary.selectedTerm.map { "\($0.name) \($0.academicYear)" } ?? "Select a term")
+                Text(summary.selectedTerm.map(label) ?? "Select a term")
                     .font(Typography.body.font)
             }
             .menuStyle(.borderlessButton)
