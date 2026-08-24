@@ -40,13 +40,24 @@
             "type": "array"
           },
           "course": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           },
           "end_slot": {
@@ -71,13 +82,24 @@
             "type": "boolean"
           },
           "room": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           },
           "session_id": {
@@ -101,39 +123,27 @@
       "AssignmentUpdate": {
         "properties": {
           "is_pinned": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Pinned placements are held fixed by any later solve.",
-            "title": "Is Pinned"
+            "title": "Is Pinned",
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "room_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Room Id"
+            "title": "Room Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "start_slot": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Start Slot"
+            "minimum": 0.0,
+            "title": "Start Slot",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "title": "AssignmentUpdate",
@@ -221,17 +231,13 @@
       "BuildingUpdate": {
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "BuildingUpdate",
@@ -283,16 +289,12 @@
       "CommandRead": {
         "properties": {
           "created_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At"
+            "format": "date-time",
+            "title": "Created At",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "title": "Id",
@@ -315,16 +317,12 @@
             "type": "string"
           },
           "undone_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Undone At"
+            "format": "date-time",
+            "title": "Undone At",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -414,15 +412,11 @@
             "type": "string"
           },
           "subject_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subject Id"
+            "title": "Subject Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "subject_kind": {
             "default": "",
@@ -600,80 +594,56 @@
       "ConstraintUpdate": {
         "properties": {
           "enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enabled"
+            "title": "Enabled",
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "is_hard": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Hard"
+            "title": "Is Hard",
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "params": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Params"
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Params",
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "target_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Ids"
+            "items": {
+              "type": "integer"
+            },
+            "title": "Target Ids",
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "targets": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/TargetWire"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Targets"
+            "items": {
+              "$ref": "#/components/schemas/TargetWire"
+            },
+            "title": "Targets",
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "weight": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weight"
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "title": "ConstraintUpdate",
@@ -694,15 +664,11 @@
             "type": "integer"
           },
           "department_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Department Id"
+            "title": "Department Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "name": {
             "maxLength": 200,
@@ -729,13 +695,24 @@
             "type": "integer"
           },
           "department": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           },
           "id": {
@@ -759,53 +736,37 @@
       "CourseUpdate": {
         "properties": {
           "code": {
-            "anyOf": [
-              {
-                "maxLength": 32,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code"
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Code",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "credits": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Credits"
+            "minimum": 0.0,
+            "title": "Credits",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "department_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Department Id"
+            "title": "Department Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "CourseUpdate",
@@ -867,28 +828,20 @@
       "DepartmentUpdate": {
         "properties": {
           "code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code"
+            "title": "Code",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "DepartmentUpdate",
@@ -966,17 +919,13 @@
       "FeatureUpdate": {
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "FeatureUpdate",
@@ -1007,13 +956,24 @@
             "type": "string"
           },
           "room": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           },
           "session_id": {
@@ -1298,17 +1258,13 @@
         "description": "Only the name.\n\nEvery ``*Update`` below carries the entity's own fields and never its parent. Moving\na department to another institution would silently take its programmes, groups and\nrooms with it \u2014 the same hazard as re-pointing a term at another grid (Decision #51),\nand out of scope for the same reason.",
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "InstitutionUpdate",
@@ -1317,15 +1273,11 @@
       "InstructorCreate": {
         "properties": {
           "department_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Department Id"
+            "title": "Department Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "email": {
             "default": "",
@@ -1333,40 +1285,28 @@
             "type": "string"
           },
           "max_consecutive_slots": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Consecutive Slots"
+            "minimum": 1.0,
+            "title": "Max Consecutive Slots",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "max_slots_per_day": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Slots Per Day"
+            "minimum": 1.0,
+            "title": "Max Slots Per Day",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "max_slots_per_week": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Slots Per Week"
+            "minimum": 1.0,
+            "title": "Max Slots Per Week",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "name": {
             "maxLength": 200,
@@ -1384,13 +1324,24 @@
       "InstructorRead": {
         "properties": {
           "department": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           },
           "email": {
@@ -1402,37 +1353,25 @@
             "type": "integer"
           },
           "max_consecutive_slots": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Consecutive Slots"
+            "title": "Max Consecutive Slots",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "max_slots_per_day": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Slots Per Day"
+            "title": "Max Slots Per Day",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "max_slots_per_week": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Slots Per Week"
+            "title": "Max Slots Per Week",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "name": {
             "title": "Name",
@@ -1453,75 +1392,51 @@
       "InstructorUpdate": {
         "properties": {
           "department_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Department Id"
+            "title": "Department Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
+            "title": "Email",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "max_consecutive_slots": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Consecutive Slots"
+            "minimum": 1.0,
+            "title": "Max Consecutive Slots",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "max_slots_per_day": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Slots Per Day"
+            "minimum": 1.0,
+            "title": "Max Slots Per Day",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "max_slots_per_week": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Slots Per Week"
+            "minimum": 1.0,
+            "title": "Max Slots Per Week",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "InstructorUpdate",
@@ -1542,16 +1457,12 @@
             "type": "array"
           },
           "schema_revision": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Alembic revision the open project is at.",
-            "title": "Schema Revision"
+            "title": "Schema Revision",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "version": {
             "title": "Version",
@@ -1631,13 +1542,24 @@
       "OfferingRead": {
         "properties": {
           "course": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           },
           "id": {
@@ -2196,15 +2118,11 @@
             "type": "string"
           },
           "department_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Department Id"
+            "title": "Department Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "name": {
             "maxLength": 200,
@@ -2226,15 +2144,11 @@
             "type": "string"
           },
           "department_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Department Id"
+            "title": "Department Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "id": {
             "title": "Id",
@@ -2257,28 +2171,20 @@
       "ProgramUpdate": {
         "properties": {
           "code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code"
+            "title": "Code",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "ProgramUpdate",
@@ -2334,15 +2240,11 @@
       "RoomCreate": {
         "properties": {
           "building_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Building Id"
+            "title": "Building Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "capacity": {
             "minimum": 0.0,
@@ -2374,13 +2276,24 @@
       "RoomRead": {
         "properties": {
           "building": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           },
           "capacity": {
@@ -2414,54 +2327,38 @@
       "RoomUpdate": {
         "properties": {
           "building_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Building Id"
+            "title": "Building Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "capacity": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Capacity"
+            "minimum": 0.0,
+            "title": "Capacity",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "feature_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Feature Ids"
+            "items": {
+              "type": "integer"
+            },
+            "title": "Feature Ids",
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "RoomUpdate",
@@ -2488,13 +2385,24 @@
             "type": "array"
           },
           "course": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           },
           "duration_slots": {
@@ -2671,42 +2579,30 @@
         "description": "What can change about a component after it has been created.\n\n**Multiplicity only.** ``kind``, ``duration_slots``, ``instructor_ids`` and\n``required_feature_ids`` are absent deliberately: those are *copied* into each\nsession so a session can diverge from its template, and there is no honest way to\npropagate a change to them. Overwriting would revert deliberate per-session edits;\nnot overwriting would leave a template and its sessions silently disagreeing. To\nchange the shape of a component, delete it and add it again.\n\nWhat is here is what reconciliation can act on: how many, and taught to whom.",
         "properties": {
           "attendee_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "minItems": 1,
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attendee Ids"
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Attendee Ids",
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "per_week": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Per Week"
+            "minimum": 1.0,
+            "title": "Per Week",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "split_per_attendee": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Split Per Attendee"
+            "title": "Split Per Attendee",
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "title": "SessionTemplateUpdate",
@@ -2715,44 +2611,32 @@
       "SessionUpdate": {
         "properties": {
           "duration_slots": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Slots"
+            "minimum": 1.0,
+            "title": "Duration Slots",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "instructor_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Instructor Ids"
+            "items": {
+              "type": "integer"
+            },
+            "title": "Instructor Ids",
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "required_feature_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Required Feature Ids"
+            "items": {
+              "type": "integer"
+            },
+            "title": "Required Feature Ids",
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "title": "SessionUpdate",
@@ -2779,16 +2663,12 @@
             "type": "boolean"
           },
           "seed_timetable_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Warm start from this timetable, keeping its pinned assignments fixed. How re-optimising around manual edits works.",
-            "title": "Seed Timetable Id"
+            "title": "Seed Timetable Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "time_budget_seconds": {
             "default": 300,
@@ -2813,27 +2693,19 @@
             "type": "string"
           },
           "lower_bound": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lower Bound"
+            "title": "Lower Bound",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "penalty": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Best score so far; null before feasible.",
-            "title": "Penalty"
+            "title": "Penalty",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "penalty_breakdown": {
             "additionalProperties": {
@@ -2851,16 +2723,12 @@
             "type": "integer"
           },
           "timetable_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Set once a solution exists.",
-            "title": "Timetable Id"
+            "title": "Timetable Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2891,27 +2759,19 @@
             "type": "string"
           },
           "parent_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Structural groups only. Null marks a root.",
-            "title": "Parent Id"
+            "title": "Parent Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "program_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Program Id"
+            "title": "Program Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "size": {
             "default": 0,
@@ -2953,15 +2813,11 @@
             "type": "string"
           },
           "parent_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
+            "title": "Parent Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "size": {
             "title": "Size",
@@ -3021,54 +2877,38 @@
       "StudentGroupUpdate": {
         "properties": {
           "member_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Member Ids"
+            "items": {
+              "type": "integer"
+            },
+            "title": "Member Ids",
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "parent_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
+            "title": "Parent Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "size": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Size"
+            "minimum": 0.0,
+            "title": "Size",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "title": "StudentGroupUpdate",
@@ -3114,16 +2954,12 @@
             "type": "string"
           },
           "ends_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ends On"
+            "format": "date",
+            "title": "Ends On",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "institution_id": {
             "title": "Institution Id",
@@ -3136,16 +2972,12 @@
             "type": "string"
           },
           "starts_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Starts On"
+            "format": "date",
+            "title": "Starts On",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "time_grid_id": {
             "title": "Time Grid Id",
@@ -3243,16 +3075,12 @@
             "type": "object"
           },
           "ends_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ends On"
+            "format": "date",
+            "title": "Ends On",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "title": "Id",
@@ -3263,25 +3091,32 @@
             "type": "string"
           },
           "starts_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Starts On"
+            "format": "date",
+            "title": "Starts On",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "time_grid": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           }
         },
@@ -3302,16 +3137,12 @@
             "type": "string"
           },
           "ends_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ends On"
+            "format": "date",
+            "title": "Ends On",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "title": "Id",
@@ -3322,25 +3153,32 @@
             "type": "string"
           },
           "starts_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Starts On"
+            "format": "date",
+            "title": "Starts On",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "time_grid": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reference"
+            "description": "A pointer to another resource, with enough label to display without a second call.\n\nReturning bare ids would force the client to fetch every related name separately,\nwhich for a timetable grid means hundreds of requests to render one screen.",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "integer"
               },
-              {
-                "type": "null"
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
               }
+            },
+            "required": [
+              "id"
+            ],
+            "type": [
+              "object",
+              "null"
             ]
           }
         },
@@ -3357,41 +3195,29 @@
       "TermUpdate": {
         "properties": {
           "ends_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ends On"
+            "format": "date",
+            "title": "Ends On",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "starts_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Starts On"
+            "format": "date",
+            "title": "Starts On",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "TermUpdate",
@@ -3513,15 +3339,11 @@
             "type": "string"
           },
           "parent_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
+            "title": "Parent Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "title": "TimetableCreate",
@@ -3535,16 +3357,12 @@
             "type": "integer"
           },
           "created_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At"
+            "format": "date-time",
+            "title": "Created At",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "title": "Id",
@@ -3561,26 +3379,18 @@
             "type": "string"
           },
           "parent_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
+            "title": "Parent Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "penalty": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Penalty"
+            "title": "Penalty",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "penalty_breakdown": {
             "additionalProperties": {
@@ -3590,16 +3400,12 @@
             "type": "object"
           },
           "published_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Published At"
+            "format": "date-time",
+            "title": "Published At",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "$ref": "#/components/schemas/TimetableStatus"
@@ -3634,26 +3440,23 @@
       "TimetableUpdate": {
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TimetableStatus"
-              },
-              {
-                "type": "null"
-              }
+            "enum": [
+              "draft",
+              "published",
+              "archived"
+            ],
+            "type": [
+              "string",
+              "null"
             ]
           }
         },
@@ -3851,26 +3654,18 @@
       "Violation": {
         "properties": {
           "conflicting_assignment_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conflicting Assignment Id"
+            "title": "Conflicting Assignment Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "conflicting_session_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conflicting Session Id"
+            "title": "Conflicting Session Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "message": {
             "description": "Plain language, shown directly to the user.",
@@ -3905,15 +3700,11 @@
             "type": "boolean"
           },
           "penalty": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Penalty"
+            "title": "Penalty",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "penalty_breakdown": {
             "additionalProperties": {
@@ -4114,15 +3905,11 @@
             "name": "institution_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Institution Id"
+              "title": "Institution Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -4629,15 +4416,11 @@
             "name": "department_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Department Id"
+              "title": "Department Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -5012,15 +4795,11 @@
             "name": "institution_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Institution Id"
+              "title": "Institution Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -5396,15 +5175,11 @@
             "name": "institution_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Institution Id"
+              "title": "Institution Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -6410,15 +6185,11 @@
             "name": "department_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Department Id"
+              "title": "Department Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -7196,15 +6967,11 @@
             "name": "department_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Department Id"
+              "title": "Department Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -7635,15 +7402,11 @@
             "name": "building_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Building Id"
+              "title": "Building Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           },
           {
@@ -7651,15 +7414,11 @@
             "name": "min_capacity",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Min Capacity"
+              "title": "Min Capacity",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           },
           {
@@ -7668,19 +7427,15 @@
             "name": "feature_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "items": {
-                    "type": "integer"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
               "description": "Repeat to require several. Matches rooms providing *at least* these.",
-              "title": "Feature Id"
+              "items": {
+                "type": "integer"
+              },
+              "title": "Feature Id",
+              "type": [
+                "array",
+                "null"
+              ]
             }
           }
         ],
@@ -8496,15 +8251,11 @@
             "name": "program_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Program Id"
+              "title": "Program Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -8653,15 +8404,11 @@
             "name": "program_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Program Id"
+              "title": "Program Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -9277,15 +9024,11 @@
             "name": "institution_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Institution Id"
+              "title": "Institution Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -10134,15 +9877,11 @@
             "name": "offering_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Offering Id"
+              "title": "Offering Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           },
           {
@@ -10150,15 +9889,11 @@
             "name": "group_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Group Id"
+              "title": "Group Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           },
           {
@@ -10166,15 +9901,11 @@
             "name": "instructor_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Instructor Id"
+              "title": "Instructor Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -10344,15 +10075,11 @@
             "name": "status_filter",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Status Filter"
+              "title": "Status Filter",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -10540,19 +10267,15 @@
             "name": "slot",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "items": {
-                    "type": "integer"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
               "description": "Repeat to free specific slots. Omit to clear the whole subject.",
-              "title": "Slot"
+              "items": {
+                "type": "integer"
+              },
+              "title": "Slot",
+              "type": [
+                "array",
+                "null"
+              ]
             }
           }
         ],
@@ -10616,15 +10339,11 @@
             "name": "kind",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Kind"
+              "title": "Kind",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {
@@ -10632,15 +10351,11 @@
             "name": "subject_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Subject Id"
+              "title": "Subject Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -10778,15 +10493,11 @@
             "name": "institution_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Institution Id"
+              "title": "Institution Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -11399,15 +11110,11 @@
             "name": "group_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Group Id"
+              "title": "Group Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           },
           {
@@ -11415,15 +11122,11 @@
             "name": "instructor_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Instructor Id"
+              "title": "Instructor Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           },
           {
@@ -11431,15 +11134,11 @@
             "name": "room_id",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Room Id"
+              "title": "Room Id",
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
