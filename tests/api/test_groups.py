@@ -137,3 +137,70 @@ class TestRefusals:
         """The delete added in 2.3 — the contract could create programmes and never
         remove one."""
         assert client.delete(f"/api/v1/programs/{campus['program']}").status_code == 409
+
+
+class TestTheProgrammeComesBack:
+    """That a group's programme can be read and changed, not only set once.
+
+    `program_id` has been accepted on create and filterable on list since 2.3, the
+    repository's `update_group` has always known how to change it, and the wire carried it
+    in one direction only: `StudentGroupRead` omitted the field and `StudentGroupUpdate`
+    had no way to send it. So a group's programme was write-once and invisible — nothing
+    could display it and a wrong one could never be corrected.
+
+    The console form has offered the field the whole time, which makes this a parity
+    failure against 3.4's exit test — *"the department from 2.5 can be edited to completion
+    without touching the console"* — rather than a missing convenience.
+    """
+
+    def test_a_group_reports_the_programme_it_was_created_with(
+        self, client: TestClient, campus: dict[str, Any]
+    ) -> None:
+        created = client.get(f"/api/v1/student-groups/{campus['batch']}").json()
+        assert created["program_id"] == campus["program"]
+
+        listed = client.get("/api/v1/student-groups").json()["items"]
+        assert [g["program_id"] for g in listed if g["id"] == campus["batch"]] == [
+            campus["program"]
+        ]
+
+    def test_the_outline_carries_it_too(self, client: TestClient, campus: dict[str, Any]) -> None:
+        """P7 draws the tree under programme headings, which needs the field on the node
+        and not only on the flat listing."""
+        roots = client.get("/api/v1/student-groups/tree").json()
+        intake = next(node for node in roots if node["id"] == campus["batch"])
+        assert intake["program_id"] == campus["program"]
+
+    def test_a_wrong_programme_can_be_corrected(
+        self, client: TestClient, campus: dict[str, Any]
+    ) -> None:
+        other = client.post("/api/v1/programs", json={"name": "B.Tech ECE"}).json()
+
+        moved = client.patch(
+            f"/api/v1/student-groups/{campus['batch']}", json={"program_id": other["id"]}
+        )
+        assert moved.status_code == 200
+        assert moved.json()["program_id"] == other["id"]
+        assert (
+            client.get(f"/api/v1/student-groups/{campus['batch']}").json()["program_id"]
+            == (other["id"])
+        )
+
+    def test_it_can_be_cleared(self, client: TestClient, campus: dict[str, Any]) -> None:
+        cleared = client.patch(
+            f"/api/v1/student-groups/{campus['batch']}", json={"program_id": None}
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["program_id"] is None
+
+    def test_an_unknown_programme_is_refused_rather_than_stored(
+        self, client: TestClient, campus: dict[str, Any]
+    ) -> None:
+        response = client.patch(
+            f"/api/v1/student-groups/{campus['batch']}", json={"program_id": 999_999}
+        )
+        assert response.status_code == 404
+        assert (
+            client.get(f"/api/v1/student-groups/{campus['batch']}").json()["program_id"]
+            == (campus["program"])
+        )

@@ -2819,6 +2819,13 @@
               "null"
             ]
           },
+          "program_id": {
+            "title": "Program Id",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "size": {
             "title": "Size",
             "type": "integer"
@@ -2860,6 +2867,13 @@
             "title": "Name",
             "type": "string"
           },
+          "program_id": {
+            "title": "Program Id",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "size": {
             "title": "Size",
             "type": "integer"
@@ -2897,6 +2911,13 @@
           },
           "parent_id": {
             "title": "Parent Id",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "program_id": {
+            "title": "Program Id",
             "type": [
               "integer",
               "null"

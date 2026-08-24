@@ -28,6 +28,7 @@ class StudentGroupCreate(Wire):
 
 
 class StudentGroupUpdate(Wire):
+    program_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=200)
     size: int | None = Field(default=None, ge=0)
     parent_id: int | None = None
@@ -39,6 +40,7 @@ class StudentGroupRead(Wire):
     name: str
     kind: GroupKind
     size: int
+    program_id: int | None = None
     parent_id: int | None
     member_ids: list[int] = Field(default_factory=list)
     headcount: int = Field(
@@ -54,5 +56,6 @@ class StudentGroupTree(Wire):
     name: str
     kind: GroupKind
     size: int
+    program_id: int | None = None
     headcount: int = 0
     children: list[StudentGroupTree] = Field(default_factory=list)

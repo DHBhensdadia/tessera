@@ -25,6 +25,13 @@ def _read(group: dg.StudentGroup, resolved: dg.GroupSet) -> StudentGroupRead:
     `size` is what the user typed. `headcount` is what the solver must seat, falling
     back to the sum of leaves when a parent was left at zero — far more likely to mean
     "nobody filled this in" than "this intake has no students".
+
+    `program_id` is returned because it was accepted. It has been settable on create and
+    filterable on list since 2.3, `update_group` in the repository has always known how to
+    change it, and the wire never carried it back — so a group's programme was write-once
+    and invisible: nothing could show it and nothing could correct a wrong one. The console
+    form has offered the field the whole time, which made it a parity failure against 3.4's
+    own exit test rather than a missing nicety.
     """
     assert group.id is not None
     return StudentGroupRead(
@@ -32,6 +39,7 @@ def _read(group: dg.StudentGroup, resolved: dg.GroupSet) -> StudentGroupRead:
         name=group.name,
         kind=group.kind,
         size=group.size,
+        program_id=group.program_id,
         parent_id=group.parent_id,
         member_ids=sorted(group.member_ids),
         headcount=resolved.headcount(group.id),
@@ -71,6 +79,7 @@ def group_tree(db: Db, program_id: int | None = None) -> list[StudentGroupTree]:
             name=group.name,
             kind=group.kind,
             size=group.size,
+            program_id=group.program_id,
             headcount=resolved.headcount(group.id),
             children=[
                 node(resolved.get(child))
