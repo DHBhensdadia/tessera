@@ -258,6 +258,16 @@ struct GalleryWindow: View {
                     scroller.scrollTo(new, anchor: .top)
                 }
             }
+            // And on the way in, which `onChange` cannot do: it fires on a *change*, and
+            // launching with `--entry badges` never changes anything. The flag exists so a
+            // specimen can be captured, and for every entry that is not the first in its
+            // pane it had been highlighting the sidebar row and showing the top of the pane
+            // instead — half-working since 3.1b, and only visible when somebody finally
+            // photographed the last card in a pane.
+            .task {
+                await Task.yield()  // after the first layout, or there is nothing to scroll
+                scroller.scrollTo(entry, anchor: .top)
+            }
         }
         // The content pane is an opaque surface and the chrome around it is glass. That
         // is the split every reference makes, and it is also what makes the boundary
