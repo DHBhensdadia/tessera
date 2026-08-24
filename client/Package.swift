@@ -70,7 +70,11 @@ let package = Package(
         ),
         .testTarget(
             name: "TesseraTests",
-            dependencies: ["Tessera"],
+            // `EngineClient` as well as `Tessera`, because the generated request and
+            // response models are what the stores are made of — a test that builds a
+            // `StudentGroupTree` to check the outline needs the real type, not a mirror
+            // of it written by hand and kept in step by nobody.
+            dependencies: ["Tessera", "EngineClient"],
             path: "Tests/TesseraTests"
         ),
     ]
