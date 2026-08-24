@@ -16,6 +16,11 @@ import Observation
 final class ProjectSummary {
     enum Entity: String, CaseIterable, Sendable {
         case rooms, instructors, courses, groups, constraints
+        case buildings, features, departments, programs
+        /// Term-scoped, like constraints: a course offered in Autumn is not offered in
+        /// Spring, so a single number for "offerings" would be meaningless.
+        case offerings
+        case institutions, grids, terms
 
         /// The endpoint that answers with a `Page`, whose `total` is the count.
         var path: String {
@@ -25,11 +30,19 @@ final class ProjectSummary {
             case .courses: "courses"
             case .groups: "student-groups"
             case .constraints: "constraints"
+            case .buildings: "buildings"
+            case .features: "features"
+            case .departments: "departments"
+            case .programs: "programs"
+            case .offerings: "offerings"
+            case .institutions: "institutions"
+            case .grids: "time-grids"
+            case .terms: "terms"
             }
         }
 
-        /// Constraints belong to a term; everything else belongs to the institution.
-        var isTermScoped: Bool { self == .constraints }
+        /// Some things belong to a term rather than to the institution.
+        var isTermScoped: Bool { self == .constraints || self == .offerings }
     }
 
     private(set) var counts: [Entity: Int] = [:]
@@ -84,10 +97,21 @@ final class ProjectSummary {
             case .instructors: try await client.listInstructors(.init()).ok.body.json.total
             case .courses: try await client.listCourses(.init()).ok.body.json.total
             case .groups: try await client.listGroups(.init()).ok.body.json.total
+            case .buildings: try await client.listBuildings(.init()).ok.body.json.total
+            case .features: try await client.listFeatures(.init()).ok.body.json.total
+            case .departments: try await client.listDepartments(.init()).ok.body.json.total
+            case .programs: try await client.listPrograms(.init()).ok.body.json.total
             case .constraints:
                 try await client.listConstraints(
                     .init(path: .init(term_id: term ?? 0))
                 ).ok.body.json.total
+            case .offerings:
+                try await client.listOfferings(
+                    .init(path: .init(term_id: term ?? 0))
+                ).ok.body.json.total
+            case .institutions: try await client.listInstitutions().ok.body.json.total
+            case .grids: try await client.listTimeGrids().ok.body.json.total
+            case .terms: try await client.listTerms(.init()).ok.body.json.total
             }
         }
     }

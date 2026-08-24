@@ -1,3 +1,4 @@
+import EngineClient
 import Foundation
 import Testing
 
@@ -307,7 +308,11 @@ struct DestinationTests {
     @Test func theStoredNamesAreStable() {
         #expect(
             Set(Destination.allCases.map(\.rawValue))
-                == ["overview", "rooms", "instructors", "courses", "groups", "constraints", "timetables"]
+                == [
+                    "overview", "rooms", "instructors", "courses", "offerings", "groups",
+                    "constraints", "buildings", "features", "departments", "programs",
+                    "institutions", "grids", "terms", "timetables",
+                ]
         )
     }
 
@@ -342,5 +347,70 @@ struct ChecklistTests {
     @Test func seededRowsStartSatisfied() {
         #expect(ChecklistStep(.constraints, 0, verb: "Review", seeded: true).status == .done)
         #expect(ChecklistStep(.constraints, 14, verb: "Review", seeded: true).detail == "Using defaults")
+    }
+}
+
+/// That a refusal reaches the field the person has to fix.
+///
+/// The half of this that 3.3 built — a pointer resolved to a field name — was useless on
+/// its own: `Field` has had a `problem:` slot since 3.1 and nothing connected the two, so
+/// an application that knew exactly which field was wrong said "validation failed".
+struct FieldErrorRoutingTests {
+    private func failure(_ pointers: [(String, String)]) -> EngineFailure {
+        .refused(
+            .init(
+                status: 422,
+                title: "Unprocessable Entity",
+                detail: "1 field(s) failed validation",
+                fields: pointers.map { .init(pointer: $0.0, message: $0.1) }
+            )
+        )
+    }
+
+    @Test func aComplaintLandsOnTheFieldItNames() {
+        let errors = FieldErrors.from(
+            failure([("body/capacity", "Input should be greater than or equal to 0")]),
+            fields: ["name", "capacity"]
+        )
+        #expect(errors.message(for: "capacity")?.contains("greater than or equal to 0") == true)
+        #expect(errors.message(for: "name") == nil)
+        #expect(errors.unrouted.isEmpty)
+    }
+
+    /// A complaint about a field this form does not have is a bug in the form. Swallowing
+    /// it makes the bug invisible rather than absent, so it is shown.
+    @Test func aComplaintWithNowhereToGoIsShownAnyway() {
+        let errors = FieldErrors.from(
+            failure([("body/building_id", "No such building")]),
+            fields: ["name", "capacity"]
+        )
+        #expect(errors.message(for: "building_id") == nil)
+        #expect(errors.unrouted.count == 1)
+        #expect(errors.unrouted[0].contains("building_id"))
+        #expect(!errors.isEmpty)
+    }
+
+    /// A rule violation names no field at all — it carries a sentence. That sentence has to
+    /// appear somewhere, or a refused save looks like a save.
+    @Test func aRefusalWithNoFieldsStillSaysSomething() {
+        let conflict = EngineFailure.refused(
+            .init(status: 409, title: "Conflict", detail: "a room called 'LH-201' already exists", fields: [])
+        )
+        let errors = FieldErrors.from(conflict, fields: ["name"])
+        #expect(errors.byField.isEmpty)
+        #expect(errors.unrouted == ["a room called 'LH-201' already exists"])
+    }
+
+    /// The engine's hint is a suggestion — "use a positive number". It belongs with the
+    /// message rather than in a second place nobody looks.
+    @Test func theHintTravelsWithTheMessage() {
+        let withHint = EngineFailure.refused(
+            .init(
+                status: 422, title: "Unprocessable Entity", detail: "",
+                fields: [.init(pointer: "body/capacity", message: "Too small.", hint: "Use a positive number.")]
+            )
+        )
+        let errors = FieldErrors.from(withHint, fields: ["capacity"])
+        #expect(errors.message(for: "capacity") == "Too small. Use a positive number.")
     }
 }

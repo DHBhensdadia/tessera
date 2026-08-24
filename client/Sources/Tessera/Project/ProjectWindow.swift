@@ -122,19 +122,84 @@ struct ProjectWindow: View {
         .toolbar { toolbar }
     }
 
+    /// A screen that manages a collection fills the pane itself — it has its own list,
+    /// its own scrolling and its own inspector. Only the read-only panes are wrapped in a
+    /// `ScrollView` here; wrapping a list-and-inspector in one produces a page that scrolls
+    /// as a whole while the list inside it also scrolls, which is two scrollbars and one
+    /// confused user.
+    @ViewBuilder
     private var content: some View {
-        ScrollView {
-            Group {
-                if destination.wrappedValue == .overview {
-                    Overview(summary: summary, appearance: appearance) { destination.wrappedValue = $0 }
+        Group {
+            switch destination.wrappedValue {
+            case .rooms, .instructors, .courses, .offerings, .groups,
+                 .buildings, .features, .departments, .programs,
+                 .institutions, .grids, .terms:
+                if case .running(let running) = engine.state {
+                    let connection = EngineConnection(port: running.port, token: running.token)
+                    switch destination.wrappedValue {
+                    case .rooms:
+                        RoomsScreen(
+                            connection: connection,
+                            term: summary.selectedTerm?.id,
+                            appearance: appearance
+                        )
+                        .id(summary.selectedTerm?.id ?? 0)
+                    case .instructors:
+                        InstructorsScreen(
+                            connection: connection,
+                            term: summary.selectedTerm?.id,
+                            appearance: appearance
+                        )
+                        .id(summary.selectedTerm?.id ?? 0)
+                    case .courses:
+                        CoursesScreen(connection: connection, appearance: appearance)
+                    case .groups:
+                        GroupsScreen(connection: connection, appearance: appearance)
+                    case .offerings:
+                        // The one screen whose contents depend on the toolbar. Keyed on the
+                        // term so switching terms rebuilds it rather than showing Autumn's
+                        // offerings under Spring's heading.
+                        OfferingsScreen(
+                            connection: connection,
+                            term: summary.selectedTerm?.id,
+                            appearance: appearance
+                        )
+                        .id(summary.selectedTerm?.id ?? 0)
+                    case .buildings:
+                        simple("Buildings", .buildings, "Rooms in it are kept — they simply stop having an address.", connection)
+                    case .features:
+                        simple("Features", .features, "Rooms lose it, and any session requiring it may no longer fit anywhere.", connection)
+                    case .departments:
+                        simple("Departments", .departments, "Instructors and courses in it are kept, without a department.", connection)
+                    case .institutions:
+                        simple("Institution", .institutions, "Everything belonging to it goes too. A project normally has exactly one.", connection)
+                    case .grids:
+                        GridsScreen(connection: connection, appearance: appearance)
+                    case .terms:
+                        TermsScreen(connection: connection, appearance: appearance)
+                    default:
+                        simple("Programmes", .programs, "Student groups under it are kept, without a programme.", connection)
+                    }
                 } else {
-                    DestinationPlaceholder(
-                        destination: destination.wrappedValue,
-                        appearance: appearance
-                    )
+                    StartingUp(engine: engine, appearance: appearance)
+                }
+            default:
+                ScrollView {
+                    Group {
+                        if destination.wrappedValue == .overview {
+                            Overview(summary: summary, appearance: appearance) {
+                                destination.wrappedValue = $0
+                            }
+                        } else {
+                            DestinationPlaceholder(
+                                destination: destination.wrappedValue,
+                                appearance: appearance
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(appearance.swiftUI(SurfaceRole.base))
@@ -145,6 +210,29 @@ struct ProjectWindow: View {
                     .frame(width: 1)
             }
         }
+    }
+
+    /// One of the four name-only screens.
+    ///
+    /// `.id(title)` is what makes switching destinations build a new store rather than
+    /// showing buildings under the heading "Features": a different id is a different view
+    /// identity, and the screen's `@State` goes with it. The store itself is created inside
+    /// the screen — created here, it was rebuilt on every body evaluation and the list
+    /// never filled.
+    private func simple(
+        _ title: String,
+        _ operations: SimpleEntityStore.Operations,
+        _ warning: String,
+        _ connection: EngineConnection
+    ) -> some View {
+        SimpleEntityScreen(
+            title: title,
+            deleteWarning: warning,
+            connection: connection,
+            operations: operations,
+            appearance: appearance
+        )
+        .id(title)
     }
 
     @ToolbarContentBuilder
