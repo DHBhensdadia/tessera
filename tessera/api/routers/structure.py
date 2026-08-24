@@ -359,11 +359,46 @@ def delete_building(building_id: int, db: Db) -> None:
 # -- instructors (2.2) -----------------------------------------------------------
 
 
+def _instructor_read(session: DbSession, instructor: d.Instructor) -> InstructorRead:
+    """Resolve the department the way courses and rooms already do.
+
+    Every instructor response carried ``department: null`` from 2.2 until 3.4, including
+    for instructors that had one. `InstructorRead.model_validate(row)` was reading a domain
+    entity that has ``department_id`` and no ``department``, so Pydantic fell back to the
+    field's default — which is ``None``, and therefore valid. The field was declared,
+    published in the OpenAPI document, generated into the Swift client, and never once
+    filled.
+
+    Nothing caught it because nothing could: the response validates, the contract matches,
+    the types agree, and both suites pass. It surfaced when the instructor screen showed a
+    Department of "None" for somebody who had just been given one.
+
+    Two lessons kept rather than fixed away. An optional field with a default is invisible
+    when it goes missing — `_course_read` and `_room_read` exist precisely because the
+    resolution has to be written by hand, and the one model that skipped the helper is the
+    one that was wrong. And a field nothing reads is a field nothing tests; this only became
+    observable when a screen finally displayed it.
+    """
+    assert instructor.id is not None  # everything the repository returns has been flushed
+    department = (
+        session.get(m.Department, instructor.department_id) if instructor.department_id else None
+    )
+    return InstructorRead(
+        id=instructor.id,
+        name=instructor.name,
+        email=instructor.email,
+        department=(Reference(id=department.id, name=department.name) if department else None),
+        max_slots_per_day=instructor.max_slots_per_day,
+        max_slots_per_week=instructor.max_slots_per_week,
+        max_consecutive_slots=instructor.max_consecutive_slots,
+    )
+
+
 @router.get("/instructors", response_model=Page[InstructorRead], responses=ERRORS)
 def list_instructors(db: Db, department_id: int | None = None) -> Page[InstructorRead]:
     return _page(
         [
-            InstructorRead.model_validate(x)
+            _instructor_read(db, x)
             for x in people_repo.list_instructors(db, department_id=department_id)
         ]
     )
@@ -376,7 +411,8 @@ def list_instructors(db: Db, department_id: int | None = None) -> Page[Instructo
     responses=ERRORS,
 )
 def create_instructor(payload: InstructorCreate, db: Db) -> InstructorRead:
-    return InstructorRead.model_validate(
+    return _instructor_read(
+        db,
         people_repo.create_instructor(
             db,
             name=payload.name,
@@ -385,21 +421,22 @@ def create_instructor(payload: InstructorCreate, db: Db) -> InstructorRead:
             max_slots_per_day=payload.max_slots_per_day,
             max_slots_per_week=payload.max_slots_per_week,
             max_consecutive_slots=payload.max_consecutive_slots,
-        )
+        ),
     )
 
 
 @router.get("/instructors/{instructor_id}", response_model=InstructorRead, responses=ERRORS)
 def get_instructor(instructor_id: int, db: Db) -> InstructorRead:
-    return InstructorRead.model_validate(people_repo.get_instructor(db, instructor_id))
+    return _instructor_read(db, people_repo.get_instructor(db, instructor_id))
 
 
 @router.patch("/instructors/{instructor_id}", response_model=InstructorRead, responses=ERRORS)
 def update_instructor(instructor_id: int, payload: InstructorUpdate, db: Db) -> InstructorRead:
-    return InstructorRead.model_validate(
+    return _instructor_read(
+        db,
         people_repo.update_instructor(
             db, instructor_id, changes=payload.model_dump(exclude_unset=True)
-        )
+        ),
     )
 
 
