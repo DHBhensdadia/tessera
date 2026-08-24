@@ -138,6 +138,9 @@ struct ComponentsPane: View {
 struct DataPane: View {
     let appearance: Appearance
     @State private var selected: String? = "Computer Lab 1"
+    /// Wednesday afternoon, so the specimen opens with something to look at and something
+    /// to drag away.
+    @State private var blockedSlots: Set<Int> = [21, 22, 23]
 
     // Numeric columns go last. A right-aligned figure followed by a left-aligned word
     // reads as one field — "60 published" — however much space is between them, because
@@ -180,7 +183,7 @@ struct DataPane: View {
             }
             .id(Entry.rows)
 
-            ContentSection("Badges", showsRule: false, appearance: appearance) {
+            ContentSection("Badges", appearance: appearance) {
                 HStack(spacing: Spacing.snug.points) {
                     ForEach(Badge.Tone.allCases, id: \.self) { tone in
                         Badge(tone.rawValue, tone: tone, appearance: appearance)
@@ -188,6 +191,26 @@ struct DataPane: View {
                 }
             }
             .id(Entry.badges)
+
+            // The one component that is a *gesture* rather than a control, so the specimen
+            // is live: a still picture of it says nothing about whether dragging across a
+            // range works, and that is the whole feature.
+            ContentSection("Availability", showsRule: false, appearance: appearance) {
+                AvailabilityGrid(
+                    week: .init(
+                        days: 5,
+                        slotsPerDay: 8,
+                        slotMinutes: 60,
+                        dayStartMinute: 9 * 60,
+                        breakSlots: [4]
+                    ),
+                    blocked: blockedSlots,
+                    appearance: appearance,
+                    block: { blockedSlots.formUnion($0) },
+                    free: { blockedSlots.subtract($0) }
+                )
+            }
+            .id(Entry.availability)
         }
     }
 }

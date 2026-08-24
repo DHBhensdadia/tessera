@@ -309,13 +309,13 @@ enum Section: String, CaseIterable {
 enum Entry: String, CaseIterable, Hashable {
     case colour, type, shape
     case buttons, fields, empty
-    case tables, rows, badges
+    case tables, rows, badges, availability
 
     var section: Section {
         switch self {
         case .colour, .type, .shape: .foundations
         case .buttons, .fields, .empty: .components
-        case .tables, .rows, .badges: .data
+        case .tables, .rows, .badges, .availability: .data
         }
     }
 
@@ -330,6 +330,7 @@ enum Entry: String, CaseIterable, Hashable {
         case .tables: "Tables"
         case .rows: "List rows"
         case .badges: "Badges"
+        case .availability: "Availability"
         }
     }
 }
