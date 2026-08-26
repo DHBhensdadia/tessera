@@ -517,12 +517,99 @@ enum Probe {
             + "— disabling did not discard what was tuned")
         await store.setEnabled(true, on: first)
 
+        await aCustomRuleCanBeWritten(store, term: term)
+
         // A second store on the same engine: proves `load()` reads the change back rather
         // than the first store simply remembering what it was told.
         let reopened = ConstraintStore(connection: connection, term: term)
         await reopened.load()
         let readBack = reopened.preferences.first { $0.id == first.id }
         say("rules     reloaded  a fresh store reads \(readBack?.weight ?? -1)")
+    }
+
+    /// 3.4b part 3: a rule the catalogue described, written through the form's own path.
+    private static func aCustomRuleCanBeWritten(_ store: ConstraintStore, term: Int) async {
+        // A global kind narrowed to one instructor: the case that is the *same kind* as a
+        // term-wide preference and belongs among the custom rules rather than the sliders.
+        guard let narrowable = store.kinds.first(where: {
+            $0.scope == .global && ($0.targets ?? []).contains(.instructor)
+        }) else {
+            say("rules     MISSING   no global kind can be narrowed to an instructor")
+            return
+        }
+        let people = await store.options(for: .instructor)
+        guard let person = people.first else {
+            say("rules     MISSING   no instructor to narrow a rule to")
+            return
+        }
+
+        // The sentence the form shows while it is being filled in, and the sentence the
+        // engine writes afterwards. They have to match — that is the whole point of taking
+        // the template from the catalogue rather than writing one here.
+        let predicted = RuleSentence.render(
+            template: narrowable.summary_template,
+            params: [:],
+            targets: [person.name],
+            unnarrowed: narrowable.unnarrowed
+        )
+        say("rules     preview   \(predicted)")
+
+        let before = store.customRules.count
+        let wrote = await store.create(
+            kind: narrowable.kind,
+            targets: [.init(id: person.id, kind: .instructor)],
+            params: [:],
+            isHard: false,
+            weight: 7
+        )
+        guard wrote, store.customRules.count == before + 1,
+              let created = store.customRules.last(where: { $0.summary == predicted })
+                ?? store.customRules.last
+        else {
+            say("rules     MISSING   the rule was not written — \(store.notice ?? "no reason given")")
+            return
+        }
+        say("rules     wrote     \(created.summary)")
+        say("rules     agreed    the form's sentence and the engine's "
+            + "\(created.summary == predicted ? "match" : "DIFFER, which means two wordings exist")")
+
+        // A parameterised kind, so the params actually travel.
+        if let parameterised = store.kinds.first(where: { !($0.params ?? []).isEmpty }),
+           let spec = (parameterised.params ?? []).first {
+            _ = await store.create(
+                kind: parameterised.kind,
+                targets: [.init(id: person.id, kind: .instructor)],
+                params: [spec.name: spec.maximum],
+                isHard: false,
+                weight: 3
+            )
+            let withParam = store.customRules.first {
+                $0.summary.contains(String(spec.maximum))
+            }
+            say("rules     param     \(withParam?.summary ?? "the parameterised rule was not written")")
+        }
+
+        // The bound the form drew from the catalogue is the engine's too. Sending one past
+        // it must be refused rather than stored, or the two disagree about the same spec.
+        if let parameterised = store.kinds.first(where: { !($0.params ?? []).isEmpty }),
+           let spec = (parameterised.params ?? []).first {
+            let count = store.customRules.count
+            _ = await store.create(
+                kind: parameterised.kind,
+                targets: [.init(id: person.id, kind: .instructor)],
+                params: [spec.name: spec.maximum + 1],
+                isHard: false,
+                weight: 3
+            )
+            let complaint = store.message(for: "params") ?? store.notice
+            say("rules     refused   \(spec.name)=\(spec.maximum + 1) past its maximum of "
+                + "\(spec.maximum): \(complaint ?? "NOTHING SAID, which is wrong"); "
+                + "\(store.customRules.count == count ? "nothing stored" : "IT WAS STORED ANYWAY")")
+        }
+
+        // And removing one.
+        await store.delete(created)
+        say("rules     removed   \(store.customRules.count) custom rule(s) remain")
     }
 
     /// The claim the screen is most likely to get wrong: that the weight is in the file.
