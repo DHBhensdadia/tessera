@@ -98,12 +98,20 @@ enum ProjectChooser {
     /// one route into the application rather than two that behave differently.
     @MainActor
     static func openArgumentsGiven() {
+        let urls = projectsNamed()
+        guard !urls.isEmpty else { return }
+        OpenRequests.shared.request(urls)
+    }
+
+    /// The projects named with `--open`, whether or not a window is wanted for them.
+    ///
+    /// Separate from `openArgumentsGiven` because `--render` needs the path and no window
+    /// at all: it draws a screen into a bitmap and never presents anything.
+    static func projectsNamed() -> [URL] {
         let arguments = CommandLine.arguments
-        let urls = arguments.enumerated().compactMap { index, argument -> URL? in
+        return arguments.enumerated().compactMap { index, argument -> URL? in
             guard argument == "--open", index + 1 < arguments.count else { return nil }
             return URL(filePath: arguments[index + 1])
         }
-        guard !urls.isEmpty else { return }
-        OpenRequests.shared.request(urls)
     }
 }

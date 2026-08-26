@@ -34,6 +34,12 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--probe") {
             Task { await Probe.run() }
         }
+        // Draws a screen into a bitmap and exits. No window is presented, which is the
+        // point: no Screen Recording grant, no Space, no window to pick the wrong one of,
+        // and no content below the fold of a display.
+        if CommandLine.arguments.contains("--render") {
+            Task { await Render.run() }
+        }
         if let seconds = Self.closeAfter {
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { Self.closeOneProject() }
         }

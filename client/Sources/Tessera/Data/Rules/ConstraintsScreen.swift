@@ -29,29 +29,55 @@ struct ConstraintsScreen: View {
         )
     }
 
+    /// A screen around a store that has already loaded.
+    ///
+    /// For `--render`. `ImageRenderer` draws into a bitmap with no run loop, so `.task`
+    /// never fires and a screen that loads itself renders its empty state. Handing it a
+    /// filled store is the difference between a picture of this screen and a picture of the
+    /// sentence that says no term is chosen.
+    init(loaded store: ConstraintStore, appearance: Appearance) {
+        self.term = 0
+        self.appearance = appearance
+        _store = State(initialValue: store)
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if let store {
-                    if let notice = store.notice {
-                        NoticeBar(text: notice, appearance: appearance) { store.notice = nil }
-                    }
-                    AlwaysEnforced(invariants: store.invariants, appearance: appearance)
-                    Preferences(store: store, appearance: appearance)
-                    CustomRules(store: store, appearance: appearance)
-                } else {
-                    ContentSection("Rules", showsRule: false, appearance: appearance) {
-                        Text("Rules belong to a term, because the same department may want "
-                             + "them balanced differently from one semester to the next. "
-                             + "Choose a term in the toolbar.")
-                            .font(Typography.body.font)
-                            .foregroundStyle(appearance.swiftUI(TextRole.secondary))
-                    }
+        ScrollView { content }
+            .task { await store?.load() }
+    }
+
+    /// The blocks, outside the scroll container.
+    ///
+    /// Exposed because `--render` draws this screen offscreen, and `ImageRenderer` renders a
+    /// `ScrollView` as **nothing** — the same class of limit as `glassEffect`, and found the
+    /// same way: a render that reported success and produced a picture of the background
+    /// colour.
+    ///
+    /// It is the honest shape anyway. A `ScrollView` is how a screen taller than its window
+    /// is made reachable; it is not part of what the screen *is*. Drawn at full height, all
+    /// three blocks are one picture — which is what this screen needs, since the third was
+    /// never once photographed while it lived below the fold of a display.
+    @ViewBuilder
+    var content: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let store {
+                if let notice = store.notice {
+                    NoticeBar(text: notice, appearance: appearance) { store.notice = nil }
+                }
+                AlwaysEnforced(invariants: store.invariants, appearance: appearance)
+                Preferences(store: store, appearance: appearance)
+                CustomRules(store: store, appearance: appearance)
+            } else {
+                ContentSection("Rules", showsRule: false, appearance: appearance) {
+                    Text("Rules belong to a term, because the same department may want "
+                         + "them balanced differently from one semester to the next. "
+                         + "Choose a term in the toolbar.")
+                        .font(Typography.body.font)
+                        .foregroundStyle(appearance.swiftUI(TextRole.secondary))
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task { await store?.load() }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
