@@ -63,13 +63,49 @@ final class EngineRegistry {
         return true
     }
 
-    /// The window for this project has gone. So does its engine.
+    /// The window for this project has gone. So does its engine — unless another window
+    /// is still showing the same project.
     ///
     /// Explicit rather than relying on deinit: the engine is a subprocess, and a Python
     /// process that outlives the window it belonged to is not a leak the user can see or
     /// clean up. Closing eight windows must leave zero engines.
-    func release(_ location: ProjectLocation) {
+    ///
+    /// The guard is not hypothetical. Scene restoration replays **one window per persisted
+    /// entry**, and it does not deduplicate by value — so a project opened twelve times over
+    /// a month comes back as twelve windows onto one file. `collapseDuplicates` closes the
+    /// extras, and without this check the first close would stop the engine the survivor is
+    /// still using.
+    ///
+    /// The closing window is excluded explicitly because it is still in `windows` and still
+    /// reports `isVisible` while `willCloseNotification` is being delivered — asking "is
+    /// anyone else showing this?" while counting yourself always answers yes.
+    func release(_ location: ProjectLocation, closing window: NSWindow? = nil) {
+        let elsewhere = NSApplication.shared.windows.contains {
+            $0 !== window && $0.isVisible && $0.representedURL?.standardizedFileURL == location.url
+        }
+        guard !elsewhere else { return }
         controllers.removeValue(forKey: location)?.stop()
+    }
+
+    /// Close every window but one for a project that has several.
+    ///
+    /// Restoration is the only thing that produces them: `focusIfOpen` already prevents a
+    /// second window at runtime, and nothing in the interface offers to open one. But
+    /// `WindowGroup(for:)` persists a window per *opening* rather than per value, so every
+    /// launch that named the same project on the command line — or every reopen from Recent
+    /// Projects — left another entry to replay. Measured on the shipped bundle: **twelve
+    /// windows onto one project**, plus three more for projects last opened days earlier.
+    ///
+    /// Found because `screencapture` began refusing a window id that the window server was
+    /// perfectly happy to hand out, which is a strange enough symptom to chase.
+    ///
+    /// The survivor is the lowest window number — the oldest — so every duplicate running
+    /// this reaches the same answer and the order they run in does not matter.
+    func collapseDuplicates(of location: ProjectLocation) {
+        let showing = NSApplication.shared.windows
+            .filter { $0.representedURL?.standardizedFileURL == location.url }
+            .sorted { $0.windowNumber < $1.windowNumber }
+        for extra in showing.dropFirst() { extra.close() }
     }
 
     /// How many engines are alive. Exists for the test that closing windows closes them.

@@ -96,7 +96,15 @@ struct ProjectWindow: View {
         }
         // Not `.onDisappear` — see `WindowLifetime`. A view leaving a hierarchy is not a
         // window closing, and treating it as one leaked engines.
-        .onWindowClose { registry.release(location) }
+        .onWindow(
+            // Restoration replays one window per persisted *opening* rather than per
+            // project, so a project opened repeatedly comes back as a stack of identical
+            // windows. Every one of them runs this and they all reach the same answer, so
+            // the order does not matter — but it has to run once the window exists, because
+            // the question is asked of `representedURL`.
+            attach: { _ in registry.collapseDuplicates(of: location) },
+            close: { registry.release(location, closing: $0) }
+        )
     }
 
     /// The shell: chrome around a destination.
