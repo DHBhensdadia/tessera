@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
-from tessera.domain.constraints import INVARIANTS, SPECS, ConstraintKind
+from tessera.domain.constraints import INVARIANTS, SPECS, ConstraintKind, TargetKind
 from tessera.repository import calendar as calendar_repo
 from tessera.repository import create_all, session_factory
 from tessera.repository import models as m
@@ -269,6 +269,7 @@ class TestTheCatalogue:
             assert entry["scope"] == spec.scope.value
             assert sorted(entry["targets"]) == sorted(t.value for t in spec.targets)
             assert entry["summary_template"] == spec.summary
+            assert entry["unnarrowed"] == spec.unnarrowed
 
             published = {p["name"]: p for p in entry["params"]}
             assert published.keys() == spec.params.keys()
@@ -337,3 +338,30 @@ class TestTheCatalogue:
         """It describes the build, not the file — so it answers before anything is set up,
         and a client can fetch it once per engine and keep it."""
         assert client.get("/api/v1/constraint-catalogue").status_code == 200
+
+    def test_an_unnarrowed_rule_says_what_it_applies_to(self, client: TestClient) -> None:
+        """The fallback word is per kind, and "everyone" is wrong for two of them.
+
+        `unnarrowed` defaulted to "everyone" for every kind, which reads correctly for the
+        five about people and groups and produced "Avoid teaching everyone twice in one day"
+        for the one about courses. It has been on the console page since 2.5 and on the wire
+        since 2.8; nothing displayed the sentence beside the rule it describes until the
+        native screen did.
+
+        So: no global kind may describe itself as applying to people when it can only be
+        attached to courses.
+        """
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        for entry in body["kinds"]:
+            if entry["scope"] != "global":
+                continue
+            spec = SPECS[ConstraintKind(entry["kind"])]
+            rendered = spec.describe({})
+
+            assert "{" not in rendered
+            if spec.targets == {TargetKind.COURSE}:
+                assert "everyone" not in rendered, (
+                    f"{entry['kind']} may only be attached to courses and describes itself "
+                    f"as applying to people: {rendered!r}"
+                )

@@ -572,12 +572,18 @@
             },
             "title": "Targets",
             "type": "array"
+          },
+          "unnarrowed": {
+            "description": "What fills {targets} when the constraint names none \u2014 'every course', 'everyone'. A client rendering the sentence for an untargeted rule needs it, and the word differs per kind rather than following the target kinds.",
+            "title": "Unnarrowed",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "scope",
           "targets",
+          "unnarrowed",
           "summary_template",
           "example"
         ],

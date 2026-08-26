@@ -161,9 +161,23 @@ class ConstraintSpec(BaseModel):
     and a second copy would drift from the rule it describes.
     """
 
-    def describe(self, params: Mapping[str, int], targets: str = "everyone") -> str:
+    unnarrowed: str = "everyone"
+    """What fills the ``{targets}`` slot when the constraint names none.
+
+    Per kind rather than derived from :attr:`targets`, because the reading changes with the
+    sentence: a rule about courses wants "any course" in one summary and "every course" in
+    another, and no rule about target kinds produces both.
+
+    It defaulted to "everyone" for every kind, which is right for the five about people and
+    groups and wrong for the two about courses — "Avoid teaching **everyone** twice in one
+    day" has been on the console page since 2.5 and on the wire since 2.8. Nobody noticed
+    because nothing displayed the sentence beside the thing it describes until the native
+    rules screen did.
+    """
+
+    def describe(self, params: Mapping[str, int], targets: str = "") -> str:
         filled = {name: params.get(name, spec.default) for name, spec in self.params.items()}
-        return self.summary.format(**filled, targets=targets).strip()
+        return self.summary.format(**filled, targets=targets or self.unnarrowed).strip()
 
 
 class Invariant(BaseModel):
@@ -248,21 +262,25 @@ SPECS: Mapping[ConstraintKind, ConstraintSpec] = {
         scope=ConstraintScope.GLOBAL,
         targets=frozenset({TargetKind.GROUP}),
         summary="Minimise idle gaps in the day for {targets}",
+        unnarrowed="every group",
     ),
     ConstraintKind.MINIMISE_INSTRUCTOR_GAPS: ConstraintSpec(
         scope=ConstraintScope.GLOBAL,
         targets=frozenset({TargetKind.INSTRUCTOR}),
         summary="Minimise idle gaps in the day for {targets}",
+        unnarrowed="every instructor",
     ),
     ConstraintKind.AVOID_SAME_COURSE_TWICE_A_DAY: ConstraintSpec(
         scope=ConstraintScope.GLOBAL,
         targets=frozenset({TargetKind.COURSE}),
         summary="Avoid teaching {targets} twice in one day",
+        unnarrowed="any course",
     ),
     ConstraintKind.RESPECT_INSTRUCTOR_PREFERENCES: ConstraintSpec(
         scope=ConstraintScope.GLOBAL,
         targets=frozenset({TargetKind.INSTRUCTOR}),
         summary="Respect the marked time preferences of {targets}",
+        unnarrowed="every instructor",
     ),
     ConstraintKind.MINIMISE_BUILDING_CHANGES: ConstraintSpec(
         scope=ConstraintScope.GLOBAL,
@@ -278,6 +296,7 @@ SPECS: Mapping[ConstraintKind, ConstraintSpec] = {
         scope=ConstraintScope.GLOBAL,
         targets=frozenset({TargetKind.COURSE}),
         summary="Keep {targets} in the same room all week",
+        unnarrowed="every course",
     ),
     ConstraintKind.LIMIT_CONSECUTIVE_SLOTS: ConstraintSpec(
         scope=ConstraintScope.GLOBAL,

@@ -134,6 +134,11 @@ class ConstraintKindRead(Wire):
         description="What it may be attached to. Empty means term-wide only.",
     )
     params: list[ParamRead] = Field(default_factory=list)
+    unnarrowed: str = Field(
+        description="What fills {targets} when the constraint names none — 'every course', "
+        "'everyone'. A client rendering the sentence for an untargeted rule needs it, and "
+        "the word differs per kind rather than following the target kinds.",
+    )
     summary_template: str = Field(
         description="The rule as a sentence, with {name} placeholders for each parameter "
         "and {targets} for what it applies to. Placeholders are bare — no format specs — "
@@ -163,6 +168,7 @@ class ConstraintKindRead(Wire):
                 )
                 for name, param in sorted(spec.params.items())
             ],
+            unnarrowed=spec.unnarrowed,
             summary_template=spec.summary,
             example=spec.describe({}, "…"),
         )
