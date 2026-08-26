@@ -33,6 +33,7 @@ enum Probe {
             if let term { await theTreeAndTheGridWork(connection, term: term) }
             await theConstraintCatalogueArrives(connection)
             if let term { await theRulesScreenWorks(connection, term: term) }
+            if let term { await aSpreadsheetCanBeImported(connection, term: term) }
             await noticesTheEngineHasGone(engine, connection)
             engine.stop()
             if let term { await theWeightSurvivesReopening(project, term: term) }
@@ -636,6 +637,67 @@ enum Probe {
         }
         say("rules     persisted after a full engine restart, \"\(first.summary)\" is still "
             + "\(first.weight) (\(WeightScale.word(for: first.weight))) — it reached the file")
+    }
+
+    /// 3.5 part 1: multipart, end to end, before anything is built on it.
+    ///
+    /// Every generated-code defect in Stage 3 compiled perfectly — fifteen empty `*Update`
+    /// structs, ten dropped nullable `$ref`s, a typed failure no call site could catch. The
+    /// multipart encoder is a different path from JSON and had never carried a byte, so this
+    /// is the check that decides whether the rest of the phase is a screen or a transport
+    /// change.
+    private static func aSpreadsheetCanBeImported(_ connection: EngineConnection, term: Int) async {
+        let store = ImportStore(connection: connection, term: term)
+
+        // The 2.6 fixture's shape: mostly fine, damaged in a few places, one blank line.
+        var lines = ["Room Name,Seats,Block,Equipment"]
+        for number in 2...60 {
+            switch number {
+            case 14: lines.append("LH-014,forty,Block A,projector")
+            case 41: lines.append("LH-041,60,Block A,projecter")
+            case 58: lines.append(",60,Block A,projector")
+            default: lines.append("LH-\(String(format: "%03d", number)),\(40 + number % 60),Block A,projector")
+            }
+        }
+        let sheet = ImportStore.Dropped(
+            name: "rooms.csv",
+            bytes: Array((lines.joined(separator: "\n") + "\n").utf8)
+        )
+
+        let roomsBefore = await roomCount(connection)
+        await store.inspect(sheet)
+
+        guard let report = store.report else {
+            say("import    MISSING   nothing came back — \(store.notice ?? "no reason given")")
+            return
+        }
+        say("import    read      \(report.kind): \(report.rowsTotal) rows, "
+            + "\(report.rowsReady) ready, \(report.problems.count) problem(s)")
+        say("import    mapped    \(report.mapping.sorted { $0.key < $1.key }.map { "\($0.key)→\($0.value)" }.joined(separator: ", "))")
+        if let first = report.problems.first {
+            say("import    row       row \(first.row) \(first.column.isEmpty ? "" : "(\(first.column)) ")\(first.message)")
+        }
+
+        // D5, and the claim most worth checking: a dry run writes nothing.
+        let roomsAfterDryRun = await roomCount(connection)
+        say("import    dry run   rooms \(roomsBefore) → \(roomsAfterDryRun) "
+            + "— \(roomsBefore == roomsAfterDryRun ? "nothing was written, as designed" : "SOMETHING WAS WRITTEN, which is wrong")")
+
+        await store.commit()
+        let roomsAfterCommit = await roomCount(connection)
+        let committed = store.report?.committed ?? false
+        say("import    committed \(committed) — rooms \(roomsAfterDryRun) → \(roomsAfterCommit), "
+            + "expected +\(report.rowsReady)")
+        say("import    file      \(store.file == nil ? "released after the commit" : "STILL HELD, which leaks a spreadsheet")")
+
+        // A file that is not a spreadsheet says so in a sentence, which is D6.
+        let rubbish = ImportStore.Dropped(name: "notes.txt", bytes: Array("hello".utf8))
+        await store.inspect(rubbish)
+        say("import    refused   \(store.notice ?? "NOTHING SAID, which is wrong")")
+    }
+
+    private static func roomCount(_ connection: EngineConnection) async -> Int {
+        (try? await connection.run { try await $0.listRooms(.init()).ok.body.json }.total) ?? -1
     }
 
     /// A grid and a term, so there is something for an offering to belong to.
