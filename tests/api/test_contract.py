@@ -213,7 +213,7 @@ def test_no_route_has_changed_what_it_answers_with(app: FastAPI, snapshot: dict[
 #:
 #: Named with the reason rather than kept as a bare list, because an exemption set that
 #: grows by one every time the guard is inconvenient stops being a guard.
-NO_ERRORS_OF_THEIR_OWN = {"/health", "/api/v1/meta"}
+NO_ERRORS_OF_THEIR_OWN = {"/health", "/api/v1/meta", "/api/v1/constraint-catalogue"}
 
 
 def test_every_route_documents_its_error_shape(app: FastAPI) -> None:

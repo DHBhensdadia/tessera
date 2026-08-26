@@ -436,6 +436,32 @@
         "title": "ConflictingRequirement",
         "type": "object"
       },
+      "ConstraintCatalogue": {
+        "description": "What a constraint may be, and what is true regardless.\n\nBoth halves in one response because they are one screen and one question \u2014 *what can I\nchange, and what can I not?* \u2014 and answering it in two round trips would let an\ninterface render half of it.",
+        "properties": {
+          "invariants": {
+            "description": "Never stored and never configurable. Listed so an interface can explain what the solver will always do.",
+            "items": {
+              "$ref": "#/components/schemas/InvariantRead"
+            },
+            "title": "Invariants",
+            "type": "array"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/ConstraintKindRead"
+            },
+            "title": "Kinds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kinds",
+          "invariants"
+        ],
+        "title": "ConstraintCatalogue",
+        "type": "object"
+      },
       "ConstraintCreate": {
         "properties": {
           "enabled": {
@@ -511,6 +537,52 @@
         ],
         "title": "ConstraintKind",
         "type": "string"
+      },
+      "ConstraintKindRead": {
+        "description": "One rule that could be created, and everything needed to offer it.",
+        "properties": {
+          "example": {
+            "description": "The template filled with defaults, for a menu of kinds to read.",
+            "title": "Example",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ConstraintKind"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/ParamRead"
+            },
+            "title": "Params",
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConstraintScope",
+            "description": "'global' may apply term-wide or be narrowed to named targets; 'targeted' is meaningless without them."
+          },
+          "summary_template": {
+            "description": "The rule as a sentence, with {name} placeholders for each parameter and {targets} for what it applies to. Placeholders are bare \u2014 no format specs \u2014 so a client can fill them in as a form is typed rather than asking per keystroke.",
+            "title": "Summary Template",
+            "type": "string"
+          },
+          "targets": {
+            "description": "What it may be attached to. Empty means term-wide only.",
+            "items": {
+              "$ref": "#/components/schemas/TargetKind"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "scope",
+          "targets",
+          "summary_template",
+          "example"
+        ],
+        "title": "ConstraintKindRead",
+        "type": "object"
       },
       "ConstraintRead": {
         "properties": {
@@ -1442,6 +1514,30 @@
         "title": "InstructorUpdate",
         "type": "object"
       },
+      "InvariantRead": {
+        "description": "A rule that cannot be switched off.",
+        "properties": {
+          "because": {
+            "title": "Because",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "statement",
+          "because"
+        ],
+        "title": "InvariantRead",
+        "type": "object"
+      },
       "Meta": {
         "properties": {
           "api_version": {
@@ -2000,6 +2096,41 @@
           "total"
         ],
         "title": "Page[UnavailabilityRead]",
+        "type": "object"
+      },
+      "ParamRead": {
+        "description": "One parameter a kind takes, and the range it means anything over.",
+        "properties": {
+          "default": {
+            "title": "Default",
+            "type": "integer"
+          },
+          "label": {
+            "description": "How to ask for it \u2014 'Hours in a row'.",
+            "title": "Label",
+            "type": "string"
+          },
+          "maximum": {
+            "title": "Maximum",
+            "type": "integer"
+          },
+          "minimum": {
+            "title": "Minimum",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "minimum",
+          "maximum",
+          "default"
+        ],
+        "title": "ParamRead",
         "type": "object"
       },
       "PreflightProblem": {
@@ -4293,6 +4424,28 @@
         "summary": "Update Building",
         "tags": [
           "structure"
+        ]
+      }
+    },
+    "/api/v1/constraint-catalogue": {
+      "get": {
+        "description": "What a constraint may be, and what is true regardless.\n\nNot under `/constraints/\u2026`, which would collide with `/constraints/{constraint_id}` and\nmake the route order load-bearing \u2014 a literal path segment that only wins because it was\ndeclared first is the kind of thing somebody reorders in a tidy-up.\n\nTakes no project and reads no database: it is a property of the build, the same for every\nfile this engine opens, which is why it has no term in its path and no 404 among its\nresponses. A client can fetch it once per engine and keep it.",
+        "operationId": "constraintCatalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConstraintCatalogue"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Constraint Catalogue",
+        "tags": [
+          "rules"
         ]
       }
     },

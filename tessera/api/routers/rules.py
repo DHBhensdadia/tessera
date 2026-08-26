@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, status
 from tessera.api.deps import Db
 from tessera.api.errors import problem_responses
 from tessera.api.schemas import (
+    ConstraintCatalogue,
     ConstraintCreate,
     ConstraintRead,
     ConstraintUpdate,
@@ -92,6 +93,21 @@ def clear_unavailability(
     release them actually needs.
     """
     people_repo.unblock_slots(db, term_id, kind=kind, subject_id=subject_id, slots=slot)
+
+
+@router.get("/constraint-catalogue", response_model=ConstraintCatalogue)
+def constraint_catalogue() -> ConstraintCatalogue:
+    """What a constraint may be, and what is true regardless.
+
+    Not under `/constraints/…`, which would collide with `/constraints/{constraint_id}` and
+    make the route order load-bearing — a literal path segment that only wins because it was
+    declared first is the kind of thing somebody reorders in a tidy-up.
+
+    Takes no project and reads no database: it is a property of the build, the same for every
+    file this engine opens, which is why it has no term in its path and no 404 among its
+    responses. A client can fetch it once per engine and keep it.
+    """
+    return ConstraintCatalogue.build()
 
 
 @router.get("/terms/{term_id}/constraints", response_model=Page[ConstraintRead], responses=ERRORS)

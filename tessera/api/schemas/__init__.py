@@ -12,7 +12,9 @@ is that a storage change cannot silently become a breaking API change.
 
 from tessera.api.schemas.common import Page, Reference
 from tessera.api.schemas.constraints import (
+    ConstraintCatalogue,
     ConstraintCreate,
+    ConstraintKindRead,
     ConstraintRead,
     ConstraintUpdate,
     TargetWire,
@@ -99,7 +101,9 @@ __all__ = [
     "BuildingUpdate",
     "CommandRead",
     "ComparisonReport",
+    "ConstraintCatalogue",
     "ConstraintCreate",
+    "ConstraintKindRead",
     "ConstraintRead",
     "ConstraintUpdate",
     "CourseCreate",

@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
+from tessera.domain.constraints import INVARIANTS, SPECS, ConstraintKind
 from tessera.repository import calendar as calendar_repo
 from tessera.repository import create_all, session_factory
 from tessera.repository import models as m
@@ -235,3 +236,104 @@ class TestAvailabilityCarriesItsStrength:
             json={"kind": "instructor", "subject_id": project["instructor_id"], "slots": [12]},
         )
         assert response.json()["items"][0]["is_hard"] is True
+
+
+class TestTheCatalogue:
+    """That what the engine publishes about constraints is what the domain actually holds.
+
+    `SPECS` lives in `tessera.domain.constraints` and the console reads it by importing it,
+    which works only because the console runs inside the engine. A native client had no way
+    to learn which kinds exist, what each may be attached to, or what parameters it takes —
+    so it could not offer to create a constraint without a hand-written copy of `SPECS` in
+    Swift, which is what Decision #5 forbids and what `ConstraintSpec` warns about in its
+    own docstring.
+
+    The catalogue is derived from `SPECS` rather than restated, so these tests are not
+    checking a transcription. They are checking that the derivation stays total — that a
+    kind added to the domain appears on the wire without anybody remembering to add it, and
+    that nothing on the wire says something the domain does not.
+    """
+
+    def test_every_kind_is_published_exactly_once(self, client: TestClient) -> None:
+        body = client.get("/api/v1/constraint-catalogue").json()
+        published = [k["kind"] for k in body["kinds"]]
+
+        assert sorted(published) == sorted(k.value for k in ConstraintKind)
+        assert len(published) == len(set(published))
+
+    def test_each_kind_carries_what_the_domain_says_about_it(self, client: TestClient) -> None:
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        for entry in body["kinds"]:
+            spec = SPECS[ConstraintKind(entry["kind"])]
+            assert entry["scope"] == spec.scope.value
+            assert sorted(entry["targets"]) == sorted(t.value for t in spec.targets)
+            assert entry["summary_template"] == spec.summary
+
+            published = {p["name"]: p for p in entry["params"]}
+            assert published.keys() == spec.params.keys()
+            for name, param in spec.params.items():
+                assert published[name]["label"] == param.label
+                assert published[name]["minimum"] == param.minimum
+                assert published[name]["maximum"] == param.maximum
+                assert published[name]["default"] == param.default
+
+    def test_placeholders_are_bare_so_a_client_can_fill_them_in(self, client: TestClient) -> None:
+        """The promise the summary template makes, enforced where the templates live.
+
+        A client renders the sentence as a form is typed — asking the engine per keystroke
+        would be absurd — so it substitutes the placeholders itself. That is only safe while
+        every placeholder is a bare `{name}`: a format spec like `{slots:>3}` would need a
+        second implementation of Python's format mini-language in Swift, and would be
+        discovered as a rendering bug rather than as a contract change.
+
+        So the constraint is stated here rather than assumed there.
+        """
+        import re
+
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        for entry in body["kinds"]:
+            placeholders = set(re.findall(r"\{([^}]*)\}", entry["summary_template"]))
+            allowed = {p["name"] for p in entry["params"]} | {"targets"}
+
+            assert placeholders <= allowed, (
+                f"{entry['kind']} names {placeholders - allowed} in its summary, which is "
+                "neither one of its parameters nor 'targets'"
+            )
+            for placeholder in placeholders:
+                assert re.fullmatch(r"\w+", placeholder), (
+                    f"{entry['kind']} uses a format spec in {{{placeholder}}} — a client "
+                    "fills these in by name and cannot interpret one"
+                )
+
+    def test_the_example_is_the_template_filled_in(self, client: TestClient) -> None:
+        """A menu of sixteen kinds is unreadable as templates, so each carries a rendering."""
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        for entry in body["kinds"]:
+            spec = SPECS[ConstraintKind(entry["kind"])]
+            assert entry["example"] == spec.describe({}, "…")
+            assert "{" not in entry["example"]
+
+    def test_the_invariants_are_published_and_none_of_them_is_a_kind(
+        self, client: TestClient
+    ) -> None:
+        """The rules that cannot be switched off, and the line between the two lists.
+
+        An invariant appearing as a configurable kind would be the worst possible bug on
+        this screen: a control offering to disable something that cannot be disabled.
+        """
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        assert [i["key"] for i in body["invariants"]] == [i.key for i in INVARIANTS]
+        assert all(i["statement"] and i["because"] for i in body["invariants"])
+
+        keys = {i["key"] for i in body["invariants"]}
+        kinds = {k["kind"] for k in body["kinds"]}
+        assert not keys & kinds
+
+    def test_it_needs_no_project_and_no_term(self, client: TestClient) -> None:
+        """It describes the build, not the file — so it answers before anything is set up,
+        and a client can fetch it once per engine and keep it."""
+        assert client.get("/api/v1/constraint-catalogue").status_code == 200
