@@ -77,6 +77,20 @@ enum Render {
     ) async -> AnyView? {
         let appearance = Appearance(scheme: .dark)
         switch screen {
+        case .overview:
+            let summary = ProjectSummary()
+            await summary.load(from: connection)
+            return AnyView(
+                Overview(
+                    summary: summary,
+                    appearance: appearance,
+                    go: { _ in },
+                    // A closure that does nothing, because the drop target is being drawn
+                    // rather than used. Nil would draw the *absence* of it, which is the
+                    // state this render exists to check is not happening.
+                    take: { _ in }
+                )
+            )
         case .constraints:
             let store = ConstraintStore(connection: connection, term: term)
             await store.load()
