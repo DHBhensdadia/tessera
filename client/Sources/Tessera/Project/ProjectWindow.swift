@@ -131,7 +131,7 @@ struct ProjectWindow: View {
     private var content: some View {
         Group {
             switch destination.wrappedValue {
-            case .rooms, .instructors, .courses, .offerings, .groups,
+            case .rooms, .instructors, .courses, .offerings, .groups, .constraints,
                  .buildings, .features, .departments, .programs,
                  .institutions, .grids, .terms:
                 if case .running(let running) = engine.state {
@@ -171,6 +171,13 @@ struct ProjectWindow: View {
                         simple("Features", .features, "Rooms lose it, and any session requiring it may no longer fit anywhere.", connection)
                     case .departments:
                         simple("Departments", .departments, "Instructors and courses in it are kept, without a department.", connection)
+                    case .constraints:
+                        ConstraintsScreen(
+                            connection: connection,
+                            term: summary.selectedTerm?.id,
+                            appearance: appearance
+                        )
+                        .id(summary.selectedTerm?.id ?? 0)
                     case .institutions:
                         simple("Institution", .institutions, "Everything belonging to it goes too. A project normally has exactly one.", connection)
                     case .grids:
