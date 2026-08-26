@@ -16,6 +16,7 @@ from tessera.api.schemas import (
     UnavailabilityCreate,
     UnavailabilityRead,
 )
+from tessera.api.targets import Names, sentence, target_names
 from tessera.domain import entities as d
 from tessera.domain.constraints import Constraint, ConstraintTarget, TargetKind
 from tessera.repository import constraints as constraints_repo
@@ -112,7 +113,9 @@ def constraint_catalogue() -> ConstraintCatalogue:
 
 @router.get("/terms/{term_id}/constraints", response_model=Page[ConstraintRead], responses=ERRORS)
 def list_constraints(term_id: int, db: Db) -> Page[ConstraintRead]:
-    items = [_constraint(x) for x in constraints_repo.list_constraints(db, term_id)]
+    # Names resolved once for the whole page, not once per rule.
+    names = target_names(db, term_id=term_id)
+    items = [_constraint(x, names) for x in constraints_repo.list_constraints(db, term_id)]
     return Page(items=items, total=len(items))
 
 
@@ -133,7 +136,8 @@ def create_constraint(term_id: int, payload: ConstraintCreate, db: Db) -> Constr
             targets=_targets(payload.targets, payload.target_ids),
             params=payload.params,
             enabled=payload.enabled,
-        )
+        ),
+        target_names(db, term_id=term_id),
     )
 
 
@@ -148,7 +152,8 @@ def update_constraint(constraint_id: int, payload: ConstraintUpdate, db: Db) -> 
     if "targets" in changes or "target_ids" in changes:
         changes["targets"] = _targets(payload.targets, payload.target_ids)
         changes.pop("target_ids", None)
-    return _constraint(constraints_repo.update_constraint(db, constraint_id, changes=changes))
+    updated = constraints_repo.update_constraint(db, constraint_id, changes=changes)
+    return _constraint(updated, target_names(db, term_id=int(updated.term_id or 0)))
 
 
 @router.delete(
@@ -167,7 +172,15 @@ def _targets(
     return [ConstraintTarget(kind=TargetKind.SESSION, id=i) for i in target_ids or []]
 
 
-def _constraint(item: Constraint) -> ConstraintRead:
+def _constraint(item: Constraint, names: Names) -> ConstraintRead:
+    """One constraint, with its targets named.
+
+    `names` is required rather than optional. It was optional in spirit before — the
+    summary fell back to `kind id` when nobody supplied them — and every response ever
+    sent took that fallback, because the only caller that resolved names was the console,
+    which renders its own sentence and never reads this one. Making it an argument is what
+    stops the next endpoint from quietly doing the same.
+    """
     return ConstraintRead(
         id=int(item.id or 0),
         term_id=int(item.term_id or 0),
@@ -182,7 +195,7 @@ def _constraint(item: Constraint) -> ConstraintRead:
         ],
         params=dict(item.params),
         enabled=item.enabled,
-        summary=item.describe(),
+        summary=sentence(item, names),
     )
 
 

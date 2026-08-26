@@ -65,9 +65,14 @@ class TestTheContractExtension:
         body = response.json()
         assert body["targets"] == [{"kind": "instructor", "id": project["instructor_id"]}]
         # Not "everyone": a rule about one person that says everyone is worse than one
-        # that says nothing. Names need the database, which the console has and the wire
-        # response does not, so ids are the honest fallback.
-        assert body["summary"] == "Give instructor 1 at most 3 hour(s) in a row"
+        # that says nothing.
+        #
+        # It used to read "instructor 1" here, on the reasoning that names need the
+        # database and the wire response does not have it. The wire response is *built* by
+        # a router holding an open session, so that was never true — it was the console
+        # resolving names for itself and nobody checking what the API sent. Corrected in
+        # 3.4b when a screen finally displayed this string.
+        assert body["summary"] == "Give Prof. Shah at most 3 hour(s) in a row"
         assert body["target_ids"] == []
 
     def test_target_ids_still_works_and_still_means_sessions(
@@ -365,3 +370,62 @@ class TestTheCatalogue:
                     f"{entry['kind']} may only be attached to courses and describes itself "
                     f"as applying to people: {rendered!r}"
                 )
+
+
+class TestTheSummaryNamesItsTargets:
+    """That `summary` is a sentence a person can act on.
+
+    A constraint stores its targets as a kind and an id, because no single foreign key can
+    point at five tables. `Constraint.describe` therefore takes the resolved names as an
+    argument and falls back to `kind id` without them — and every `ConstraintRead` ever sent
+    took that fallback, so the wire has always said "Minimise idle gaps in the day for
+    instructor 1".
+
+    It went unnoticed for the ordinary reason: the console resolves names itself and never
+    reads the summary on the wire, and no other client existed until 3.4b's rules screen
+    displayed it. Found by a probe comparing the sentence the form predicts against the one
+    the engine returns for the same rule.
+    """
+
+    def test_a_narrowed_rule_names_the_person(
+        self, client: TestClient, project: dict[str, int]
+    ) -> None:
+        created = client.post(
+            f"/api/v1/terms/{project['term_id']}/constraints",
+            json={
+                "kind": "minimise_instructor_gaps",
+                "targets": [{"kind": "instructor", "id": project["instructor_id"]}],
+            },
+        ).json()
+
+        assert "instructor " not in created["summary"], created["summary"]
+        listed = client.get(f"/api/v1/terms/{project['term_id']}/constraints").json()["items"]
+        stored = next(c for c in listed if c["id"] == created["id"])
+        assert stored["summary"] == created["summary"]
+
+    def test_a_target_that_no_longer_exists_is_still_shown(
+        self, client: TestClient, project: dict[str, int]
+    ) -> None:
+        """An id with no name behind it reads as `kind id` rather than vanishing.
+
+        A sentence that silently dropped a dangling target would describe a rule that is
+        not the stored one, which is worse than an ugly one.
+        """
+        created = client.post(
+            f"/api/v1/terms/{project['term_id']}/constraints",
+            json={"kind": "minimise_group_gaps", "targets": [{"kind": "group", "id": 98_765}]},
+        )
+        # The repository may refuse an unknown target outright, which is also correct.
+        if created.status_code == 201:
+            assert "group 98765" in created.json()["summary"]
+        else:
+            assert created.status_code in {404, 422}
+
+    def test_an_untargeted_preference_still_reads_as_itself(
+        self, client: TestClient, project: dict[str, int]
+    ) -> None:
+        listed = client.get(f"/api/v1/terms/{project['term_id']}/constraints").json()["items"]
+        seeded = [c for c in listed if not c["targets"]]
+        assert seeded, "a new term should start with its preferences"
+        assert all("{" not in c["summary"] for c in seeded)
+        assert any("every group" in c["summary"] for c in seeded)

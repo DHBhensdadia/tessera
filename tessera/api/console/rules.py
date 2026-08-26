@@ -19,14 +19,12 @@ from fastapi.responses import HTMLResponse
 
 from tessera.api.console.base import describe, page, redirect, router
 from tessera.api.deps import Db
-from tessera.domain.constraints import SPECS, Constraint, ConstraintKind, ConstraintTarget
+from tessera.api.targets import sentence as _sentence
+from tessera.api.targets import target_names as _names
+from tessera.domain.constraints import SPECS, ConstraintKind, ConstraintTarget
 from tessera.domain.constraints import TargetKind as Kind
 from tessera.repository import calendar as calendar_repo
 from tessera.repository import constraints as repo
-from tessera.repository import groups as groups_repo
-from tessera.repository import people as people_repo
-from tessera.repository import structure as structure_repo
-from tessera.repository import teaching as teaching_repo
 from tessera.repository.errors import RepositoryError
 
 
@@ -50,29 +48,6 @@ class Rule:
     enabled: bool
     can_be_hard: bool
     params: dict[str, int]
-
-
-def _names(db: Db) -> dict[Kind, dict[int, str]]:
-    """Every targetable thing, by kind, so an id can be shown as a name.
-
-    Loaded once per render rather than per constraint: a term with fifty rules would
-    otherwise issue fifty queries to draw one page.
-    """
-    return {
-        Kind.INSTRUCTOR: {int(x.id or 0): x.name for x in people_repo.list_instructors(db)},
-        Kind.GROUP: {int(x.id or 0): x.name for x in groups_repo.list_groups(db)},
-        Kind.ROOM: {int(x.id or 0): x.name for x in structure_repo.list_rooms(db)},
-        Kind.COURSE: {int(x.id or 0): f"{x.code} {x.name}" for x in teaching_repo.list_courses(db)},
-        Kind.SESSION: {},
-    }
-
-
-def _sentence(item: Constraint, names: dict[Kind, dict[int, str]]) -> str:
-    named = [
-        names.get(target.kind, {}).get(target.id, f"{target.kind} {target.id}")
-        for target in sorted(item.targets, key=lambda t: (t.kind.value, t.id))
-    ]
-    return item.describe(", ".join(named))
 
 
 def _rules(db: Db, term_id: int, names: dict[Kind, dict[int, str]]) -> list[Rule]:
