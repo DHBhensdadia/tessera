@@ -114,7 +114,37 @@ struct ProjectWindow: View {
             // windows. Every one of them runs this and they all reach the same answer, so
             // the order does not matter — but it has to run once the window exists, because
             // the question is asked of `representedURL`.
-            attach: { _ in registry.collapseDuplicates(of: location) },
+            attach: { window in
+                // Tessera does not restore windows: it launches clean and waits for
+                // somebody to choose a project. Restoration reopened every project ever
+                // opened, each starting its own Python engine, and nothing bounded it —
+                // and it left blank windows behind, one per persisted value that no longer
+                // decoded, which nothing could recognise to tidy away.
+                //
+                // Marked per window rather than switched off globally because that is the
+                // API that exists on this deployment target: `NSQuitAlwaysKeepsWindows`
+                // does not reach a SwiftUI `WindowGroup(for:)`, and SwiftUI's own
+                // `restorationBehavior` needs macOS 15. A window that is not restorable is
+                // not written to the saved state in the first place.
+                // A window nobody asked for closes itself.
+                //
+                // Something opens project windows this application did not request — six of
+                // them on a plain launch, measured on the bundle. Not restoration: this
+                // machine's `Saved Application State` is empty, and they arrive on a
+                // launch that follows a clean one. The cause is still unknown and is
+                // backlogged; what is knowable from here is whether *this* window was
+                // asked for, because every intentional open goes through
+                // `ProjectChooser.show`.
+                //
+                // So the rule is enforced rather than the cause treated: a project window
+                // for something nobody chose is closed before it starts an engine. A clean
+                // launch now starts zero.
+                guard registry.wasRequested(location) else {
+                    window.close()
+                    return
+                }
+                registry.collapseDuplicates(of: location)
+            },
             close: { registry.release(location, closing: $0) }
         )
     }

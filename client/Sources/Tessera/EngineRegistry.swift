@@ -43,6 +43,26 @@ final class EngineRegistry {
     /// so nothing here keeps a closed window alive.
     private var collapsing: Set<ObjectIdentifier> = []
 
+    /// Projects this session was actually asked to open.
+    ///
+    /// **Tessera does not restore windows.** It launches clean and waits for somebody to
+    /// choose a project — Devansh's call, and the right one: restoration reopened every
+    /// project ever opened, each starting its own Python engine, and nothing bounded it.
+    ///
+    /// There is no switch for it on this deployment target. `NSQuitAlwaysKeepsWindows` does
+    /// not reach a SwiftUI `WindowGroup(for:)` — measured, twice — and SwiftUI's own
+    /// `restorationBehavior(.disabled)` needs macOS 15 while this ships to 14. So the rule
+    /// is enforced rather than declared: every intentional open goes through
+    /// `ProjectChooser.show`, which records it here, and a window for a project nobody asked
+    /// for closes itself.
+    private var requested: Set<ProjectLocation> = []
+
+    /// Somebody asked for this project: a launch argument, the Finder, Recent Projects, or
+    /// the open panel.
+    func note(_ location: ProjectLocation) { requested.insert(location) }
+
+    func wasRequested(_ location: ProjectLocation) -> Bool { requested.contains(location) }
+
     /// The engine for this project, creating it the first time and only the first time.
     func controller(for location: ProjectLocation) -> EngineController {
         if let existing = controllers[location] { return existing }

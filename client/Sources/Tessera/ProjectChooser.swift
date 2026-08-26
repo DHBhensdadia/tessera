@@ -22,6 +22,8 @@ enum ProjectChooser {
         using registry: EngineRegistry,
         _ openWindow: OpenWindowAction
     ) {
+        // Recorded before the window exists, so the window can ask whether it was wanted.
+        registry.note(location)
         guard !registry.focusIfOpen(location) else { return }
         openWindow(value: location)
     }
