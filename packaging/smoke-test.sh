@@ -48,10 +48,34 @@ xattr -dr com.apple.quarantine "$STAGE/Tessera.app"
 check "signature is valid" "yes" \
     "$(codesign --verify --deep --strict "$STAGE/Tessera.app" >/dev/null 2>&1 && echo yes || echo no)"
 
+ENGINE_BIN="$STAGE/Tessera.app/Contents/Resources/engine/tessera-engine"
+
 echo "==> launch"
 pkill -9 -f 'tessera-engine' 2>/dev/null || true
-open "$STAGE/Tessera.app"
-sleep 9
+
+# Open a *project*, not just the application.
+#
+# This used to be a bare `open` of the app, and it saw an engine because the application
+# was reopening projects nobody had asked for — one engine per stale window. That is the
+# behaviour 3.4b removed, and this check was quietly depending on it: a plain launch now
+# correctly starts nothing, and the test failed for the right reason.
+#
+# Asking for a project is the better check anyway. It proves the shipped engine binary
+# runs *for the thing a user does*, rather than proving something started.
+# Waited on properly: the directory appears before the schema is in it, and an app
+# opening a half-made project refuses it and starts nothing — which would look exactly
+# like the failure this check is for.
+SEED_HANDSHAKE=$(mktemp)
+"$ENGINE_BIN" --project "$STAGE/launch.tessera" >"$SEED_HANDSHAKE" 2>/dev/null &
+SEED_PID=$!
+for _ in $(seq 1 60); do [ -s "$SEED_HANDSHAKE" ] && break; sleep 0.25; done
+kill "$SEED_PID" 2>/dev/null || true
+wait "$SEED_PID" 2>/dev/null || true
+check "a project could be made for the launch check" "yes" \
+    "$([ -s "$SEED_HANDSHAKE" ] && echo yes || echo no)"
+
+open -n "$STAGE/Tessera.app" --args --open "$STAGE/launch.tessera"
+sleep 20
 
 APP_PID=$(pgrep -f "$STAGE/Tessera.app/Contents/MacOS/Tessera" | head -1 || true)
 ENGINE_PID=$(pgrep -f "$STAGE/Tessera.app/Contents/Resources/engine/tessera-engine" | head -1 || true)
@@ -76,7 +100,6 @@ echo "==> the console renders from the shipped bundle"
 # This is the check that catches the whole class of PyInstaller data bugs: templates are
 # read from disk at render time, so a spec that forgets them builds cleanly, passes every
 # unit test, and serves a stack trace to the first person who downloads the app.
-ENGINE_BIN="$STAGE/Tessera.app/Contents/Resources/engine/tessera-engine"
 HANDSHAKE=$(mktemp)
 "$ENGINE_BIN" --project "$STAGE/smoke.tessera" >"$HANDSHAKE" 2>/dev/null &
 DIRECT_PID=$!
