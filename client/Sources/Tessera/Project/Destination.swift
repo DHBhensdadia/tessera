@@ -151,4 +151,31 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .terms: .terms
         }
     }
+
+    /// `--screen <name>` opens project windows on one destination.
+    ///
+    /// A development affordance, in the same family as `--open`, `--new` and `--capture`,
+    /// and it exists because the thing it replaces stopped working. Every screen in 3.4 was
+    /// photographed by writing the window's `@AppStorage` key from outside — `defaults write
+    /// com.dhbhensdadia.tessera "destination:/path/to.tessera" rooms` — which worked until
+    /// it silently did not, and then cost an afternoon.
+    ///
+    /// That technique was always a hack reaching through the application into an
+    /// implementation detail: it depends on the key's exact spelling, on how the path was
+    /// standardised when the key was built, and on which of several windows for one project
+    /// survives to be photographed. Every one of those is ours to change without noticing we
+    /// have broken a script.
+    ///
+    /// A flag has none of those failure modes, and it makes a screen reachable from a script
+    /// for the first time — the alternative for reviewing 3.4b's live sentence, or anything
+    /// after it, is a person clicking a sidebar.
+    ///
+    /// Takes the arguments rather than reading `CommandLine` so that it can be tested.
+    static func requestedAtLaunch(
+        in arguments: [String] = CommandLine.arguments
+    ) -> Destination? {
+        guard let index = arguments.firstIndex(of: "--screen"), index + 1 < arguments.count
+        else { return nil }
+        return Destination(rawValue: arguments[index + 1])
+    }
 }

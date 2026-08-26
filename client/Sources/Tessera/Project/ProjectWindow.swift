@@ -87,6 +87,18 @@ struct ProjectWindow: View {
         // tells the Finder which file this window is showing.
         .navigationDocument(location.url)
         .task(id: location) {
+            // Seeded rather than overridden, so the sidebar still works afterwards and the
+            // window remembers where it was put — `--screen` says where to *start*, not
+            // where to stay.
+            //
+            // Only when it differs. `@AppStorage` publishes on every assignment, equal or
+            // not, so an unguarded write here invalidated the body on every pass and the
+            // window never got past `.idle` — it sat on "Opening…" with no engine, which
+            // reads exactly like an engine that failed to start.
+            if let requested = Destination.requestedAtLaunch(),
+               requested.rawValue != storedDestination {
+                storedDestination = requested.rawValue
+            }
             await engine.start()
             await applySetupIfNew()
             if case .running(let running) = engine.state {

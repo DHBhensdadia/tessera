@@ -414,3 +414,46 @@ struct FieldErrorRoutingTests {
         #expect(errors.message(for: "capacity") == "Too small. Use a positive number.")
     }
 }
+
+/// `--screen`, which exists because the technique it replaces broke silently.
+///
+/// Every screen in 3.4 was photographed by writing the window's `@AppStorage` key from
+/// outside the application. That reaches through the app into an implementation detail —
+/// the key's spelling, how the path was standardised when it was built, and which of
+/// several windows for one project survives to be photographed — and all three are ours to
+/// change without noticing a script has stopped working. Which is exactly what happened.
+struct LaunchScreenTests {
+    @Test func itNamesADestination() {
+        #expect(Destination.requestedAtLaunch(in: ["Tessera", "--screen", "rooms"]) == .rooms)
+        #expect(Destination.requestedAtLaunch(in: ["Tessera", "--screen", "constraints"]) == .constraints)
+    }
+
+    @Test func absentMeansWhereverTheWindowWasLastTime() {
+        #expect(Destination.requestedAtLaunch(in: ["Tessera"]) == nil)
+        #expect(Destination.requestedAtLaunch(in: ["Tessera", "--capture"]) == nil)
+    }
+
+    /// A name that is not a destination is nil rather than a crash or a default. Opening on
+    /// Overview after a typo is confusing; refusing to launch over a development flag is
+    /// worse.
+    @Test func anUnknownNameIsIgnored() {
+        #expect(Destination.requestedAtLaunch(in: ["Tessera", "--screen", "roomz"]) == nil)
+        #expect(Destination.requestedAtLaunch(in: ["Tessera", "--screen"]) == nil)
+    }
+
+    /// It sits beside other flags and takes the value after its own name, not the last
+    /// argument on the line.
+    @Test func itReadsItsOwnValue() {
+        let arguments = ["Tessera", "--capture", "--screen", "terms", "--open", "/tmp/a.tessera"]
+        #expect(Destination.requestedAtLaunch(in: arguments) == .terms)
+    }
+
+    /// Every destination is reachable by name, so a screen added later is photographable
+    /// without anyone remembering to extend this.
+    @Test func everyDestinationCanBeAskedForByName() {
+        for destination in Destination.allCases {
+            let asked = Destination.requestedAtLaunch(in: ["Tessera", "--screen", destination.rawValue])
+            #expect(asked == destination, "\(destination.rawValue) cannot be opened by name")
+        }
+    }
+}
