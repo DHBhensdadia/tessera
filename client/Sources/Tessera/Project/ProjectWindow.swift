@@ -42,6 +42,7 @@ struct ProjectWindow: View {
     @AppStorage private var isSidebarVisible: Bool
 
     @State private var summary = ProjectSummary()
+    @State private var importing: ImportRequest?
 
     init(location: ProjectLocation) {
         self.location = location
@@ -108,6 +109,21 @@ struct ProjectWindow: View {
         }
         // Not `.onDisappear` — see `WindowLifetime`. A view leaving a hierarchy is not a
         // window closing, and treating it as one leaked engines.
+        .sheet(item: $importing) { request in
+            ImportSheet(request: request, appearance: appearance) {
+                importing = nil
+                // The counts on the sidebar and the checklist are now wrong by however many
+                // rows were written, and they are read from the engine rather than kept
+                // here — so the honest refresh is to ask again.
+                Task {
+                    if case .running(let running) = engine.state {
+                        await summary.load(
+                            from: EngineConnection(port: running.port, token: running.token)
+                        )
+                    }
+                }
+            }
+        }
         .onWindow(
             // Restoration replays one window per persisted *opening* rather than per
             // project, so a project opened repeatedly comes back as a stack of identical
@@ -244,9 +260,12 @@ struct ProjectWindow: View {
                 ScrollView {
                     Group {
                         if destination.wrappedValue == .overview {
-                            Overview(summary: summary, appearance: appearance) {
-                                destination.wrappedValue = $0
-                            }
+                            Overview(
+                                summary: summary,
+                                appearance: appearance,
+                                go: { destination.wrappedValue = $0 },
+                                take: importTaker
+                            )
                         } else {
                             DestinationPlaceholder(
                                 destination: destination.wrappedValue,
@@ -312,6 +331,20 @@ struct ProjectWindow: View {
             Button("Generate") {}
                 .disabled(true)
                 .help("Generating a timetable arrives with the solver")
+        }
+    }
+
+    /// Taking a dropped spreadsheet, when there is a term to import into.
+    ///
+    /// Nil without one, so the drop zone is absent rather than present and refusing: the
+    /// engine needs a term to name the institution the rows belong to, and a target that
+    /// accepts a file and then explains it cannot is worse than no target.
+    private var importTaker: ((ImportStore.Dropped) -> Void)? {
+        guard case .running(let running) = engine.state, let term = summary.selectedTerm?.id
+        else { return nil }
+        let connection = EngineConnection(port: running.port, token: running.token)
+        return { dropped in
+            importing = ImportRequest(connection: connection, term: term, dropped: dropped)
         }
     }
 
