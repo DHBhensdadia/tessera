@@ -30,6 +30,19 @@ import SwiftUI
 final class EngineRegistry {
     private var controllers: [ProjectLocation: EngineController] = [:]
 
+    /// Windows this registry is closing because they are duplicates.
+    ///
+    /// A window closed for that reason must not take the project's engine with it, and
+    /// `release` cannot tell on its own: it asks whether any *other* window still shows the
+    /// project, and during a collapse the survivor may not have its `representedURL` yet —
+    /// `.navigationDocument` sets it when the window attaches, and attaching is exactly when
+    /// the collapse runs. So `release` saw no sibling, stopped the engine, and both windows
+    /// sat on "Opening…" for ever with no engine and no error.
+    ///
+    /// Recording the intent removes the guesswork. Identity rather than the window itself,
+    /// so nothing here keeps a closed window alive.
+    private var collapsing: Set<ObjectIdentifier> = []
+
     /// The engine for this project, creating it the first time and only the first time.
     func controller(for location: ProjectLocation) -> EngineController {
         if let existing = controllers[location] { return existing }
@@ -80,6 +93,9 @@ final class EngineRegistry {
     /// reports `isVisible` while `willCloseNotification` is being delivered — asking "is
     /// anyone else showing this?" while counting yourself always answers yes.
     func release(_ location: ProjectLocation, closing window: NSWindow? = nil) {
+        // A duplicate being collapsed is not the project closing.
+        if let window, collapsing.remove(ObjectIdentifier(window)) != nil { return }
+
         let elsewhere = NSApplication.shared.windows.contains {
             $0 !== window && $0.isVisible && $0.representedURL?.standardizedFileURL == location.url
         }
@@ -105,7 +121,10 @@ final class EngineRegistry {
         let showing = NSApplication.shared.windows
             .filter { $0.representedURL?.standardizedFileURL == location.url }
             .sorted { $0.windowNumber < $1.windowNumber }
-        for extra in showing.dropFirst() { extra.close() }
+        for extra in showing.dropFirst() {
+            collapsing.insert(ObjectIdentifier(extra))
+            extra.close()
+        }
     }
 
     /// How many engines are alive. Exists for the test that closing windows closes them.
