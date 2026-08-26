@@ -77,7 +77,11 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private static func pinToEverySpace() {
         let windows = NSApplication.shared.windows
-        for window in windows {
+        // Project windows last, so one of them ends up in front. `screencapture -l` cannot
+        // photograph a window that is completely covered, and this application currently
+        // opens several it did not ask for — so without an order, whatever happens to be
+        // last in `windows` wins and it is usually not the one worth looking at.
+        for window in windows.sorted(by: { ($0.representedURL == nil ? 0 : 1) < ($1.representedURL == nil ? 0 : 1) }) {
             window.collectionBehavior.insert(.canJoinAllSpaces)
             window.orderFrontRegardless()
         }
