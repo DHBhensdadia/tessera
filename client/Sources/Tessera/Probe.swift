@@ -13,7 +13,8 @@ import Foundation
 @MainActor
 enum Probe {
     static func run() async {
-        let engine = EngineController(location: ProjectLocation(temporaryProject(), intent: .create))
+        let project = temporaryProject()
+        let engine = EngineController(location: ProjectLocation(project, intent: .create))
         await engine.start()
 
         guard case .running(let running) = engine.state else {
@@ -30,8 +31,11 @@ enum Probe {
             await theRoomsScreenWorks(connection)
             let term = await theTeachingScreensWork(connection, institution: institution)
             if let term { await theTreeAndTheGridWork(connection, term: term) }
+            await theConstraintCatalogueArrives(connection)
+            if let term { await theRulesScreenWorks(connection, term: term) }
             await noticesTheEngineHasGone(engine, connection)
             engine.stop()
+            if let term { await theWeightSurvivesReopening(project, term: term) }
             exit(0)
         } catch {
             say("probe: unexpected — \(EngineFailure.unwrap(error).message)")
@@ -433,6 +437,118 @@ enum Probe {
             say("grid      isolated  \(other.name) has \(second.blocked.count) blocked slots "
                 + "while \(room.name) has \(store.blocked.count)")
         }
+    }
+
+    /// 3.4b part 1: the palette the constraints screen is assembled from.
+    ///
+    /// `SPECS` lives in the engine's domain and the console reads it by importing it. This
+    /// is the check that it now reaches Swift instead — because "the types generated" and
+    /// "the values arrive" are different claims, and this phase has already been caught by
+    /// the difference twice.
+    private static func theConstraintCatalogueArrives(_ connection: EngineConnection) async {
+        do {
+            let catalogue = try await connection.run {
+                try await $0.constraintCatalogue().ok.body.json
+            }
+            let global = catalogue.kinds.filter { $0.scope == .global }
+            let targeted = catalogue.kinds.filter { $0.scope == .targeted }
+            say("rules     catalogue \(catalogue.kinds.count) kinds — "
+                + "\(global.count) global, \(targeted.count) targeted; "
+                + "\(catalogue.invariants.count) always enforced")
+
+            // The parameterised one, because a kind with no params proves nothing about
+            // whether params survived the trip.
+            if let parameterised = catalogue.kinds.first(where: { !($0.params ?? []).isEmpty }) {
+                let param = (parameterised.params ?? [])[0]
+                // `_default`, not `default` — the generator renames a property whose name
+                // is a Swift keyword, which is worth seeing once here rather than
+                // discovering inside a form.
+                say("rules     params    \(parameterised.kind.rawValue): "
+                    + "'\(param.label)' \(param.minimum)-\(param.maximum), default \(param._default)")
+                say("rules     sentence  \(parameterised.example)")
+            } else {
+                say("rules     MISSING   no kind arrived with parameters — the form has nothing to build")
+            }
+
+            // What the form needs in order to offer targets at all.
+            if let narrowable = catalogue.kinds.first(where: { ($0.targets ?? []).count > 1 }) {
+                let targets = (narrowable.targets ?? []).map(\.rawValue).joined(separator: ", ")
+                say("rules     targets   \(narrowable.kind.rawValue) may name [\(targets)]")
+            }
+
+            if let first = catalogue.invariants.first {
+                say("rules     enforced  \(first.statement)")
+            } else {
+                say("rules     MISSING   no invariants — the screen cannot say what is always true")
+            }
+
+            // The promise the client relies on to render a sentence while a form is typed.
+            let specs = catalogue.kinds.filter { $0.summary_template.contains(":") }
+            say("rules     bare      \(specs.isEmpty ? "every template fills in by name" : "A FORMAT SPEC ARRIVED, which Swift cannot fill")")
+        } catch {
+            say("rules     MISSING   the catalogue did not arrive — \(EngineFailure.unwrap(error).message)")
+        }
+    }
+
+    /// 3.4b part 2: the first two blocks of the rules screen.
+    private static func theRulesScreenWorks(_ connection: EngineConnection, term: Int) async {
+        let store = ConstraintStore(connection: connection, term: term)
+        await store.load()
+
+        say("rules     enforced  \(store.invariants.count) rules the screen cannot switch off")
+        guard let first = store.preferences.first else {
+            say("rules     MISSING   the term has no preferences — a new term should start with seven")
+            return
+        }
+        say("rules     seeded    \(store.preferences.count) preferences, e.g. "
+            + "\"\(first.summary)\" at \(first.weight) (\(WeightScale.word(for: first.weight)))")
+
+        // The move, through the same call the slider makes.
+        let wanted = first.weight == 9 ? 2 : 9
+        await store.setWeight(wanted, on: first)
+        let moved = store.preferences.first { $0.id == first.id }
+        say("rules     moved     \(first.weight) → \(moved?.weight ?? -1) "
+            + "(\(WeightScale.word(for: moved?.weight ?? 0)))\(store.notice.map { " — refused: \($0)" } ?? "")")
+
+        // Disabling is its own field, and must not be a weight of zero in disguise.
+        await store.setEnabled(false, on: first)
+        let off = store.preferences.first { $0.id == first.id }
+        say("rules     ignored   considered=\(off?.enabled ?? true), weight still \(off?.weight ?? -1) "
+            + "— disabling did not discard what was tuned")
+        await store.setEnabled(true, on: first)
+
+        // A second store on the same engine: proves `load()` reads the change back rather
+        // than the first store simply remembering what it was told.
+        let reopened = ConstraintStore(connection: connection, term: term)
+        await reopened.load()
+        let readBack = reopened.preferences.first { $0.id == first.id }
+        say("rules     reloaded  a fresh store reads \(readBack?.weight ?? -1)")
+    }
+
+    /// The claim the screen is most likely to get wrong: that the weight is in the file.
+    ///
+    /// A slider that moves, updates its own store and never reaches SQLite looks correct in
+    /// every check above — the store is the thing being asked. So this stops the engine
+    /// entirely and starts a **second one on the same project**, which is what reopening the
+    /// window does, and asks that engine instead.
+    private static func theWeightSurvivesReopening(_ project: URL, term: Int) async {
+        let reopened = EngineController(location: ProjectLocation(project, intent: .reopen))
+        await reopened.start()
+        guard case .running(let running) = reopened.state else {
+            say("rules     MISSING   the project would not reopen — \(reopened.state)")
+            return
+        }
+        defer { reopened.stop() }
+
+        let connection = EngineConnection(port: running.port, token: running.token)
+        let store = ConstraintStore(connection: connection, term: term)
+        await store.load()
+        guard let first = store.preferences.first else {
+            say("rules     MISSING   the reopened project has no preferences")
+            return
+        }
+        say("rules     persisted after a full engine restart, \"\(first.summary)\" is still "
+            + "\(first.weight) (\(WeightScale.word(for: first.weight))) — it reached the file")
     }
 
     /// A grid and a term, so there is something for an offering to belong to.
