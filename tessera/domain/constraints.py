@@ -166,6 +166,80 @@ class ConstraintSpec(BaseModel):
         return self.summary.format(**filled, targets=targets).strip()
 
 
+class Invariant(BaseModel):
+    """A rule that is not stored, because it cannot be switched off.
+
+    The module opens by saying these exist and until now that was the only place they were
+    written down — as prose, in a docstring, in a language the client cannot read. So the
+    interface had two choices: recite six sentences of its own, or say nothing. The first
+    makes the client the authoritative statement of Tessera's hard rules, which is exactly
+    backwards; the second leaves a person unable to find out what the solver will never do.
+
+    They live here instead. Phase 4.1 writes the validator that *checks* them and attaches
+    itself by ``key``; this is the half that can exist now, and having it means 4.1 inherits
+    a list rather than inventing a second one.
+
+    Deliberately prose-only. There is no handler, no id pretending to be one, and no
+    weight — a weight on an invariant would suggest it could be traded away.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    """Stable across releases, so 4.1 can attach a checker and a report can name one."""
+
+    statement: str
+    """What is true of every valid timetable, in one sentence."""
+
+    because: str
+    """Why it is unconditional rather than a strong preference."""
+
+
+INVARIANTS: tuple[Invariant, ...] = (
+    Invariant(
+        key="instructor_not_double_booked",
+        statement="No instructor teaches two sessions at once",
+        because="A person cannot be in two rooms, so a timetable that asks it is not worse — "
+        "it is impossible to run.",
+    ),
+    Invariant(
+        key="group_not_double_booked",
+        statement="No student group attends two sessions at once",
+        because="The same, from the students' side. A group split across two rooms means "
+        "somebody misses a class.",
+    ),
+    Invariant(
+        key="room_not_double_booked",
+        statement="No room hosts two sessions at once",
+        because="Two classes in one room is a collision somebody discovers at the door.",
+    ),
+    Invariant(
+        key="room_fits_group",
+        statement="A room must seat everyone assigned to it",
+        because="Capacity is a fact about the building. Overfilling is not a cost to weigh "
+        "against convenience.",
+    ),
+    Invariant(
+        key="room_has_required_features",
+        statement="A room must have every feature a session requires",
+        because="A lab without computers cannot hold the lab, however well it scores on "
+        "everything else.",
+    ),
+    Invariant(
+        key="availability_respected",
+        statement="Nothing is scheduled when a room or an instructor is unavailable",
+        because="Unavailability is a statement about the world — a refurbishment, a person "
+        "who is not there — rather than a preference to be balanced.",
+    ),
+    Invariant(
+        key="breaks_protected",
+        statement="Nothing is scheduled during a break, and no session runs through one",
+        because="Breaks belong to the teaching week itself, so this is enforced by the grid "
+        "before the solver ever sees a placement. P7 draws it as a slider; it is stronger "
+        "than that, and a preference that can never be broken is a misleading control.",
+    ),
+)
+
 _PEOPLE_AND_GROUPS = frozenset({TargetKind.INSTRUCTOR, TargetKind.GROUP})
 _SESSIONS = frozenset({TargetKind.SESSION})
 
