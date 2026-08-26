@@ -38,6 +38,7 @@ struct ConstraintsScreen: View {
                     }
                     AlwaysEnforced(invariants: store.invariants, appearance: appearance)
                     Preferences(store: store, appearance: appearance)
+                    CustomRules(store: store, appearance: appearance)
                 } else {
                     ContentSection("Rules", showsRule: false, appearance: appearance) {
                         Text("Rules belong to a term, because the same department may want "
@@ -97,7 +98,7 @@ private struct Preferences: View {
     let appearance: Appearance
 
     var body: some View {
-        ContentSection("Preferences", showsRule: false, appearance: appearance) {
+        ContentSection("Preferences", appearance: appearance) {
             if store.preferences.isEmpty {
                 Text("This term has no preferences set. A new term starts with seven.")
                     .font(Typography.body.font)

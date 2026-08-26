@@ -43,8 +43,18 @@ final class ConstraintStore {
     /// What cannot be switched off. Fetched from the engine rather than written here, so the
     /// client is not the authoritative statement of Tessera's hard rules.
     private(set) var invariants: [Invariant] = []
-    /// Term-wide preferences: the `global` scope, weighted.
+    /// What a rule *could* be: the palette the custom-rule form assembles itself from.
+    private(set) var kinds: [Components.Schemas.ConstraintKindRead] = []
+    /// Term-wide preferences: `global` scope naming **no** targets.
     private(set) var preferences: [Preference] = []
+    /// Everything somebody added: a targeted rule, or a global preference narrowed to
+    /// particular people or groups.
+    ///
+    /// The split is by *targets*, not by scope, because that is the distinction P7 draws.
+    /// "Minimise gaps" with nobody named is the term-wide preference every project starts
+    /// with; the same kind naming Prof. Mehta is a custom rule somebody wrote, and putting
+    /// it among the sliders would bury it.
+    private(set) var customRules: [CustomRule] = []
     var notice: String?
 
     struct Invariant: Identifiable, Sendable, Hashable {
@@ -66,6 +76,17 @@ final class ConstraintStore {
         let narrowedTo: Int
     }
 
+    /// Not `Rule` — the design system already has one, and a list of them draws hairlines
+    /// between them, so both names appear in the same twenty lines.
+    struct CustomRule: Identifiable, Sendable, Hashable {
+        let id: Int
+        /// The engine's own sentence, with the targets resolved to names.
+        let summary: String
+        let isHard: Bool
+        let weight: Int
+        let enabled: Bool
+    }
+
     init(connection: EngineConnection, term: Int) {
         self.connection = connection
         self.term = term
@@ -81,17 +102,34 @@ final class ConstraintStore {
                     Invariant(id: $0.key, statement: $0.statement, because: $0.because)
                 }
             }
-            preferences = try await connection.run {
+            if kinds.isEmpty {
+                kinds = try await connection.run {
+                    try await $0.constraintCatalogue().ok.body.json
+                }.kinds
+            }
+            let all = try await connection.run {
                 try await $0.listConstraints(path: .init(term_id: term)).ok.body.json
             }.items
-                .filter { $0.scope == .global }
+            preferences = all
+                .filter { $0.scope == .global && ($0.targets ?? []).isEmpty }
                 .map {
                     Preference(
                         id: $0.id,
                         summary: $0.summary,
                         weight: $0.weight,
                         enabled: $0.enabled,
-                        narrowedTo: ($0.targets ?? []).count
+                        narrowedTo: 0
+                    )
+                }
+            customRules = all
+                .filter { $0.scope == .targeted || !($0.targets ?? []).isEmpty }
+                .map {
+                    CustomRule(
+                        id: $0.id,
+                        summary: $0.summary,
+                        isHard: $0.is_hard,
+                        weight: $0.weight,
+                        enabled: $0.enabled
                     )
                 }
         } catch {
@@ -123,6 +161,95 @@ final class ConstraintStore {
         await change(preference, to: changes) { $0.enabled = enabled }
     }
 
+    // MARK: - Custom rules
+
+    /// Write a rule the form assembled.
+    ///
+    /// Field errors are routed the way every other screen routes them: the engine checks a
+    /// parameter against the same `ParamSpec` the form drew its bounds from, so a refusal
+    /// here means the two disagree — which is worth seeing rather than preventing, because
+    /// preventing it locally would be the second implementation of the bound.
+    func create(
+        kind: Components.Schemas.ConstraintKind,
+        targets: [Components.Schemas.TargetWire],
+        params: [String: Int],
+        isHard: Bool,
+        weight: Int
+    ) async -> Bool {
+        forgetLastRefusal()
+        do {
+            var body = Components.Schemas.ConstraintCreate(kind: kind)
+            body.targets = targets
+            body.params = .init(additionalProperties: params)
+            body.is_hard = isHard
+            body.weight = weight
+            _ = try await connection.run {
+                try await $0.createConstraint(path: .init(term_id: term), body: .json(body)).created
+            }
+            await load()
+            return true
+        } catch {
+            report(error)
+            return false
+        }
+    }
+
+    func delete(_ rule: CustomRule) async {
+        forgetLastRefusal()
+        do {
+            _ = try await connection.run {
+                try await $0.deleteConstraint(path: .init(constraint_id: rule.id))
+            }
+            customRules.removeAll { $0.id == rule.id }
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Things a rule of some kind may be attached to, by name.
+    ///
+    /// Loaded once per target kind and kept: a form that refetched every instructor each
+    /// time somebody changed the kind would make the picker feel broken, and none of these
+    /// change while a form is open.
+    func options(for kind: Components.Schemas.TargetKind) async -> [Chooser.Option] {
+        if let cached = targetOptions[kind.rawValue] { return cached }
+        let loaded: [Chooser.Option]
+        do {
+            switch kind {
+            case .instructor:
+                loaded = try await connection.run { try await $0.listInstructors().ok.body.json }
+                    .items.map { .init(id: $0.id, name: $0.name) }
+            case .group:
+                loaded = try await connection.run { try await $0.listGroups(query: .init()).ok.body.json }
+                    .items.map { .init(id: $0.id, name: $0.name) }
+            case .room:
+                loaded = try await connection.run { try await $0.listRooms().ok.body.json }
+                    .items.map { .init(id: $0.id, name: $0.name) }
+            case .course:
+                loaded = try await connection.run { try await $0.listCourses().ok.body.json }
+                    .items.map { .init(id: $0.id, name: $0.name) }
+            case .session:
+                // A session is not something anybody named, so it is labelled by what it
+                // is: the course, what kind of session, and which one of them.
+                loaded = try await connection.run {
+                    try await $0.listSessions(path: .init(term_id: term), query: .init()).ok.body.json
+                }.items.map {
+                    .init(
+                        id: $0.id,
+                        name: "\($0.course?.name ?? "?") — \($0.kind.rawValue) \($0.occurrence)"
+                    )
+                }
+            }
+        } catch {
+            notice = EngineFailure.unwrap(error).message
+            return []
+        }
+        targetOptions[kind.rawValue] = loaded
+        return loaded
+    }
+
+    private var targetOptions: [String: [Chooser.Option]] = [:]
+
     /// The optimistic edit, once, for both of them.
     ///
     /// The body is built by the caller and passed as a value rather than as a closure: a
@@ -147,5 +274,28 @@ final class ConstraintStore {
             preferences[index] = previous
             notice = EngineFailure.unwrap(error).message
         }
+    }
+
+    // MARK: - Refusals
+
+    /// The fields the custom-rule form owns, so a complaint about one lands on it and a
+    /// complaint about anything else is still shown rather than swallowed.
+    static let editableFields: Set<String> = ["kind", "targets", "params", "weight", "is_hard"]
+
+    private(set) var fieldErrors = FieldErrors()
+
+    func message(for field: String) -> String? { fieldErrors.message(for: field) }
+
+    /// Forget the last refusal before making a new request, so a message never outlives the
+    /// operation that caused it.
+    private func forgetLastRefusal() {
+        notice = nil
+        fieldErrors = FieldErrors()
+    }
+
+    private func report(_ error: any Error) {
+        let failure = EngineFailure.unwrap(error)
+        fieldErrors = FieldErrors.from(failure, fields: Self.editableFields)
+        notice = fieldErrors.unrouted.isEmpty ? nil : fieldErrors.unrouted.joined(separator: "\n")
     }
 }
