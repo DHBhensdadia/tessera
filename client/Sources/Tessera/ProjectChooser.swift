@@ -82,15 +82,26 @@ enum ProjectChooser {
     ///
     /// Always `.reopen`: something named on a command line is something the caller
     /// believes already exists, and a typo must not create a project.
+    /// Queued rather than opened directly, which is not a detail.
+    ///
+    /// This runs from the welcome window's `.onAppear`, and calling `openWindow(value:)`
+    /// from inside another scene's appearance is **too early** — SwiftUI drops the request
+    /// and no window is ever presented. The application then sits there with a Dock icon,
+    /// no windows, and no error: `--open` looked like it worked for months only because
+    /// scene restoration was separately reopening the same project and presenting *that*.
+    /// Clearing the saved windows is what finally made it visible.
+    ///
+    /// So it goes into `OpenRequests`, the queue the Finder already uses. That queue is
+    /// drained by an `onChange` a turn later, when the scene is ready — and there is now
+    /// one route into the application rather than two that behave differently.
     @MainActor
-    static func openArgumentsGiven(
-        using registry: EngineRegistry,
-        _ openWindow: OpenWindowAction
-    ) {
+    static func openArgumentsGiven() {
         let arguments = CommandLine.arguments
-        for (index, argument) in arguments.enumerated() where argument == "--open" {
-            guard index + 1 < arguments.count else { continue }
-            show(ProjectLocation(URL(filePath: arguments[index + 1])), using: registry, openWindow)
+        let urls = arguments.enumerated().compactMap { index, argument -> URL? in
+            guard argument == "--open", index + 1 < arguments.count else { return nil }
+            return URL(filePath: arguments[index + 1])
         }
+        guard !urls.isEmpty else { return }
+        OpenRequests.shared.request(urls)
     }
 }
