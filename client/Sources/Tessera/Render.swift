@@ -53,7 +53,7 @@ enum Render {
         }
 
         guard let view = await view(for: screen, connection: connection, term: term) else {
-            say("render: no renderer for '\(screen.rawValue)' yet")
+            say("render: no renderer for '\(screen)' yet")
             exit(2)
         }
 
@@ -71,11 +71,37 @@ enum Render {
     /// Each case loads its own store and hands it over already filled: `ImageRenderer` has
     /// no run loop, so `.task` never fires and a screen that loads itself renders empty.
     private static func view(
-        for screen: Destination,
+        for screen: String,
         connection: EngineConnection,
         term: Int
     ) async -> AnyView? {
         let appearance = Appearance(scheme: .dark)
+
+        // The import sheet is not a destination — it is presented over one — so it is named
+        // rather than looked up. Rendered with a sheet already read, because the thing worth
+        // looking at is the mapping table and that does not exist until a file has been.
+        if screen == "import" {
+            let store = ImportStore(connection: connection, term: term)
+            await store.inspect(
+                .init(
+                    name: "rooms.csv",
+                    bytes: Array(
+                        """
+                        Designation,Seats,Blk,Facilities,Floor
+                        LH-201,120,Academic Block A,projector,2
+                        LH-202,80,Academic Block A,projector,2
+                        LAB-1,forty,Science Park,computers,1
+                        """.utf8
+                    )
+                )
+            )
+            guard let report = store.report else { return nil }
+            return AnyView(
+                ColumnMapping(report: report, appearance: appearance, isWorking: false) { _, _ in }
+            )
+        }
+
+        guard let screen = Destination(rawValue: screen) else { return nil }
         switch screen {
         case .overview:
             let summary = ProjectSummary()
@@ -100,12 +126,11 @@ enum Render {
         }
     }
 
-    private static func arguments() -> (Destination, String)? {
+    private static func arguments() -> (String, String)? {
         let arguments = CommandLine.arguments
-        guard let index = arguments.firstIndex(of: "--render"), index + 2 < arguments.count,
-              let screen = Destination(rawValue: arguments[index + 1])
+        guard let index = arguments.firstIndex(of: "--render"), index + 2 < arguments.count
         else { return nil }
-        return (screen, arguments[index + 2])
+        return (arguments[index + 1], arguments[index + 2])
     }
 
     /// Width is fixed and height is not: the point of drawing offscreen is that a screen

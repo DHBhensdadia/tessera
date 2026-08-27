@@ -666,6 +666,7 @@ enum Probe {
 
         let roomsBefore = await roomCount(connection)
         await store.inspect(sheet)
+        await theMappingCanBeCorrected(connection, term: term)
 
         guard let report = store.report else {
             say("import    MISSING   nothing came back — \(store.notice ?? "no reason given")")
@@ -694,6 +695,54 @@ enum Probe {
         let rubbish = ImportStore.Dropped(name: "notes.txt", bytes: Array("hello".utf8))
         await store.inspect(rubbish)
         say("import    refused   \(store.notice ?? "NOTHING SAID, which is wrong")")
+    }
+
+    /// 3.5 part 2: the column mapping is the lever, so it has to actually move something.
+    ///
+    /// A sheet whose name column is called `Designation`, which no alias matches — so the
+    /// guess leaves it unmapped and every row fails for want of a required field.
+    /// Correcting one dropdown is the difference between nothing importing and all of it.
+    ///
+    /// The first version used `Label`, which *is* an alias for a room name, so the guess was
+    /// already right and the check reported that correcting it changed nothing. The header
+    /// has to be one the engine genuinely does not know, or the test proves the opposite of
+    /// what it claims.
+    private static func theMappingCanBeCorrected(_ connection: EngineConnection, term: Int) async {
+        let store = ImportStore(connection: connection, term: term)
+        let sheet = ImportStore.Dropped(
+            name: "odd-headings.csv",
+            bytes: Array("Designation,Seats,Block\nLH-901,40,Block A\nLH-902,50,Block A\n".utf8)
+        )
+        await store.inspect(sheet)
+        guard let guessed = store.report else {
+            say("mapping   MISSING   nothing came back — \(store.notice ?? "no reason")")
+            return
+        }
+        say("mapping   guessed   " + guessed.columns
+            .map { "\($0.header)→\($0.mapsTo.isEmpty ? "ignored" : $0.mapsTo)" }
+            .joined(separator: ", "))
+        say("mapping   samples   " + guessed.columns.map { "\($0.header)=\($0.sample)" }
+            .joined(separator: ", "))
+        say("mapping   offers    " + guessed.fields
+            .map { $0.required ? "\($0.name)*" : $0.name }.joined(separator: ", ")
+            + "  (* required)")
+        say("mapping   before    \(guessed.rowsReady) of \(guessed.rowsTotal) ready, "
+            + "\(guessed.problems.count) problem(s)")
+
+        // One dropdown.
+        await store.remap("Designation", to: "name")
+        guard let corrected = store.report else {
+            say("mapping   MISSING   the correction produced no report")
+            return
+        }
+        say("mapping   after     \(corrected.rowsReady) of \(corrected.rowsTotal) ready, "
+            + "\(corrected.problems.count) problem(s)")
+        say("mapping   moved     \(corrected.rowsReady > guessed.rowsReady ? "correcting one column changed what would import" : "NOTHING CHANGED, which makes the table decorative")")
+
+        // And that ignoring a required column is reported rather than silently accepted.
+        await store.remap("Designation", to: "")
+        let ignored = store.report
+        say("mapping   ignored   Designation → ignored leaves \(ignored?.rowsReady ?? -1) ready")
     }
 
     private static func roomCount(_ connection: EngineConnection) async -> Int {
