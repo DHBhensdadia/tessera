@@ -1,6 +1,6 @@
 [project]
 name = "tessera-timetable"
-version = "0.2.0"
+version = "0.3.0"
 description = "University timetable scheduling with constraint optimisation"
 readme = "README.md"
 requires-python = ">=3.13"
