@@ -29,6 +29,15 @@ struct ImportSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             if let report = store.report {
                 summary(report)
+                if !report.committed {
+                    ColumnMapping(
+                        report: report,
+                        appearance: appearance,
+                        isWorking: store.isWorking
+                    ) { column, field in
+                        Task { await store.remap(column, to: field) }
+                    }
+                }
                 if !report.problems.isEmpty { problems(report) }
                 actions(report)
             } else if store.isWorking {
