@@ -186,3 +186,108 @@ class TestTheReportCanBeFetchedAgain:
 
     def test_an_unknown_id_is_a_404(self, client: TestClient) -> None:
         assert client.get("/api/v1/imports/nothing").status_code == 404
+
+
+class TestTheMappingTable:
+    """What a column mapping table needs, and where it has to come from.
+
+    P7 draws a sample beside every row — *"Room No → [ Name ⌄ ] LH-201"* — because nobody
+    recognises a column called `Blk` by its name and everybody recognises it by seeing
+    `Academic Block A` next to it. And a dropdown needs to know what a column *may* be
+    mapped to.
+
+    Both come from the engine. The sample because the client cannot read the file: a `.csv`
+    it could parse, but an `.xlsx` is a zip of XML, and a second spreadsheet reader in Swift
+    to show one cell would be a second answer to what the file says. The field list because
+    the alternative is the four kinds' fields written out again in Swift, which is the second
+    statement of a rule that drifts the first time a field is added here.
+    """
+
+    def test_every_column_is_described_in_order(self, client: TestClient, term: int) -> None:
+        report = _post(
+            client,
+            term,
+            b"Room Name,Seats,Block,Floor\nLH-201,120,Block A,2\n",
+        )
+        assert [c["header"] for c in report["columns"]] == [
+            "Room Name",
+            "Seats",
+            "Block",
+            "Floor",
+        ]
+
+    def test_each_column_carries_a_sample(self, client: TestClient, term: int) -> None:
+        report = _post(client, term, b"Room Name,Seats,Block\nLH-201,120,Block A\n")
+        samples = {c["header"]: c["sample"] for c in report["columns"]}
+        assert samples == {"Room Name": "LH-201", "Seats": "120", "Block": "Block A"}
+
+    def test_the_sample_is_the_first_value_that_exists(self, client: TestClient, term: int) -> None:
+        """A blank first cell must not leave the column somebody most needs to identify
+        showing nothing."""
+        report = _post(
+            client,
+            term,
+            b"Room Name,Seats,Block\nLH-201,120,\nLH-202,80,Block A\n",
+        )
+        samples = {c["header"]: c["sample"] for c in report["columns"]}
+        assert samples["Block"] == "Block A"
+
+    def test_an_ignored_column_says_so(self, client: TestClient, term: int) -> None:
+        report = _post(client, term, b"Room Name,Seats,Floor\nLH-201,120,2\n")
+        described = {c["header"]: c["maps_to"] for c in report["columns"]}
+        assert described["Room Name"] == "name"
+        assert described["Floor"] == "", "an unmapped column is ignored, not omitted"
+
+    def test_the_table_and_the_round_trip_form_agree(self, client: TestClient, term: int) -> None:
+        """`columns` is what a table draws and `column_mapping` is what gets sent back. Two
+        shapes of one fact, so the only thing worth testing is that they cannot disagree."""
+        report = _post(client, term, b"Room Name,Seats,Block,Floor\nLH-201,120,Block A,2\n")
+        from_table = {c["header"]: c["maps_to"] for c in report["columns"] if c["maps_to"]}
+        assert from_table == report["column_mapping"]
+
+    def test_the_fields_offered_are_the_detected_kind_s(
+        self, client: TestClient, term: int
+    ) -> None:
+        report = _post(client, term, b"Room Name,Seats,Block\nLH-201,120,Block A\n")
+        assert report["detected_kind"] == "rooms"
+        assert [f["name"] for f in report["fields"]] == [
+            "name",
+            "capacity",
+            "building",
+            "features",
+        ]
+        required = {f["name"] for f in report["fields"] if f["required"]}
+        assert required == {"name", "capacity"}
+
+    def test_a_corrected_mapping_is_honoured(self, client: TestClient, term: int) -> None:
+        """The whole point of making the table editable: a column guessed wrong makes every
+        row fail, and correcting it must change what the next dry run reports."""
+        sheet = b"Label,Seats,Block\nLH-201,120,Block A\n"
+
+        guessed = _post(client, term, sheet)
+        corrected = _post(
+            client,
+            term,
+            sheet,
+            mapping={"Label": "name", "Seats": "capacity", "Block": "building"},
+        )
+
+        assert corrected["rows_ready"] >= guessed["rows_ready"]
+        assert {c["header"]: c["maps_to"] for c in corrected["columns"]}["Label"] == "name"
+
+
+def _post(
+    client: TestClient,
+    term: int,
+    sheet: bytes,
+    mapping: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    data = {"mapping": json.dumps(mapping)} if mapping else {}
+    response = client.post(
+        f"/api/v1/imports/spreadsheet?term_id={term}&dry_run=true",
+        files={"file": ("rooms.csv", sheet, "text/csv")},
+        data=data,
+    )
+    assert response.status_code == 202, response.text
+    body: dict[str, Any] = response.json()
+    return body

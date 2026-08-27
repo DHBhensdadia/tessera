@@ -1193,6 +1193,51 @@
         "title": "Health",
         "type": "object"
       },
+      "ImportColumn": {
+        "description": "One column of the sheet, as the mapping table shows it.\n\nP7 draws a sample beside every row \u2014 *\"Room No \u2192 [ Name \u2304 ] LH-201\"* \u2014 and the sample is\nwhat makes the table usable: nobody recognises a column called `Blk` by its name, and\neverybody recognises it by seeing `Academic Block A` next to it.\n\nIt comes from here rather than from the client because the client cannot read the file.\nA `.csv` it could parse; an `.xlsx` is a zip of XML, and putting a second spreadsheet\nreader in Swift to show one cell would be a second answer to what the file says.",
+        "properties": {
+          "header": {
+            "title": "Header",
+            "type": "string"
+          },
+          "maps_to": {
+            "default": "",
+            "description": "The field it feeds. Empty means ignored.",
+            "title": "Maps To",
+            "type": "string"
+          },
+          "sample": {
+            "default": "",
+            "description": "The first non-empty value in this column.",
+            "title": "Sample",
+            "type": "string"
+          }
+        },
+        "required": [
+          "header"
+        ],
+        "title": "ImportColumn",
+        "type": "object"
+      },
+      "ImportField": {
+        "description": "One field a column may be mapped to, for the kind that was detected.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ImportField",
+        "type": "object"
+      },
       "ImportReport": {
         "properties": {
           "column_mapping": {
@@ -1202,6 +1247,14 @@
             "description": "Source column to model field, guessed and then editable.",
             "title": "Column Mapping",
             "type": "object"
+          },
+          "columns": {
+            "description": "Every column of the sheet with a sample value, in the order they appear. The same mapping as `column_mapping`, in the form a table needs.",
+            "items": {
+              "$ref": "#/components/schemas/ImportColumn"
+            },
+            "title": "Columns",
+            "type": "array"
           },
           "committed": {
             "description": "False for a dry run.",
@@ -1213,6 +1266,14 @@
             "description": "rooms, instructors, courses, groups.",
             "title": "Detected Kind",
             "type": "string"
+          },
+          "fields": {
+            "description": "What a column may be mapped to, for the detected kind. Published so a client can offer the choices rather than carrying its own copy of them.",
+            "items": {
+              "$ref": "#/components/schemas/ImportField"
+            },
+            "title": "Fields",
+            "type": "array"
           },
           "import_id": {
             "title": "Import Id",

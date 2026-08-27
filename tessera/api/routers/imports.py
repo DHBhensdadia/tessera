@@ -23,8 +23,8 @@ from tessera.api.deps import Db
 from tessera.api.errors import ERROR_BASE, ProblemError, problem_responses
 from tessera.api.routers._stubs import pending
 from tessera.importers import plan as planner
-from tessera.importers.detect import detect
-from tessera.importers.sheet import UnreadableFileError, read
+from tessera.importers.detect import detect, shape_for
+from tessera.importers.sheet import Sheet, UnreadableFileError, read
 from tessera.repository import imports as repo
 
 router = APIRouter(prefix="/api/v1/imports", tags=["import"])
@@ -38,6 +38,30 @@ class ImportRowProblem(BaseModel):
     suggestion: str = Field(default="", description="Proposed correction, where one exists.")
 
 
+class ImportColumn(BaseModel):
+    """One column of the sheet, as the mapping table shows it.
+
+    P7 draws a sample beside every row — *"Room No → [ Name ⌄ ] LH-201"* — and the sample is
+    what makes the table usable: nobody recognises a column called `Blk` by its name, and
+    everybody recognises it by seeing `Academic Block A` next to it.
+
+    It comes from here rather than from the client because the client cannot read the file.
+    A `.csv` it could parse; an `.xlsx` is a zip of XML, and putting a second spreadsheet
+    reader in Swift to show one cell would be a second answer to what the file says.
+    """
+
+    header: str
+    sample: str = Field(default="", description="The first non-empty value in this column.")
+    maps_to: str = Field(default="", description="The field it feeds. Empty means ignored.")
+
+
+class ImportField(BaseModel):
+    """One field a column may be mapped to, for the kind that was detected."""
+
+    name: str
+    required: bool = False
+
+
 class ImportReport(BaseModel):
     import_id: str
     committed: bool = Field(description="False for a dry run.")
@@ -48,6 +72,20 @@ class ImportReport(BaseModel):
     column_mapping: dict[str, str] = Field(
         default_factory=dict,
         description="Source column to model field, guessed and then editable.",
+    )
+    columns: list[ImportColumn] = Field(
+        default_factory=list,
+        description=(
+            "Every column of the sheet with a sample value, in the order they appear. "
+            "The same mapping as `column_mapping`, in the form a table needs."
+        ),
+    )
+    fields: list[ImportField] = Field(
+        default_factory=list,
+        description=(
+            "What a column may be mapped to, for the detected kind. Published so a client "
+            "can offer the choices rather than carrying its own copy of them."
+        ),
     )
 
 
@@ -152,8 +190,33 @@ def import_spreadsheet(
             rows_ready=built.rows_ready,
             problems=problems,
             column_mapping=columns,
+            columns=_columns(sheet, columns),
+            fields=[
+                ImportField(name=f.name, required=f.required) for f in shape_for(found.kind).fields
+            ],
         )
     )
+
+
+def _columns(sheet: Sheet, mapping: dict[str, str]) -> list[ImportColumn]:
+    """Every column, in the order it appears, with something recognisable beside it.
+
+    The first *non-empty* value rather than the first: a sheet whose first row leaves
+    `Building` blank would otherwise show an empty sample for the one column somebody most
+    needs to identify, and the second row usually has it.
+    """
+    described = []
+    for header in sheet.headers:
+        sample = ""
+        for row in sheet.rows:
+            value = row.cells.get(header, "").strip()
+            if value:
+                sample = value
+                break
+        described.append(
+            ImportColumn(header=header, sample=sample, maps_to=mapping.get(header, ""))
+        )
+    return described
 
 
 @router.post(
