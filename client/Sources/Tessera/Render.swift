@@ -81,6 +81,10 @@ enum Render {
         // rather than looked up. Rendered with a sheet already read, because the thing worth
         // looking at is the mapping table and that does not exist until a file has been.
         if screen == "import" {
+            // The sheet misspells things, so the project has to contain the things being
+            // misspelled — otherwise every reference simply fails and the render shows the
+            // no-suggestion path rather than the one worth looking at.
+            await seedForImport(connection)
             let store = ImportStore(connection: connection, term: term)
             await store.inspect(
                 .init(
@@ -88,17 +92,15 @@ enum Render {
                     bytes: Array(
                         """
                         Designation,Seats,Blk,Facilities,Floor
-                        LH-201,120,Academic Block A,projector,2
-                        LH-202,80,Academic Block A,projector,2
-                        LAB-1,forty,Science Park,computers,1
+                        LH-201,120,Science Block,projecter,2
+                        LH-202,80,Science Block,Projector,2
+                        LAB-1,forty,Science Block,Projector,1
                         """.utf8
                     )
                 )
             )
-            guard let report = store.report else { return nil }
-            return AnyView(
-                ColumnMapping(report: report, appearance: appearance, isWorking: false) { _, _ in }
-            )
+            guard store.report != nil else { return nil }
+            return AnyView(ImportSheet(loaded: store, appearance: appearance).content)
         }
 
         guard let screen = Destination(rawValue: screen) else { return nil }
@@ -123,6 +125,23 @@ enum Render {
             return AnyView(ConstraintsScreen(loaded: store, appearance: appearance).content)
         default:
             return nil
+        }
+    }
+
+    /// A building and a feature to near-miss against.
+    ///
+    /// Only for `--render`, and only additive: it creates what the fixture spells wrongly so
+    /// the suggestion path is the one drawn. Named rather than folded into the fixture,
+    /// because a render that quietly writes to a project should say so.
+    private static func seedForImport(_ connection: EngineConnection) async {
+        guard let institution = try? await connection.run({
+            try await $0.listInstitutions().ok.body.json
+        }).items.first?.id else { return }
+        _ = try? await connection.run {
+            try await $0.createBuilding(body: .json(.init(institution_id: institution, name: "Science Block")))
+        }
+        _ = try? await connection.run {
+            try await $0.createFeature(body: .json(.init(institution_id: institution, name: "Projector")))
         }
     }
 

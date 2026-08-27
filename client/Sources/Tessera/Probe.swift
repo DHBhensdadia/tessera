@@ -695,6 +695,8 @@ enum Probe {
         let rubbish = ImportStore.Dropped(name: "notes.txt", bytes: Array("hello".utf8))
         await store.inspect(rubbish)
         say("import    refused   \(store.notice ?? "NOTHING SAID, which is wrong")")
+
+        await theSuggestionsArrive(connection, term: term)
     }
 
     /// 3.5 part 2: the column mapping is the lever, so it has to actually move something.
@@ -743,6 +745,57 @@ enum Probe {
         await store.remap("Designation", to: "")
         let ignored = store.report
         say("mapping   ignored   Designation → ignored leaves \(ignored?.rowsReady ?? -1) ready")
+    }
+
+    /// 3.5 part 3, and the phase's exit test.
+    ///
+    /// The 2.6 fixture's damage, imported the way a person would: read, reported, committed,
+    /// and then read back through the *rooms screen's own store* rather than through the
+    /// import — because "the import said 56" and "the Rooms screen shows 56" are different
+    /// claims, and only the second one is what somebody actually gets.
+    private static func theSuggestionsArrive(_ connection: EngineConnection, term: Int) async {
+        // A misspelling the engine can place, and one it cannot.
+        //
+        // No building column: by this point the probe has deleted the only building it made,
+        // so every row naming one would fail and the exit test would measure the fixture
+        // rather than the import. It did, on the first run — 0 of 3 ready, and the failure
+        // read like a broken commit.
+        let store = ImportStore(connection: connection, term: term)
+        await store.inspect(
+            .init(
+                name: "rooms.csv",
+                bytes: Array(
+                    """
+                    Room Name,Seats,Equipment
+                    LH-801,60,projecter
+                    LH-802,60,nothing like anything
+                    LH-803,60,Projector
+                    """.utf8
+                )
+            )
+        )
+        guard let report = store.report else {
+            say("suggest   MISSING   nothing came back — \(store.notice ?? "no reason")")
+            return
+        }
+        for problem in report.problems {
+            say("suggest   row \(problem.row)     \(problem.message)"
+                + (problem.suggestion.isEmpty ? "  (no suggestion)" : "  → \(problem.suggestion)"))
+        }
+        let helpful = report.problems.filter { !$0.suggestion.isEmpty }.count
+        say("suggest   summary   \(helpful) of \(report.problems.count) problem(s) carry a "
+            + "suggestion — \(helpful > 0 ? "the near-miss is named" : "NONE DID, so the field is dead")")
+
+        // The exit test: commit, then look at the screen a person would look at.
+        let before = await roomCount(connection)
+        await store.commit()
+        let rooms = RoomStore(connection: connection)
+        await rooms.load()
+        let after = rooms.rooms.count
+        say("exit      imported  rooms \(before) → \(after) on the Rooms screen, "
+            + "expected +\(report.rowsReady)")
+        let named = rooms.rooms.first { $0.name == "LH-803" }
+        say("exit      readable  LH-803 is \(named == nil ? "MISSING" : "on the screen with capacity \(named!.capacity)")")
     }
 
     private static func roomCount(_ connection: EngineConnection) async -> Int {
