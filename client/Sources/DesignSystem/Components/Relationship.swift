@@ -41,9 +41,14 @@ public struct Chooser: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Spacing.tight.points) {
-            SwiftUI.Text(label)
-                .font(Typography.caption.font)
-                .foregroundStyle(appearance.swiftUI(TextRole.secondary))
+            // An empty label takes no line. A caller inside a table row has already named
+            // the thing in a column of its own, and a blank caption above every control
+            // turned each row into two — visible the moment the mapping table was drawn.
+            if !label.isEmpty {
+                SwiftUI.Text(label)
+                    .font(Typography.caption.font)
+                    .foregroundStyle(appearance.swiftUI(TextRole.secondary))
+            }
 
             if options.isEmpty {
                 // Not a disabled menu. An empty menu says nothing about why it is empty or
