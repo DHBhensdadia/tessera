@@ -10,11 +10,23 @@ import SwiftUI
 /// runs the same code as a commit and rolls back, so the numbers on screen are what actually
 /// happened once already.
 struct ImportSheet: View {
-    let request: ImportRequest
+    let request: ImportRequest?
     let appearance: Appearance
     let done: () -> Void
 
     @State private var store: ImportStore
+
+    /// A sheet around a store that has already read its file.
+    ///
+    /// For `--render`, exactly as `ConstraintsScreen` has one: `ImageRenderer` has no run
+    /// loop, so `.task` never fires and a sheet that reads its own file would draw the state
+    /// where nothing has been read yet.
+    init(loaded store: ImportStore, appearance: Appearance) {
+        self.request = nil
+        self.appearance = appearance
+        self.done = {}
+        _store = State(initialValue: store)
+    }
 
     init(request: ImportRequest, appearance: Appearance, done: @escaping () -> Void) {
         self.request = request
@@ -26,6 +38,20 @@ struct ImportSheet: View {
     }
 
     var body: some View {
+        content
+            .frame(width: 720)
+            .background(appearance.swiftUI(SurfaceRole.panel))
+            // The first dry run starts when the sheet appears, not when the file was
+            // dropped: the store belongs to this view, and it does not exist until now.
+            .task { if let request { await store.inspect(request.dropped) } }
+    }
+
+    /// The sheet's contents, without the frame the window puts around them.
+    ///
+    /// Split out for `--render`, the same way `ConstraintsScreen` is: the frame is how a
+    /// sheet sits in a window, not part of what it says.
+    @ViewBuilder
+    var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let report = store.report {
                 summary(report)
@@ -50,11 +76,6 @@ struct ImportSheet: View {
                 refusal
             }
         }
-        .frame(width: 720)
-        .background(appearance.swiftUI(SurfaceRole.panel))
-        // The first dry run starts when the sheet appears, not when the file was dropped:
-        // the store belongs to this view, and it does not exist until now.
-        .task { await store.inspect(request.dropped) }
     }
 
     private func summary(_ report: ImportStore.Report) -> some View {
@@ -79,9 +100,24 @@ struct ImportSheet: View {
         }
     }
 
+    /// The rows that cannot be used, and what the engine noticed about them.
+    ///
+    /// P7 draws per-row fix buttons — *"[ Use projector ] [ Create new ]"* — and there is no
+    /// API behind them: the only lever the engine offers is the column mapping, re-sent with
+    /// the file. Inventing the buttons here would mean rewriting somebody's spreadsheet in
+    /// memory, which is a second answer to what the file says.
+    ///
+    /// So the honest version: say what is wrong, say what was probably meant where the engine
+    /// knows, and say plainly what to do about it. The rest of the sheet imports either way,
+    /// which is the thing most worth being clear about — a person who thinks three bad rows
+    /// block two hundred good ones will go and fix all two hundred by hand.
     private func problems(_ report: ImportStore.Report) -> some View {
-        ContentSection("\(report.problems.count) row(s) need attention", appearance: appearance) {
-            ForEach(report.problems.prefix(12)) { problem in
+        // Rows, not problems. One row can fail for three reasons at once — a missing name,
+        // an unreadable capacity and unknown equipment — and heading the section with the
+        // problem count told somebody eight rows were broken when three were. The numbers
+        // beside it are row counts, so this one has to be as well.
+        ContentSection("\(brokenRows(report)) row(s) cannot be used", appearance: appearance) {
+            ForEach(report.problems.prefix(Self.shown)) { problem in
                 HStack(alignment: .firstTextBaseline, spacing: Spacing.regular.points) {
                     Text("Row \(problem.row)")
                         .font(Typography.data.font)
@@ -93,7 +129,9 @@ struct ImportSheet: View {
                             .foregroundStyle(appearance.swiftUI(TextRole.primary))
                             .fixedSize(horizontal: false, vertical: true)
                         if !problem.suggestion.isEmpty {
-                            Text(problem.suggestion)
+                            // The engine sends a name; the sentence is this screen's. It
+                            // says what is wrong, we say what to do about it.
+                            Text("Did you mean \u{201C}\(problem.suggestion)\u{201D}?")
                                 .font(Typography.caption.font)
                                 .foregroundStyle(appearance.swiftUI(TextRole.secondary))
                         }
@@ -101,17 +139,35 @@ struct ImportSheet: View {
                 }
                 .padding(.vertical, Spacing.tight.points)
             }
-            if report.problems.count > 12 {
-                Text("…and \(report.problems.count - 12) more.")
+            if report.problems.count > Self.shown {
+                Text("…and \(report.problems.count - Self.shown) more. "
+                     + "They are all in the sheet, at the row numbers given.")
                     .font(Typography.caption.font)
                     .foregroundStyle(appearance.swiftUI(TextRole.tertiary))
             }
-            Text("These rows are skipped. Correct them in the spreadsheet and drop it "
-                 + "again — the rest import either way.")
+            Text(advice(report))
                 .font(Typography.caption.font)
                 .foregroundStyle(appearance.swiftUI(TextRole.tertiary))
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, Spacing.snug.points)
         }
+    }
+
+    private func brokenRows(_ report: ImportStore.Report) -> Int {
+        Set(report.problems.map(\.row)).count
+    }
+
+    /// Long enough to see the shape of the damage, short enough not to become the screen.
+    /// The row numbers are Excel's, so the sheet itself is the better place to read a
+    /// hundred of them.
+    private static let shown = 12
+
+    private func advice(_ report: ImportStore.Report) -> String {
+        report.rowsReady == 0
+            ? "No row can be imported as things stand. Check the columns above first — a "
+              + "field pointed at the wrong column rejects every row at once."
+            : "These rows are skipped; the other \(report.rowsReady) import. Correct them in "
+              + "the spreadsheet and drop it again."
     }
 
     private func actions(_ report: ImportStore.Report) -> some View {
