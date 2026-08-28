@@ -5,6 +5,8 @@ import SwiftUI
 
 /// `--render <screen> <file.png>` — draw a screen offscreen, against a real engine.
 ///
+/// Screens are named; `import` is the one that is not a destination.
+///
 /// The `Snapshot` target has rendered the *design system* this way since 3.1b, and its
 /// docstring says exactly why: `screencapture` needs a Screen Recording grant that a build
 /// machine will never have, so a design could be built and never seen by whoever built it.
