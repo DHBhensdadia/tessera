@@ -84,6 +84,24 @@ uv run mypy
 uv run lint-imports
 ```
 
+### Benchmark instances
+
+Tests marked `benchmark` read the 36 published [ITC-2019](https://www.itc2019.org/) instances
+and are skipped unless you point them at a copy:
+
+```bash
+TESSERA_ITC_INSTANCES=/path/to/Instances uv run pytest -m benchmark
+```
+
+The full set is not redistributed here — registration on itc2019.org is required. Two small
+instances are vendored under `tests/importers/itc/fixtures/` so the parser's own tests need no
+download. `scripts/itc-instances.sha256` records the SHA-256 of all 36, so a corrupted or
+re-issued file is caught rather than silently parsed:
+
+```bash
+cd /path/to/Instances && shasum -a 256 -c /path/to/scripts/itc-instances.sha256
+```
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
