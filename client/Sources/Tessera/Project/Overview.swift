@@ -12,6 +12,9 @@ struct Overview: View {
     let summary: ProjectSummary
     let appearance: Appearance
     let go: (Destination) -> Void
+    /// Nil when the project has no term, because an import needs one to name the
+    /// institution its rooms and staff belong to.
+    let take: ((ImportStore.Dropped) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -25,6 +28,13 @@ struct Overview: View {
                     .font(Typography.body.font)
                     .foregroundStyle(appearance.swiftUI(TextRole.secondary))
                     .fixedSize(horizontal: false, vertical: true)
+
+                // P7 Act 4 puts this above "or set up manually", and says why: this path
+                // matters more than the manual one.
+                if let take {
+                    DropZone(appearance: appearance, take: take)
+                        .padding(.top, Spacing.snug.points)
+                }
             }
 
             ContentSection("Checklist", appearance: appearance) {

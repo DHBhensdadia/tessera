@@ -167,3 +167,98 @@ def test_unimplemented_neighbours_still_answer_501(
     """Turning some stubs into handlers must not disturb the ones left, or the frozen
     contract stops meaning what it says."""
     assert client.get(unimplemented_route).status_code == 501
+
+
+class TestReferencesAreResolved:
+    """That a declared relationship arrives with something in it.
+
+    `InstructorRead.department` was `null` in every response from 2.2 until 3.4, for
+    instructors that had a department and instructors that did not. The route built the
+    model with `InstructorRead.model_validate(row)`, the row is a domain entity carrying
+    `department_id` and no `department`, and the field's default is `None` — so the
+    response validated, matched the published contract, and said nothing true.
+
+    Nothing could have caught it. It surfaced when a screen finally displayed the field.
+    """
+
+    def test_an_instructor_reports_the_department_it_was_given(
+        self, client: TestClient, campus: dict[str, int]
+    ) -> None:
+        department = client.post(
+            "/api/v1/departments",
+            json={"institution_id": campus["institution"], "name": "Computer Science"},
+        ).json()
+
+        created = client.post(
+            "/api/v1/instructors",
+            json={"name": "Prof. Sharma", "department_id": department["id"]},
+        ).json()
+        assert created["department"] == {"id": department["id"], "name": "Computer Science"}
+
+        # Every route that returns one, because only `create` was covered by the fix at
+        # first and `list` is the one a screen actually calls.
+        fetched = client.get(f"/api/v1/instructors/{created['id']}").json()
+        assert fetched["department"]["name"] == "Computer Science"
+
+        listed = client.get("/api/v1/instructors").json()["items"]
+        assert [i["department"]["name"] for i in listed if i["id"] == created["id"]] == [
+            "Computer Science"
+        ]
+
+        patched = client.patch(
+            f"/api/v1/instructors/{created['id']}", json={"name": "Prof. R. Sharma"}
+        ).json()
+        assert patched["department"]["name"] == "Computer Science"
+
+    def test_an_instructor_without_one_reports_nothing_rather_than_failing(
+        self, client: TestClient, campus: dict[str, int]
+    ) -> None:
+        created = client.post("/api/v1/instructors", json={"name": "Visiting Lecturer"}).json()
+        assert created["department"] is None
+
+    def test_every_declared_reference_is_actually_resolved(self) -> None:
+        """The class, not the instance.
+
+        A `*Read` carrying a `Reference` has to be built by hand — the repository returns
+        domain entities, which hold ids and not resolved objects, so validating one can only
+        ever produce the field's default. `_course_read` and `_room_read` exist for exactly
+        this, and the one model that skipped the helper is the one that was silently empty
+        from 2.2 to 3.4.
+
+        Read from the **syntax tree** rather than from the text. The first version searched
+        the source for the offending call as a string and then failed on the sentence above
+        describing it — a guard that reads prose is one that fires on documentation and gets
+        switched off. `ast` sees calls and not comments.
+        """
+        import ast
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2] / "tessera" / "api"
+
+        validated: set[str] = set()
+        for module in (root / "routers").glob("*.py"):
+            for node in ast.walk(ast.parse(module.read_text())):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "model_validate"
+                    and isinstance(node.func.value, ast.Name)
+                ):
+                    validated.add(node.func.value.id)
+
+        carries_reference = set()
+        for schema in (root / "schemas").glob("*.py"):
+            for match in re.finditer(
+                r"class (\w+Read)\(Wire\):\n((?:    .*\n|\n)+?)(?=\n\nclass |\Z)",
+                schema.read_text(),
+            ):
+                if "Reference" in match.group(2):
+                    carries_reference.add(match.group(1))
+
+        assert carries_reference, "found no models with reference fields — the scan is wrong"
+        offenders = sorted(carries_reference & validated)
+        assert not offenders, (
+            f"{offenders} declare a Reference and are built by model_validate, "
+            "which can only ever fill it with the field default"
+        )

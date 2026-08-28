@@ -5,13 +5,32 @@ import SwiftUI
 /// The shape almost every screen in this application is made of — rooms, instructors,
 /// courses, constraints are all a list of these.
 public struct Row: View {
+    /// Where a row sits in a hierarchy, and whether it can be opened.
+    ///
+    /// A student group tree is the only shape in the application that is not a flat list —
+    /// *"the tree is the UI because it is the data model"* — and the honest way to draw one
+    /// is not a second list component. It is this one, indented, with a twisty on rows that
+    /// have children. Everything else passes `nil` and is unchanged.
+    public struct Nesting: Equatable, Sendable {
+        public let depth: Int
+        /// Nil for a leaf: a leaf must not draw a disclosure control that does nothing.
+        public let isExpanded: Bool?
+
+        public init(depth: Int, isExpanded: Bool? = nil) {
+            self.depth = depth
+            self.isExpanded = isExpanded
+        }
+    }
+
     private let title: String
     private let detail: String?
     private let value: String?
     private let isSelected: Bool
+    private let nesting: Nesting?
     let source: StateSource
     private let appearance: Appearance
     private let select: (() -> Void)?
+    private let toggle: (() -> Void)?
 
     @State private var isHovering = false
 
@@ -20,17 +39,21 @@ public struct Row: View {
         detail: String? = nil,
         value: String? = nil,
         isSelected: Bool = false,
+        nesting: Nesting? = nil,
         state: ControlState? = nil,
         appearance: Appearance,
-        select: (() -> Void)? = nil
+        select: (() -> Void)? = nil,
+        toggle: (() -> Void)? = nil
     ) {
         self.title = title
         self.detail = detail
         self.value = value
         self.isSelected = isSelected
+        self.nesting = nesting
         self.source = state.map(StateSource.pinned) ?? .live
         self.appearance = appearance
         self.select = select
+        self.toggle = toggle
     }
 
     /// What the row is doing, which for a row is only ever hover or nothing — a list row
@@ -41,6 +64,9 @@ public struct Row: View {
 
     public var body: some View {
         HStack(spacing: Spacing.regular.points) {
+            if let nesting {
+                twisty(nesting)
+            }
             VStack(alignment: .leading, spacing: Spacing.hairline.points) {
                 SwiftUI.Text(title)
                     .font(Typography.body.font.weight(titleWeight))
@@ -65,6 +91,7 @@ public struct Row: View {
         // between lines.
         .padding(.vertical, Spacing.regular.points)
         .padding(.horizontal, Spacing.regular.points)
+        .padding(.leading, CGFloat(nesting?.depth ?? 0) * Spacing.section.points)
         .background {
             if isSelected || state == .hover {
                 // An inset pill, not a full-bleed band. This is what four of the
@@ -86,6 +113,30 @@ public struct Row: View {
         .onHover { isHovering = $0 }
         .onTapGesture { select?() }
         .animation(Motion.control.animation(appearance), value: state)
+    }
+
+    /// A disclosure triangle, or the space one would have taken.
+    ///
+    /// Leaves reserve the width rather than closing it up, so names stay aligned down a
+    /// level instead of stepping in and out as children appear and disappear.
+    @ViewBuilder
+    private func twisty(_ nesting: Nesting) -> some View {
+        if let isExpanded = nesting.isExpanded {
+            SwiftUI.Button {
+                toggle?()
+            } label: {
+                SwiftUI.Image(systemName: "chevron.right")
+                    .font(Typography.caption.font)
+                    .foregroundStyle(appearance.swiftUI(TextRole.secondary))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 12, height: 12)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .animation(Motion.control.animation(appearance), value: isExpanded)
+        } else {
+            Color.clear.frame(width: 12, height: 12)
+        }
     }
 
     /// A selected row states its own weight, so the title stops relying on colour alone.
@@ -223,9 +274,14 @@ public struct Field: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Spacing.tight.points) {
-            SwiftUI.Text(label)
-                .font(Typography.caption.font)
-                .foregroundStyle(appearance.swiftUI(TextRole.secondary))
+            // An empty label draws nothing rather than an empty line. A search box has no
+            // label — the placeholder is the label — and reserving a caption's height for
+            // it pushed the field out of line with the button beside it.
+            if !label.isEmpty {
+                SwiftUI.Text(label)
+                    .font(Typography.caption.font)
+                    .foregroundStyle(appearance.swiftUI(TextRole.secondary))
+            }
 
             TextField("", text: $value)
                 .textFieldStyle(.plain)

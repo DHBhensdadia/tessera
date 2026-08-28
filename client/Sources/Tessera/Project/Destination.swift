@@ -14,8 +14,23 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
     case rooms
     case instructors
     case courses
+    /// A course running in *this term*. The first destination whose contents depend on
+    /// which term the toolbar has selected.
+    case offerings
     case groups
     case constraints
+    // The four that exist because the others need them. Under their own heading rather
+    // than mixed in: a person setting up a project works down Data, and buildings before
+    // rooms is the order that avoids a dead end.
+    case buildings
+    case features
+    case departments
+    case programs
+    // The three the 2.5 console has always had and the application never did — found by
+    // running 3.4's own exit test, which asks for parity with that console.
+    case institutions
+    case grids
+    case terms
     case timetables
 
     var id: String { rawValue }
@@ -25,7 +40,9 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
     var section: String? {
         switch self {
         case .overview: nil
-        case .rooms, .instructors, .courses, .groups, .constraints: "Data"
+        case .rooms, .instructors, .courses, .offerings, .groups, .constraints: "Data"
+        case .buildings, .features, .departments, .programs,
+             .institutions, .grids, .terms: "Setup"
         case .timetables: "Timetables"
         }
     }
@@ -36,9 +53,17 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .rooms: "Rooms"
         case .instructors: "Instructors"
         case .courses: "Courses"
+        case .offerings: "Offerings"
         case .groups: "Student Groups"
         case .constraints: "Constraints"
         case .timetables: "Timetables"
+        case .buildings: "Buildings"
+        case .features: "Features"
+        case .departments: "Departments"
+        case .programs: "Programmes"
+        case .institutions: "Institution"
+        case .grids: "Teaching Weeks"
+        case .terms: "Terms"
         }
     }
 
@@ -48,9 +73,17 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .rooms: "door.left.hand.open"
         case .instructors: "person.2"
         case .courses: "books.vertical"
+        case .offerings: "calendar.badge.clock"
         case .groups: "person.3"
         case .constraints: "slider.horizontal.3"
         case .timetables: "calendar"
+        case .buildings: "building.2"
+        case .features: "checklist"
+        case .departments: "square.stack.3d.up"
+        case .programs: "graduationcap"
+        case .institutions: "building.columns"
+        case .grids: "grid"
+        case .terms: "calendar"
         }
     }
 
@@ -69,12 +102,28 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
             ("No instructors yet", "Import a staff list, or add people one at a time.")
         case .courses:
             ("No courses yet", "A course is what is taught; an offering is a course running in this term.")
+        case .offerings:
+            ("Nothing offered this term", "An offering is a course being taught now. Add courses first, then offer them.")
         case .groups:
             ("No student groups yet", "Groups are a tree — a programme, its intakes, and the batches that split out of them.")
         case .constraints:
             ("Using the default rules", "Every term starts with a sensible set. Review them before generating.")
         case .timetables:
             ("No timetables yet", "Generate one once the term has rooms, instructors and courses.")
+        case .buildings:
+            ("No buildings yet", "A room belongs to a building, so add the first one here.")
+        case .features:
+            ("No features yet", "Projector, computers, a lab bench — what a session might require of a room.")
+        case .departments:
+            ("No departments yet", "Instructors and courses belong to one; add them here first.")
+        case .programs:
+            ("No programmes yet", "A programme is the root of a student group tree — B.Tech CSE, say.")
+        case .institutions:
+            ("No institution yet", "The university this file is about. Creating a project makes one.")
+        case .grids:
+            ("No teaching weeks yet", "A week says how many days there are, how they divide, and where lunch is.")
+        case .terms:
+            ("No terms yet", "A term is a period you build a timetable for — Autumn, say. It needs a teaching week first.")
         }
     }
 
@@ -87,9 +136,46 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .rooms: .rooms
         case .instructors: .instructors
         case .courses: .courses
+        case .offerings: .offerings
         case .groups: .groups
         case .constraints: .constraints
         case .overview, .timetables: nil
+        // Counted the same way, so the sidebar says how much setup is done.
+        case .buildings: .buildings
+        case .features: .features
+        case .departments: .departments
+        case .programs: .programs
+        // Counted like the rest, so the sidebar keeps saying how much setup is done.
+        case .institutions: .institutions
+        case .grids: .grids
+        case .terms: .terms
         }
+    }
+
+    /// `--screen <name>` opens project windows on one destination.
+    ///
+    /// A development affordance, in the same family as `--open`, `--new` and `--capture`,
+    /// and it exists because the thing it replaces stopped working. Every screen in 3.4 was
+    /// photographed by writing the window's `@AppStorage` key from outside — `defaults write
+    /// com.dhbhensdadia.tessera "destination:/path/to.tessera" rooms` — which worked until
+    /// it silently did not, and then cost an afternoon.
+    ///
+    /// That technique was always a hack reaching through the application into an
+    /// implementation detail: it depends on the key's exact spelling, on how the path was
+    /// standardised when the key was built, and on which of several windows for one project
+    /// survives to be photographed. Every one of those is ours to change without noticing we
+    /// have broken a script.
+    ///
+    /// A flag has none of those failure modes, and it makes a screen reachable from a script
+    /// for the first time — the alternative for reviewing 3.4b's live sentence, or anything
+    /// after it, is a person clicking a sidebar.
+    ///
+    /// Takes the arguments rather than reading `CommandLine` so that it can be tested.
+    static func requestedAtLaunch(
+        in arguments: [String] = CommandLine.arguments
+    ) -> Destination? {
+        guard let index = arguments.firstIndex(of: "--screen"), index + 1 < arguments.count
+        else { return nil }
+        return Destination(rawValue: arguments[index + 1])
     }
 }

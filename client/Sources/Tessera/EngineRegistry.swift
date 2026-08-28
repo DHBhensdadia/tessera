@@ -30,6 +30,39 @@ import SwiftUI
 final class EngineRegistry {
     private var controllers: [ProjectLocation: EngineController] = [:]
 
+    /// Windows this registry is closing because they are duplicates.
+    ///
+    /// A window closed for that reason must not take the project's engine with it, and
+    /// `release` cannot tell on its own: it asks whether any *other* window still shows the
+    /// project, and during a collapse the survivor may not have its `representedURL` yet —
+    /// `.navigationDocument` sets it when the window attaches, and attaching is exactly when
+    /// the collapse runs. So `release` saw no sibling, stopped the engine, and both windows
+    /// sat on "Opening…" for ever with no engine and no error.
+    ///
+    /// Recording the intent removes the guesswork. Identity rather than the window itself,
+    /// so nothing here keeps a closed window alive.
+    private var collapsing: Set<ObjectIdentifier> = []
+
+    /// Projects this session was actually asked to open.
+    ///
+    /// **Tessera does not restore windows.** It launches clean and waits for somebody to
+    /// choose a project — Devansh's call, and the right one: restoration reopened every
+    /// project ever opened, each starting its own Python engine, and nothing bounded it.
+    ///
+    /// There is no switch for it on this deployment target. `NSQuitAlwaysKeepsWindows` does
+    /// not reach a SwiftUI `WindowGroup(for:)` — measured, twice — and SwiftUI's own
+    /// `restorationBehavior(.disabled)` needs macOS 15 while this ships to 14. So the rule
+    /// is enforced rather than declared: every intentional open goes through
+    /// `ProjectChooser.show`, which records it here, and a window for a project nobody asked
+    /// for closes itself.
+    private var requested: Set<ProjectLocation> = []
+
+    /// Somebody asked for this project: a launch argument, the Finder, Recent Projects, or
+    /// the open panel.
+    func note(_ location: ProjectLocation) { requested.insert(location) }
+
+    func wasRequested(_ location: ProjectLocation) -> Bool { requested.contains(location) }
+
     /// The engine for this project, creating it the first time and only the first time.
     func controller(for location: ProjectLocation) -> EngineController {
         if let existing = controllers[location] { return existing }
@@ -63,13 +96,55 @@ final class EngineRegistry {
         return true
     }
 
-    /// The window for this project has gone. So does its engine.
+    /// The window for this project has gone. So does its engine — unless another window
+    /// is still showing the same project.
     ///
     /// Explicit rather than relying on deinit: the engine is a subprocess, and a Python
     /// process that outlives the window it belonged to is not a leak the user can see or
     /// clean up. Closing eight windows must leave zero engines.
-    func release(_ location: ProjectLocation) {
+    ///
+    /// The guard is not hypothetical. Scene restoration replays **one window per persisted
+    /// entry**, and it does not deduplicate by value — so a project opened twelve times over
+    /// a month comes back as twelve windows onto one file. `collapseDuplicates` closes the
+    /// extras, and without this check the first close would stop the engine the survivor is
+    /// still using.
+    ///
+    /// The closing window is excluded explicitly because it is still in `windows` and still
+    /// reports `isVisible` while `willCloseNotification` is being delivered — asking "is
+    /// anyone else showing this?" while counting yourself always answers yes.
+    func release(_ location: ProjectLocation, closing window: NSWindow? = nil) {
+        // A duplicate being collapsed is not the project closing.
+        if let window, collapsing.remove(ObjectIdentifier(window)) != nil { return }
+
+        let elsewhere = NSApplication.shared.windows.contains {
+            $0 !== window && $0.isVisible && $0.representedURL?.standardizedFileURL == location.url
+        }
+        guard !elsewhere else { return }
         controllers.removeValue(forKey: location)?.stop()
+    }
+
+    /// Close every window but one for a project that has several.
+    ///
+    /// Restoration is the only thing that produces them: `focusIfOpen` already prevents a
+    /// second window at runtime, and nothing in the interface offers to open one. But
+    /// `WindowGroup(for:)` persists a window per *opening* rather than per value, so every
+    /// launch that named the same project on the command line — or every reopen from Recent
+    /// Projects — left another entry to replay. Measured on the shipped bundle: **twelve
+    /// windows onto one project**, plus three more for projects last opened days earlier.
+    ///
+    /// Found because `screencapture` began refusing a window id that the window server was
+    /// perfectly happy to hand out, which is a strange enough symptom to chase.
+    ///
+    /// The survivor is the lowest window number — the oldest — so every duplicate running
+    /// this reaches the same answer and the order they run in does not matter.
+    func collapseDuplicates(of location: ProjectLocation) {
+        let showing = NSApplication.shared.windows
+            .filter { $0.representedURL?.standardizedFileURL == location.url }
+            .sorted { $0.windowNumber < $1.windowNumber }
+        for extra in showing.dropFirst() {
+            collapsing.insert(ObjectIdentifier(extra))
+            extra.close()
+        }
     }
 
     /// How many engines are alive. Exists for the test that closing windows closes them.

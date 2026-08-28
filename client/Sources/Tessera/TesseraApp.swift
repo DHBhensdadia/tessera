@@ -20,10 +20,25 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
         if CommandLine.arguments.contains("--capture") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Self.pinToEverySpace() }
+            // Repeatedly, not once. A single shot at 1.5 s races the thing it is pinning:
+            // the welcome window exists by then, but a project window asked for with
+            // `--open` is created in that window's `.onAppear` and can arrive seconds
+            // later — after which it is never pinned, opens on whichever Space the process
+            // started on, and is invisible to `CGWindowListCopyWindowInfo`'s on-screen
+            // list. The symptom is an application that is running, has started an engine,
+            // and appears to have no windows at all.
+            for delay in stride(from: 1.5, through: 30.0, by: 1.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { Self.pinToEverySpace() }
+            }
         }
         if CommandLine.arguments.contains("--probe") {
             Task { await Probe.run() }
+        }
+        // Draws a screen into a bitmap and exits. No window is presented, which is the
+        // point: no Screen Recording grant, no Space, no window to pick the wrong one of,
+        // and no content below the fold of a display.
+        if CommandLine.arguments.contains("--render") {
+            Task { await Render.run() }
         }
         if let seconds = Self.closeAfter {
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { Self.closeOneProject() }
@@ -63,12 +78,35 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
             .performClose(nil)
     }
 
+    @MainActor private static var lastReported = ""
+
     @MainActor
     private static func pinToEverySpace() {
-        for window in NSApplication.shared.windows {
+        let windows = NSApplication.shared.windows
+        // Project windows last, so one of them ends up in front. `screencapture -l` cannot
+        // photograph a window that is completely covered, and this application currently
+        // opens several it did not ask for — so without an order, whatever happens to be
+        // last in `windows` wins and it is usually not the one worth looking at.
+        for window in windows.sorted(by: { ($0.representedURL == nil ? 0 : 1) < ($1.representedURL == nil ? 0 : 1) }) {
             window.collectionBehavior.insert(.canJoinAllSpaces)
             window.orderFrontRegardless()
         }
+        // Say what was pinned, on stderr where the rest of the development output goes.
+        //
+        // A capture flag that silently photographs one of eighteen identical windows is
+        // worse than one that fails, because the picture looks right. This is how the
+        // duplicate-window fault below was found: `screencapture` started refusing a window
+        // id that `CGWindowListCopyWindowInfo` was perfectly happy to hand out.
+        let described = windows.map { window -> String in
+            window.representedURL?.lastPathComponent
+                ?? (window.title.isEmpty ? "untitled" : window.title)
+        }
+        // Only when it changes. The pin now runs twenty times, and twenty identical lines
+        // would bury the one that matters.
+        let line = "capture: \(windows.count) window(s) — \(described.joined(separator: ", "))"
+        guard line != lastReported else { return }
+        lastReported = line
+        FileHandle.standardError.write(Data((line + "\n").utf8))
     }
 
     /// Closing the last project window leaves the welcome window, not an empty Dock icon

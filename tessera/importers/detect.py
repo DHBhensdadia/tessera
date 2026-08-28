@@ -54,6 +54,17 @@ class Shape:
         return tuple(f.name for f in self.fields if f.required)
 
 
+def shape_for(kind: Kind) -> Shape:
+    """The fields a kind is made of.
+
+    Published so a client can offer the choices rather than carrying its own copy of them.
+    The alternative is a list of field names per kind written in Swift, which is the second
+    statement of a rule that Decision #5 forbids and which drifts the first time a field is
+    added here.
+    """
+    return next(shape for shape in SHAPES if shape.kind is kind)
+
+
 SHAPES: tuple[Shape, ...] = (
     Shape(
         Kind.ROOMS,

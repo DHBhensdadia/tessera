@@ -12,7 +12,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from fastapi import FastAPI, Request, Response
@@ -39,6 +39,57 @@ from tessera.api.routers import (
 from tessera.repository.database import create_project_engine, session_factory
 
 logger = structlog.get_logger(__name__)
+
+
+def as_nullable_type(schema: Any, components: dict[str, Any] | None = None) -> Any:
+    """Rewrite Pydantic's optional fields into the spelling OpenAPI 3.1 has for them.
+
+    Pydantic renders `int | None` as `anyOf: [{type: integer}, {type: null}]`, which is
+    valid and is not what 3.1 added `type: [integer, "null"]` for. Swift's generator maps
+    the second and **silently drops** properties written the first way — every `*Update`
+    model in this API came out as an empty struct, so nothing in the application could be
+    edited and the client compiled perfectly while being unable to send a single PATCH.
+
+    Applied to the document rather than to the models: it is a spelling difference in the
+    same schema, the validation semantics are identical, and doing it here keeps the live
+    document and the committed snapshot in agreement without annotating 91 fields.
+    """
+    if isinstance(schema, list):
+        return [as_nullable_type(item, components) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+
+    branches = schema.get("anyOf")
+    # A nullable *reference* — `anyOf: [{$ref}, {type: null}]` — has no `type` to move into
+    # an array, and the generator drops it exactly like the scalar case. Inlining the
+    # referenced schema and marking it nullable is the spelling it maps.
+    #
+    # Inlining rather than `allOf: [{$ref}]`, which also generates: that wraps the value in
+    # a synthetic single-member struct, so every call site reads `room.building?.value1.name`.
+    # The duplication is a few lines in generated code nobody reads; the alternative is an
+    # extra hop in code everybody reads.
+    if isinstance(branches, list) and len(branches) == 2 and components is not None:
+        refs = [b for b in branches if set(b) == {"$ref"}]
+        nulls = [b for b in branches if b == {"type": "null"}]
+        if len(refs) == 1 and len(nulls) == 1:
+            name = refs[0]["$ref"].rsplit("/", 1)[-1]
+            target = components.get(name)
+            if isinstance(target, dict) and "type" in target:
+                merged = {k: v for k, v in schema.items() if k != "anyOf"}
+                merged.update({k: v for k, v in target.items() if k != "title"})
+                merged["type"] = [target["type"], "null"]
+                return as_nullable_type(merged, components)
+
+    if isinstance(branches, list) and len(branches) == 2:
+        nulls = [b for b in branches if b == {"type": "null"}]
+        others = [b for b in branches if b != {"type": "null"}]
+        if len(nulls) == 1 and len(others) == 1 and "type" in others[0]:
+            merged = {k: v for k, v in schema.items() if k != "anyOf"}
+            merged.update(as_nullable_type(others[0]))
+            merged["type"] = [others[0]["type"], "null"]
+            return merged
+
+    return {key: as_nullable_type(value, components) for key, value in schema.items()}
 
 
 def operation_id(route: APIRoute) -> str:
@@ -160,6 +211,8 @@ def create_app(
             description=app.description,
             routes=app.routes,
         )
+        components = schema.get("components", {}).get("schemas", {})
+        schema = cast("dict[str, Any]", as_nullable_type(schema, components))
         schema.setdefault("components", {})["securitySchemes"] = TOKEN_SCHEME
         schema["security"] = [{"TesseraToken": []}]
         app.openapi_schema = schema

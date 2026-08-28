@@ -89,10 +89,28 @@ final class EngineController {
     ///
     /// Set before the first `await`, so there is no window between the check and the
     /// claim — on the main actor that makes it atomic without a lock.
+    /// The launch runs in a task this controller owns, not the caller's.
+    ///
+    /// `start()` is awaited from a view's `.task`, which dies with the view — and a window
+    /// can go away for reasons that have nothing to do with the project: a duplicate being
+    /// collapsed is one, and it takes the *shared* controller's launch with it. The window
+    /// that survives then shows "the engine started but never became ready — cancelled" for
+    /// an engine it still needs and cannot restart, because `hasLaunched` is already true.
+    ///
+    /// An unstructured task is not cancelled when the caller is, so the launch finishes and
+    /// `state` reaches `.running` whoever is still watching. Which is right on its own
+    /// terms: the engine belongs to the registry, and the registry outlives every window.
+    private var launch: Task<Void, Never>?
+
     func start() async {
         guard !hasLaunched else { return }
         hasLaunched = true
+        let work = Task { await self.performLaunch() }
+        launch = work
+        await work.value
+    }
 
+    private func performLaunch() async {
         state = .starting("Locating engine…")
 
         guard let executable = Self.locateEngine() else {

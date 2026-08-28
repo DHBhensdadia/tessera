@@ -203,6 +203,19 @@ def test_no_route_has_changed_what_it_answers_with(app: FastAPI, snapshot: dict[
     )
 
 
+#: Routes with no error of their own to document.
+#:
+#: Each takes no parameters, reads no project, and describes the *build* rather than a
+#: file — so there is no 404 to raise, no body to reject and no row to conflict with. The
+#: only failure they can produce is the middleware's 401, which is declared once globally
+#: as a security scheme (#133) rather than per route, exactly as it is for every other
+#: route in the API.
+#:
+#: Named with the reason rather than kept as a bare list, because an exemption set that
+#: grows by one every time the guard is inconvenient stops being a guard.
+NO_ERRORS_OF_THEIR_OWN = {"/health", "/api/v1/meta", "/api/v1/constraint-catalogue"}
+
+
 def test_every_route_documents_its_error_shape(app: FastAPI) -> None:
     """Errors are RFC 9457 everywhere, and the schema must say so.
 
@@ -214,13 +227,29 @@ def test_every_route_documents_its_error_shape(app: FastAPI) -> None:
 
     for path, methods in spec["paths"].items():
         for method, operation in methods.items():
-            if method not in METHODS or path in {"/health", "/api/v1/meta"}:
+            if method not in METHODS or path in NO_ERRORS_OF_THEIR_OWN:
                 continue
             responses = operation.get("responses", {})
             if not any(code.startswith(("4", "5")) for code in responses):
                 missing.append(f"{method.upper()} {path}")
 
-    assert not missing, f"routes with no documented error response: {missing}"
+    assert not missing, (
+        f"routes with no documented error response: {missing}\n"
+        "Add problem_responses(...) to the route, or — only if it genuinely has no error "
+        "of its own — to NO_ERRORS_OF_THEIR_OWN with the reason."
+    )
+
+
+def test_the_exemptions_still_exist(app: FastAPI) -> None:
+    """A route renamed out from under the exemption list leaves a hole nobody notices.
+
+    The list would keep passing, the renamed route would go undocumented, and the guard
+    would report success — which is the failure mode every exemption list has.
+    """
+    paths = set(app.openapi()["paths"])
+    assert paths >= NO_ERRORS_OF_THEIR_OWN, (
+        f"exempted routes that no longer exist: {NO_ERRORS_OF_THEIR_OWN - paths}"
+    )
 
 
 def test_the_whole_surface_is_reachable(client: TestClient) -> None:

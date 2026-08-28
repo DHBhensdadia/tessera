@@ -53,8 +53,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <!-- What makes a .tessera one item in the Finder rather than a folder.
          Decision #25 said a project is a real file you can email, archive and
          double-click; without these two declarations that has been true on paper and
-         false in every build since Stage 0. `com.apple.package` is the conformance that
-         tells the Finder to present the directory as a document. -->
+         false in every build since Stage 0. The com.apple.package conformance is what
+         tells the Finder to present the directory as a document.
+
+         No backticks in here, and no bare dollar signs either. This heredoc is
+         deliberately unquoted so that $VERSION expands, which means the shell also reads
+         backticks as command substitution: the word above used to be written in them and
+         every build ran it as a command, printed "com.apple.package: command not found",
+         and wrote an empty string where the word had been. Harmless inside a comment and
+         one careless value away from a plist that does not parse. -->
     <key>UTExportedTypeDeclarations</key>
     <array>
         <dict>
@@ -99,6 +106,9 @@ cat > "$OUT/entitlements.plist" <<'ENTS'
 </dict>
 </plist>
 ENTS
+
+plutil -lint "$APP/Contents/Info.plist" >/dev/null \
+    || { echo "Info.plist is not valid — refusing to sign it"; exit 1; }
 
 echo "==> signing nested binaries"
 NESTED=0

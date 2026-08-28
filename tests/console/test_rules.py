@@ -64,7 +64,10 @@ def rule_ids(markup: str) -> list[int]:
 class TestThePage:
     def test_a_new_term_arrives_with_its_preferences(self, browser: TestClient, term: int) -> None:
         markup = browser.get(f"/console/constraints?term_id={term}").text
-        assert "Minimise idle gaps in the day for everyone" in markup
+        # Was "…for everyone", which this page has shown since 2.5 and which is wrong for
+        # the two preferences about courses. The word is per kind now.
+        assert "Minimise idle gaps in the day for every group" in markup
+        assert "Avoid teaching any course twice in one day" in markup
         assert len(rule_ids(markup)) == 7
 
     def test_it_says_so_when_there_is_no_term(self, browser: TestClient) -> None:

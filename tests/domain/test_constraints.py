@@ -161,9 +161,27 @@ class TestSayingItInWords:
         )
         assert constraint.describe("Prof. Shah") == "Give Prof. Shah at most 3 hour(s) in a row"
 
-    def test_an_untargeted_preference_says_everyone(self) -> None:
-        constraint = Constraint(term_id=TermId(1), kind=ConstraintKind.MINIMISE_GROUP_GAPS)
-        assert constraint.describe() == "Minimise idle gaps in the day for everyone"
+    def test_an_untargeted_preference_names_what_it_applies_to(self) -> None:
+        """It said "everyone" for every kind, and this test pinned that.
+
+        Right for the five preferences about people and groups; wrong for the two about
+        courses, which produced "Avoid teaching everyone twice in one day". The word is per
+        kind now, because the reading changes with the sentence — one course rule wants
+        "any course" and the other wants "every course", and no rule about target kinds
+        yields both.
+        """
+        gaps = Constraint(term_id=TermId(1), kind=ConstraintKind.MINIMISE_GROUP_GAPS)
+        assert gaps.describe() == "Minimise idle gaps in the day for every group"
+
+        courses = Constraint(term_id=TermId(1), kind=ConstraintKind.AVOID_SAME_COURSE_TWICE_A_DAY)
+        assert courses.describe() == "Avoid teaching any course twice in one day"
+
+    def test_no_preference_about_courses_describes_itself_as_being_about_people(self) -> None:
+        """The property, rather than two more literals to keep in step."""
+        for kind in ConstraintKind:
+            spec = SPECS[kind]
+            if spec.scope is ConstraintScope.GLOBAL and spec.targets == {TargetKind.COURSE}:
+                assert "everyone" not in spec.describe({}), kind
 
     def test_a_targeted_rule_never_says_everyone(self) -> None:
         """It said exactly that, and the shipped build was the only place it showed.

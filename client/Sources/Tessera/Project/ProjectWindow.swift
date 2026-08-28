@@ -42,6 +42,13 @@ struct ProjectWindow: View {
     @AppStorage private var isSidebarVisible: Bool
 
     @State private var summary = ProjectSummary()
+    @State private var importing: ImportRequest?
+
+    /// Whether anybody asked for this project, resolved once the view is on screen.
+    ///
+    /// Nil until then. `registry` is a plain lookup table rather than something observed, so
+    /// the answer has to live in state for the button below to be able to change it.
+    @State private var wanted: Bool?
 
     init(location: ProjectLocation) {
         self.location = location
@@ -70,15 +77,25 @@ struct ProjectWindow: View {
 
     var body: some View {
         Group {
-            switch engine.state {
-            case .unopenable(let problem):
-                UnopenableProject(problem: problem, appearance: appearance)
-            case .failed:
-                StatusView(engine: engine)
-            case .running:
-                shell
-            case .idle, .starting:
-                StartingUp(engine: engine, appearance: appearance)
+            if wanted == false {
+                RestoredProject(location: location, appearance: appearance) {
+                    // Now somebody has asked. Recorded on the registry too, so a second
+                    // window for the same project agrees rather than asking again.
+                    registry.note(location)
+                    wanted = true
+                    Task { await begin() }
+                }
+            } else {
+                switch engine.state {
+                    case .unopenable(let problem):
+                    UnopenableProject(problem: problem, appearance: appearance)
+                case .failed:
+                    StatusView(engine: engine)
+                case .running:
+                    shell
+                case .idle, .starting:
+                    StartingUp(engine: engine, appearance: appearance)
+                }
             }
         }
         .frame(minWidth: 860, minHeight: 560)
@@ -87,16 +104,72 @@ struct ProjectWindow: View {
         // tells the Finder which file this window is showing.
         .navigationDocument(location.url)
         .task(id: location) {
-            await engine.start()
-            await applySetupIfNew()
-            if case .running(let running) = engine.state {
-                await summary.load(from: EngineConnection(port: running.port, token: running.token))
-                LaunchClock.shared.noteFirstUsableWindow()
+            // Seeded rather than overridden, so the sidebar still works afterwards and the
+            // window remembers where it was put — `--screen` says where to *start*, not
+            // where to stay.
+            //
+            // Only when it differs. `@AppStorage` publishes on every assignment, equal or
+            // not, so an unguarded write here invalidated the body on every pass and the
+            // window never got past `.idle` — it sat on "Opening…" with no engine, which
+            // reads exactly like an engine that failed to start.
+            if let requested = Destination.requestedAtLaunch(),
+               requested.rawValue != storedDestination {
+                storedDestination = requested.rawValue
             }
+            // A window macOS restored is one nobody asked for. It does not get an engine —
+            // it gets a question. See `RestoredProject` for why it cannot simply be closed.
+            if wanted == nil { wanted = registry.wasRequested(location) }
+            guard wanted == true else { return }
+            await begin()
         }
         // Not `.onDisappear` — see `WindowLifetime`. A view leaving a hierarchy is not a
         // window closing, and treating it as one leaked engines.
-        .onWindowClose { registry.release(location) }
+        .sheet(item: $importing) { request in
+            ImportSheet(request: request, appearance: appearance) {
+                importing = nil
+                // The counts on the sidebar and the checklist are now wrong by however many
+                // rows were written, and they are read from the engine rather than kept
+                // here — so the honest refresh is to ask again.
+                Task {
+                    if case .running(let running) = engine.state {
+                        await summary.load(
+                            from: EngineConnection(port: running.port, token: running.token)
+                        )
+                    }
+                }
+            }
+        }
+        .onWindow(
+            // Restoration replays one window per persisted *opening* rather than per
+            // project, so a project opened repeatedly comes back as a stack of identical
+            // windows. Every one of them runs this and they all reach the same answer, so
+            // the order does not matter — but it has to run once the window exists, because
+            // the question is asked of `representedURL`.
+            attach: { window in
+                // Not written into the saved state, for whatever that is worth on this
+                // deployment target — measured as not enough on its own.
+                window.isRestorable = false
+                // Restoration replays one window per persisted *opening* rather than per
+                // project, so a project opened repeatedly comes back as a stack of identical
+                // windows. It has to run once the window exists, because the question is
+                // asked of `representedURL`, which `.navigationDocument` sets on attach.
+                registry.collapseDuplicates(of: location)
+            },
+            close: { registry.release(location, closing: $0) }
+        )
+    }
+
+    /// Start the engine and load what the window needs from it.
+    ///
+    /// Separate from `.task` because it has two callers now: the ordinary one, and the button
+    /// on a restored window that turns "nobody asked for this" into "somebody just did".
+    private func begin() async {
+        await engine.start()
+        await applySetupIfNew()
+        if case .running(let running) = engine.state {
+            await summary.load(from: EngineConnection(port: running.port, token: running.token))
+            LaunchClock.shared.noteFirstUsableWindow()
+        }
     }
 
     /// The shell: chrome around a destination.
@@ -122,19 +195,94 @@ struct ProjectWindow: View {
         .toolbar { toolbar }
     }
 
+    /// A screen that manages a collection fills the pane itself — it has its own list,
+    /// its own scrolling and its own inspector. Only the read-only panes are wrapped in a
+    /// `ScrollView` here; wrapping a list-and-inspector in one produces a page that scrolls
+    /// as a whole while the list inside it also scrolls, which is two scrollbars and one
+    /// confused user.
+    @ViewBuilder
     private var content: some View {
-        ScrollView {
-            Group {
-                if destination.wrappedValue == .overview {
-                    Overview(summary: summary, appearance: appearance) { destination.wrappedValue = $0 }
+        Group {
+            switch destination.wrappedValue {
+            case .rooms, .instructors, .courses, .offerings, .groups, .constraints,
+                 .buildings, .features, .departments, .programs,
+                 .institutions, .grids, .terms:
+                if case .running(let running) = engine.state {
+                    let connection = EngineConnection(port: running.port, token: running.token)
+                    switch destination.wrappedValue {
+                    case .rooms:
+                        RoomsScreen(
+                            connection: connection,
+                            term: summary.selectedTerm?.id,
+                            appearance: appearance
+                        )
+                        .id(summary.selectedTerm?.id ?? 0)
+                    case .instructors:
+                        InstructorsScreen(
+                            connection: connection,
+                            term: summary.selectedTerm?.id,
+                            appearance: appearance
+                        )
+                        .id(summary.selectedTerm?.id ?? 0)
+                    case .courses:
+                        CoursesScreen(connection: connection, appearance: appearance)
+                    case .groups:
+                        GroupsScreen(connection: connection, appearance: appearance)
+                    case .offerings:
+                        // The one screen whose contents depend on the toolbar. Keyed on the
+                        // term so switching terms rebuilds it rather than showing Autumn's
+                        // offerings under Spring's heading.
+                        OfferingsScreen(
+                            connection: connection,
+                            term: summary.selectedTerm?.id,
+                            appearance: appearance
+                        )
+                        .id(summary.selectedTerm?.id ?? 0)
+                    case .buildings:
+                        simple("Buildings", .buildings, "Rooms in it are kept — they simply stop having an address.", connection)
+                    case .features:
+                        simple("Features", .features, "Rooms lose it, and any session requiring it may no longer fit anywhere.", connection)
+                    case .departments:
+                        simple("Departments", .departments, "Instructors and courses in it are kept, without a department.", connection)
+                    case .constraints:
+                        ConstraintsScreen(
+                            connection: connection,
+                            term: summary.selectedTerm?.id,
+                            appearance: appearance
+                        )
+                        .id(summary.selectedTerm?.id ?? 0)
+                    case .institutions:
+                        simple("Institution", .institutions, "Everything belonging to it goes too. A project normally has exactly one.", connection)
+                    case .grids:
+                        GridsScreen(connection: connection, appearance: appearance)
+                    case .terms:
+                        TermsScreen(connection: connection, appearance: appearance)
+                    default:
+                        simple("Programmes", .programs, "Student groups under it are kept, without a programme.", connection)
+                    }
                 } else {
-                    DestinationPlaceholder(
-                        destination: destination.wrappedValue,
-                        appearance: appearance
-                    )
+                    StartingUp(engine: engine, appearance: appearance)
+                }
+            default:
+                ScrollView {
+                    Group {
+                        if destination.wrappedValue == .overview {
+                            Overview(
+                                summary: summary,
+                                appearance: appearance,
+                                go: { destination.wrappedValue = $0 },
+                                take: importTaker
+                            )
+                        } else {
+                            DestinationPlaceholder(
+                                destination: destination.wrappedValue,
+                                appearance: appearance
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(appearance.swiftUI(SurfaceRole.base))
@@ -145,6 +293,29 @@ struct ProjectWindow: View {
                     .frame(width: 1)
             }
         }
+    }
+
+    /// One of the four name-only screens.
+    ///
+    /// `.id(title)` is what makes switching destinations build a new store rather than
+    /// showing buildings under the heading "Features": a different id is a different view
+    /// identity, and the screen's `@State` goes with it. The store itself is created inside
+    /// the screen — created here, it was rebuilt on every body evaluation and the list
+    /// never filled.
+    private func simple(
+        _ title: String,
+        _ operations: SimpleEntityStore.Operations,
+        _ warning: String,
+        _ connection: EngineConnection
+    ) -> some View {
+        SimpleEntityScreen(
+            title: title,
+            deleteWarning: warning,
+            connection: connection,
+            operations: operations,
+            appearance: appearance
+        )
+        .id(title)
     }
 
     @ToolbarContentBuilder
@@ -167,6 +338,20 @@ struct ProjectWindow: View {
             Button("Generate") {}
                 .disabled(true)
                 .help("Generating a timetable arrives with the solver")
+        }
+    }
+
+    /// Taking a dropped spreadsheet, when there is a term to import into.
+    ///
+    /// Nil without one, so the drop zone is absent rather than present and refusing: the
+    /// engine needs a term to name the institution the rows belong to, and a target that
+    /// accepts a file and then explains it cannot is worse than no target.
+    private var importTaker: ((ImportStore.Dropped) -> Void)? {
+        guard case .running(let running) = engine.state, let term = summary.selectedTerm?.id
+        else { return nil }
+        let connection = EngineConnection(port: running.port, token: running.token)
+        return { dropped in
+            importing = ImportRequest(connection: connection, term: term, dropped: dropped)
         }
     }
 
@@ -239,3 +424,49 @@ struct UnopenableProject: View {
         .background(appearance.swiftUI(SurfaceRole.base))
     }
 }
+
+/// A window macOS brought back for a project nobody asked to open.
+///
+/// **Tessera does not restore projects.** It launches clean and waits for somebody to choose
+/// one — and on this deployment target there is no way to stop the window appearing.
+/// `NSQuitAlwaysKeepsWindows`, per-window `isRestorable` and closing the window on sight were
+/// each tried and each measured: the first two do not reach a SwiftUI `WindowGroup(for:)`,
+/// and closing it produced a window that came straight back and sat on "Opening…" for ever,
+/// with no engine behind it and no error. `restorationBehavior(.disabled)` is the switch that
+/// would work and it needs macOS 15.
+///
+/// So the window is given something true to say instead of being fought. It costs nothing —
+/// no engine is started until somebody asks — and it turns a spinner that never resolves into
+/// a question with an answer.
+struct RestoredProject: View {
+    let location: ProjectLocation
+    let appearance: Appearance
+    let open: () -> Void
+
+    var body: some View {
+        VStack(spacing: Spacing.regular.points) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(appearance.swiftUI(TextRole.tertiary))
+            Text("\(location.name) was open last time")
+                .font(Typography.heading.font)
+                .foregroundStyle(appearance.swiftUI(TextRole.primary))
+                .multilineTextAlignment(.center)
+            Text("Tessera does not reopen projects on its own — each one runs its own engine, "
+                 + "and starting several you did not ask for is a cost you never chose. "
+                 + "Nothing has been opened yet.")
+                .font(Typography.body.font)
+                .foregroundStyle(appearance.swiftUI(TextRole.secondary))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            ActionButton(emphasis: .primary, appearance: appearance, action: open) {
+                Text("Open \(location.name)")
+            }
+            .padding(.top, Spacing.snug.points)
+        }
+        .padding(Spacing.page.points)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appearance.swiftUI(SurfaceRole.base))
+    }
+}
+

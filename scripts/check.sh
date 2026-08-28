@@ -49,6 +49,7 @@ run "pytest + coverage gate"  uv run pytest --cov --cov-fail-under=85 -q
 # about for the Python half. `swift build` covers all three targets, including the
 # gallery, so a component the gallery no longer matches fails here rather than later.
 run "swift (build)"           swift build --package-path client
+run "generated client is whole" uv run python scripts/check-generated.py
 run "swift (test)"            swift test --package-path client
 
 echo

@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
+from tessera.domain.constraints import INVARIANTS, SPECS, ConstraintKind, TargetKind
 from tessera.repository import calendar as calendar_repo
 from tessera.repository import create_all, session_factory
 from tessera.repository import models as m
@@ -64,9 +65,14 @@ class TestTheContractExtension:
         body = response.json()
         assert body["targets"] == [{"kind": "instructor", "id": project["instructor_id"]}]
         # Not "everyone": a rule about one person that says everyone is worse than one
-        # that says nothing. Names need the database, which the console has and the wire
-        # response does not, so ids are the honest fallback.
-        assert body["summary"] == "Give instructor 1 at most 3 hour(s) in a row"
+        # that says nothing.
+        #
+        # It used to read "instructor 1" here, on the reasoning that names need the
+        # database and the wire response does not have it. The wire response is *built* by
+        # a router holding an open session, so that was never true — it was the console
+        # resolving names for itself and nobody checking what the API sent. Corrected in
+        # 3.4b when a screen finally displayed this string.
+        assert body["summary"] == "Give Prof. Shah at most 3 hour(s) in a row"
         assert body["target_ids"] == []
 
     def test_target_ids_still_works_and_still_means_sessions(
@@ -235,3 +241,191 @@ class TestAvailabilityCarriesItsStrength:
             json={"kind": "instructor", "subject_id": project["instructor_id"], "slots": [12]},
         )
         assert response.json()["items"][0]["is_hard"] is True
+
+
+class TestTheCatalogue:
+    """That what the engine publishes about constraints is what the domain actually holds.
+
+    `SPECS` lives in `tessera.domain.constraints` and the console reads it by importing it,
+    which works only because the console runs inside the engine. A native client had no way
+    to learn which kinds exist, what each may be attached to, or what parameters it takes —
+    so it could not offer to create a constraint without a hand-written copy of `SPECS` in
+    Swift, which is what Decision #5 forbids and what `ConstraintSpec` warns about in its
+    own docstring.
+
+    The catalogue is derived from `SPECS` rather than restated, so these tests are not
+    checking a transcription. They are checking that the derivation stays total — that a
+    kind added to the domain appears on the wire without anybody remembering to add it, and
+    that nothing on the wire says something the domain does not.
+    """
+
+    def test_every_kind_is_published_exactly_once(self, client: TestClient) -> None:
+        body = client.get("/api/v1/constraint-catalogue").json()
+        published = [k["kind"] for k in body["kinds"]]
+
+        assert sorted(published) == sorted(k.value for k in ConstraintKind)
+        assert len(published) == len(set(published))
+
+    def test_each_kind_carries_what_the_domain_says_about_it(self, client: TestClient) -> None:
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        for entry in body["kinds"]:
+            spec = SPECS[ConstraintKind(entry["kind"])]
+            assert entry["scope"] == spec.scope.value
+            assert sorted(entry["targets"]) == sorted(t.value for t in spec.targets)
+            assert entry["summary_template"] == spec.summary
+            assert entry["unnarrowed"] == spec.unnarrowed
+
+            published = {p["name"]: p for p in entry["params"]}
+            assert published.keys() == spec.params.keys()
+            for name, param in spec.params.items():
+                assert published[name]["label"] == param.label
+                assert published[name]["minimum"] == param.minimum
+                assert published[name]["maximum"] == param.maximum
+                assert published[name]["default"] == param.default
+
+    def test_placeholders_are_bare_so_a_client_can_fill_them_in(self, client: TestClient) -> None:
+        """The promise the summary template makes, enforced where the templates live.
+
+        A client renders the sentence as a form is typed — asking the engine per keystroke
+        would be absurd — so it substitutes the placeholders itself. That is only safe while
+        every placeholder is a bare `{name}`: a format spec like `{slots:>3}` would need a
+        second implementation of Python's format mini-language in Swift, and would be
+        discovered as a rendering bug rather than as a contract change.
+
+        So the constraint is stated here rather than assumed there.
+        """
+        import re
+
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        for entry in body["kinds"]:
+            placeholders = set(re.findall(r"\{([^}]*)\}", entry["summary_template"]))
+            allowed = {p["name"] for p in entry["params"]} | {"targets"}
+
+            assert placeholders <= allowed, (
+                f"{entry['kind']} names {placeholders - allowed} in its summary, which is "
+                "neither one of its parameters nor 'targets'"
+            )
+            for placeholder in placeholders:
+                assert re.fullmatch(r"\w+", placeholder), (
+                    f"{entry['kind']} uses a format spec in {{{placeholder}}} — a client "
+                    "fills these in by name and cannot interpret one"
+                )
+
+    def test_the_example_is_the_template_filled_in(self, client: TestClient) -> None:
+        """A menu of sixteen kinds is unreadable as templates, so each carries a rendering."""
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        for entry in body["kinds"]:
+            spec = SPECS[ConstraintKind(entry["kind"])]
+            assert entry["example"] == spec.describe({}, "…")
+            assert "{" not in entry["example"]
+
+    def test_the_invariants_are_published_and_none_of_them_is_a_kind(
+        self, client: TestClient
+    ) -> None:
+        """The rules that cannot be switched off, and the line between the two lists.
+
+        An invariant appearing as a configurable kind would be the worst possible bug on
+        this screen: a control offering to disable something that cannot be disabled.
+        """
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        assert [i["key"] for i in body["invariants"]] == [i.key for i in INVARIANTS]
+        assert all(i["statement"] and i["because"] for i in body["invariants"])
+
+        keys = {i["key"] for i in body["invariants"]}
+        kinds = {k["kind"] for k in body["kinds"]}
+        assert not keys & kinds
+
+    def test_it_needs_no_project_and_no_term(self, client: TestClient) -> None:
+        """It describes the build, not the file — so it answers before anything is set up,
+        and a client can fetch it once per engine and keep it."""
+        assert client.get("/api/v1/constraint-catalogue").status_code == 200
+
+    def test_an_unnarrowed_rule_says_what_it_applies_to(self, client: TestClient) -> None:
+        """The fallback word is per kind, and "everyone" is wrong for two of them.
+
+        `unnarrowed` defaulted to "everyone" for every kind, which reads correctly for the
+        five about people and groups and produced "Avoid teaching everyone twice in one day"
+        for the one about courses. It has been on the console page since 2.5 and on the wire
+        since 2.8; nothing displayed the sentence beside the rule it describes until the
+        native screen did.
+
+        So: no global kind may describe itself as applying to people when it can only be
+        attached to courses.
+        """
+        body = client.get("/api/v1/constraint-catalogue").json()
+
+        for entry in body["kinds"]:
+            if entry["scope"] != "global":
+                continue
+            spec = SPECS[ConstraintKind(entry["kind"])]
+            rendered = spec.describe({})
+
+            assert "{" not in rendered
+            if spec.targets == {TargetKind.COURSE}:
+                assert "everyone" not in rendered, (
+                    f"{entry['kind']} may only be attached to courses and describes itself "
+                    f"as applying to people: {rendered!r}"
+                )
+
+
+class TestTheSummaryNamesItsTargets:
+    """That `summary` is a sentence a person can act on.
+
+    A constraint stores its targets as a kind and an id, because no single foreign key can
+    point at five tables. `Constraint.describe` therefore takes the resolved names as an
+    argument and falls back to `kind id` without them — and every `ConstraintRead` ever sent
+    took that fallback, so the wire has always said "Minimise idle gaps in the day for
+    instructor 1".
+
+    It went unnoticed for the ordinary reason: the console resolves names itself and never
+    reads the summary on the wire, and no other client existed until 3.4b's rules screen
+    displayed it. Found by a probe comparing the sentence the form predicts against the one
+    the engine returns for the same rule.
+    """
+
+    def test_a_narrowed_rule_names_the_person(
+        self, client: TestClient, project: dict[str, int]
+    ) -> None:
+        created = client.post(
+            f"/api/v1/terms/{project['term_id']}/constraints",
+            json={
+                "kind": "minimise_instructor_gaps",
+                "targets": [{"kind": "instructor", "id": project["instructor_id"]}],
+            },
+        ).json()
+
+        assert "instructor " not in created["summary"], created["summary"]
+        listed = client.get(f"/api/v1/terms/{project['term_id']}/constraints").json()["items"]
+        stored = next(c for c in listed if c["id"] == created["id"])
+        assert stored["summary"] == created["summary"]
+
+    def test_a_target_that_no_longer_exists_is_still_shown(
+        self, client: TestClient, project: dict[str, int]
+    ) -> None:
+        """An id with no name behind it reads as `kind id` rather than vanishing.
+
+        A sentence that silently dropped a dangling target would describe a rule that is
+        not the stored one, which is worse than an ugly one.
+        """
+        created = client.post(
+            f"/api/v1/terms/{project['term_id']}/constraints",
+            json={"kind": "minimise_group_gaps", "targets": [{"kind": "group", "id": 98_765}]},
+        )
+        # The repository may refuse an unknown target outright, which is also correct.
+        if created.status_code == 201:
+            assert "group 98765" in created.json()["summary"]
+        else:
+            assert created.status_code in {404, 422}
+
+    def test_an_untargeted_preference_still_reads_as_itself(
+        self, client: TestClient, project: dict[str, int]
+    ) -> None:
+        listed = client.get(f"/api/v1/terms/{project['term_id']}/constraints").json()["items"]
+        seeded = [c for c in listed if not c["targets"]]
+        assert seeded, "a new term should start with its preferences"
+        assert all("{" not in c["summary"] for c in seeded)
+        assert any("every group" in c["summary"] for c in seeded)

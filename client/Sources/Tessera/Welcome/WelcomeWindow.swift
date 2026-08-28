@@ -36,7 +36,7 @@ struct WelcomeWindow: View {
         .frame(width: 720, height: 420)
         .windowGlass(appearance)
         .onAppear {
-            ProjectChooser.openArgumentsGiven(using: registry, openWindow)
+            ProjectChooser.openArgumentsGiven()
             // `--new` opens the creation sheet at launch. The same reasoning as `--open`:
             // the sheet is the largest piece of interface in this phase and the only way
             // to reach it otherwise is a click, which is neither scriptable nor a way to
