@@ -118,3 +118,111 @@ jobs:
 
       - name: swift test
         run: swift test --package-path client
+
+  # ---------------------------------------------------------------------------------
+  # Does this change touch the thing people download?
+  #
+  # CI builds and tests the *source*. It has never built the `.dmg` — that happens only
+  # in the release workflow, on a tag. So anything that changes how the artefact is
+  # assembled, rather than what the code says, has no coverage at all until a release.
+  #
+  # That gap was found by a dependabot pull request bumping **PyInstaller**, which is what
+  # freezes the Python engine into the bundle. Four green checks and not one of them had
+  # built a bundle. The first thing to find out would have been a release.
+  # ---------------------------------------------------------------------------------
+  changes:
+    name: what changed
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    outputs:
+      packaging: ${{ steps.check.outputs.packaging }}
+    steps:
+      # Full history: comparing against a base needs the base to be present.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: check
+        name: does anything here change the artefact
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch --quiet --depth=1 origin "$BASE_REF"
+            changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+          elif [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only "$BEFORE" "$SHA")
+          else
+            # A new branch, or a force-push whose old tip is gone. Nothing to compare
+            # against, so assume it matters rather than skipping the check.
+            changed="uv.lock"
+          fi
+
+          echo "changed files:"
+          echo "$changed" | sed 's/^/  /'
+
+          # uv.lock and pyproject.toml decide what is frozen into the bundle;
+          # packaging/ decides how; .python-version decides which interpreter.
+          if echo "$changed" | grep -qE '^(uv\.lock|pyproject\.toml|\.python-version|packaging/)'; then
+            echo "packaging=true" >> "$GITHUB_OUTPUT"
+            echo "→ this can change the artefact, so the disk image gets built"
+          else
+            echo "packaging=false" >> "$GITHUB_OUTPUT"
+            echo "→ source-only, the usual jobs cover it"
+          fi
+
+  bundle:
+    name: disk image
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
+    # The same runner and Xcode as the release, for the same reason the client job uses
+    # them: what CI proves can be built has to be what CI later ships.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: select xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version-file: .python-version
+
+      - run: uv sync --locked --all-groups
+
+      # PyInstaller freezes the engine here. A dependency that breaks the freeze, or a
+      # hidden import that stops being found, fails at this step rather than at a tag.
+      - name: build the app and the disk image
+        run: ./packaging/build.sh
+
+      # The only place a bundled engine is actually launched. It mounts the image, copies
+      # the app out, checks Gatekeeper and the signature, starts it, and confirms the
+      # engine spawns, listens on loopback only, refuses an unauthenticated request, and
+      # exits when the application is force-quit.
+      - name: smoke test the disk image
+        run: ./packaging/smoke-test.sh
+
+      # Every screen and flow, driven against the engine inside the bundle that was just
+      # built. `swift test` cannot see any of this: a generated client compiles against a
+      # document rather than a server.
+      - name: drive the built application
+        run: ./packaging/out/Tessera.app/Contents/MacOS/Tessera --probe
+
+      - name: what was built
+        if: always()
+        run: |
+          {
+            echo "### Disk image"
+            ls -lh packaging/out/*.dmg 2>/dev/null | awk '{print "- `" $NF "` — " $5}'
+          } >> "$GITHUB_STEP_SUMMARY"
+
