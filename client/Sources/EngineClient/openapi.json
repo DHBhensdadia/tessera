@@ -3892,7 +3892,7 @@
             "type": "string"
           },
           "rule": {
-            "description": "Which rule, e.g. 'room_occupied' or 'instructor_clash'.",
+            "description": "Which rule. An invariant key such as 'room_not_double_booked', or a constraint kind such as 'same_room'. Stable across releases: the interface looks the explanation up by it.",
             "title": "Rule",
             "type": "string"
           }

@@ -87,7 +87,13 @@ class MoveCheck(Wire):
 
 
 class Violation(Wire):
-    rule: str = Field(description="Which rule, e.g. 'room_occupied' or 'instructor_clash'.")
+    rule: str = Field(
+        description=(
+            "Which rule. An invariant key such as 'room_not_double_booked', or a constraint "
+            "kind such as 'same_room'. Stable across releases: the interface looks the "
+            "explanation up by it."
+        )
+    )
     message: str = Field(description="Plain language, shown directly to the user.")
     conflicting_session_id: int | None = None
     conflicting_assignment_id: int | None = None
