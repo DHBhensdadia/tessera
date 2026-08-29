@@ -473,3 +473,32 @@ class TestRulesWithTooLittleToJudge:
         )
 
         assert validate(term.snapshot()).violations == ()
+
+
+class TestTheEndOfTheWeek:
+    def test_a_session_overrunning_the_week_does_not_count_phantom_hours(
+        self, good: Institution
+    ) -> None:
+        """A two-hour tutorial starting in the last hour of Friday.
+
+        It runs off the end of the week, which is its own violation. What it must *not* do is
+        contribute an hour that does not exist to a rule about hours in a row — and it did:
+        `Lens.span` computed the raw range while `Snapshot.teaching` clipped at the last slot,
+        so the two disagreed about a session nobody could schedule anyway.
+
+        Found by the property test in part 3, not by anything here: no test had a session
+        both overrunning the week and subject to a consecutive-hours rule.
+        """
+        # Four hours from three slots before the end: three are real, the fourth is past
+        # the end of the week. Three in a row is allowed — which is what Batch A already has
+        # on the Monday — so only the phantom hour could tip this over.
+        start = good.grid.slot_count - 3
+        overrunning = good.lasting(TUTORIAL, 4).moved(TUTORIAL, at=start, to=STUDIO)
+        report = validate(
+            overrunning.ruled(
+                over(ConstraintKind.LIMIT_CONSECUTIVE_SLOTS, TargetKind.GROUP, slots=3)
+            ).snapshot()
+        )
+
+        assert "breaks_protected" in fired(report)  # it does run off the end
+        assert "limit_consecutive_slots" not in fired(report)  # but only for real hours

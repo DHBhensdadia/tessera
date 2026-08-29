@@ -66,13 +66,19 @@ class Lens:
     def hour(self, placement: Placement) -> int:
         return self.snapshot.grid.slot_of_day(placement.start_slot)
 
-    def span(self, placement: Placement) -> range:
+    def span(self, placement: Placement) -> tuple[Slot, ...]:
         """The slots a session is taught in — teaching time, not room occupancy.
 
         A rule about people asks when they are busy, and a room's turnaround is not that.
+
+        **Delegated rather than recomputed.** This started as its own `range(start, start +
+        duration)` and disagreed with `Snapshot.teaching` about a session running off the end
+        of the week: the snapshot clipped at the last slot, this did not, and a rule counting
+        hours in a row therefore counted an hour that does not exist. Found by the property
+        test on its first real run. Two spellings of "when is this taught" is one more than
+        the codebase can support, so there is now one.
         """
-        session = self.snapshot.sessions[placement.session_id]
-        return range(placement.start_slot, placement.start_slot + session.duration_slots)
+        return self.snapshot.teaching(placement)
 
 
 Evaluator = Callable[[Constraint, Lens], Iterator[Violation]]
