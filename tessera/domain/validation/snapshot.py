@@ -20,10 +20,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from tessera.domain.constraints import Constraint, TargetKind
 from tessera.domain.entities import Room, Session, Unavailability, WeekPattern
 from tessera.domain.groups import GroupSet
 from tessera.domain.ids import (
     AssignmentId,
+    CourseId,
     InstructorId,
     RoomId,
     SessionId,
@@ -33,7 +35,7 @@ from tessera.domain.time_grid import Slot, TimeGrid
 from tessera.domain.timetable import Assignment
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 
 #: `(slot, subject)` to the sessions occupying it.
@@ -105,6 +107,30 @@ class Snapshot:
     room_closed: frozenset[tuple[RoomId, Slot]] = frozenset()
     instructor_away: frozenset[tuple[InstructorId, Slot]] = frozenset()
 
+    #: Slots somebody would rather not use, and what ignoring that costs.
+    #:
+    #: Soft rows, which the invariants ignore entirely — *would rather not* is not *cannot*,
+    #: and a validator treating them alike would make every stated preference an
+    #: impossibility. `RESPECT_INSTRUCTOR_PREFERENCES` is what reads them, and until 2.7b
+    #: gave them somewhere to live that kind had no data behind it at all.
+    preferred_against: dict[tuple[InstructorId, Slot], int] = field(default_factory=dict)
+
+    #: The rules this term has, and what each is worth.
+    constraints: tuple[Constraint, ...] = ()
+
+    #: Which course a session belongs to. Sessions know their offering, not their course, and
+    #: two kinds need the course — so the mapping is supplied rather than guessed at.
+    course_of: dict[SessionId, CourseId] = field(default_factory=dict)
+
+    #: Every session a subject is involved in. Global preferences are per subject per day, so
+    #: they start here rather than by filtering all sessions once per subject.
+    sessions_of_instructor: dict[InstructorId, list[SessionId]] = field(default_factory=dict)
+    sessions_of_group: dict[StudentGroupId, list[SessionId]] = field(default_factory=dict)
+    sessions_of_course: dict[CourseId, list[SessionId]] = field(default_factory=dict)
+
+    #: Constraints naming a session, so a move re-checks only what could involve it.
+    constraints_of_session: dict[SessionId, list[Constraint]] = field(default_factory=dict)
+
     #: Why a slot is blocked, where somebody said. Keyed by subject and slot — *"the labs
     #: are being refurbished"* belongs in the sentence a person reads, not in the rule.
     closure_reason: dict[tuple[str, int, Slot], str] = field(default_factory=dict)
@@ -119,6 +145,8 @@ class Snapshot:
         groups: GroupSet,
         assignments: Sequence[Assignment] = (),
         unavailability: Sequence[Unavailability] = (),
+        constraints: Sequence[Constraint] = (),
+        course_of: Mapping[SessionId, CourseId] | None = None,
     ) -> Snapshot:
         """Index a term. Everything expensive happens here and only here."""
         by_id = {s.id: s for s in sessions if s.id is not None}
@@ -141,10 +169,53 @@ class Snapshot:
             closure_reason={
                 _subject(u): u.reason for u in unavailability if u.is_hard and u.reason
             },
+            preferred_against={
+                (u.instructor_id, u.slot): u.weight
+                for u in unavailability
+                if not u.is_hard and u.instructor_id is not None
+            },
+            constraints=tuple(c for c in constraints if c.enabled),
+            course_of=dict(course_of or {}),
         )
+        snapshot._relate()
         for placement in placements.values():
             snapshot._index(placement)
         return snapshot
+
+    def _relate(self) -> None:
+        """Who is involved in what, and which rules mention whom.
+
+        Built once, for the same reason the occupancy indexes are: a global preference asks
+        "what does this instructor teach on Tuesday" for every instructor in the term, and
+        filtering all sessions once per subject would put the institution's size back into
+        every question.
+
+        Disabled constraints never arrive here — `of` filters them — so no rule has to
+        remember to check `enabled`, and one that forgot would silently enforce something an
+        institution had switched off.
+        """
+        for session_id, session in self.sessions.items():
+            for instructor in session.instructor_ids:
+                self.sessions_of_instructor.setdefault(instructor, []).append(session_id)
+            for leaf in self.leaves(session):
+                self.sessions_of_group.setdefault(leaf, []).append(session_id)
+            course = self.course_of.get(session_id)
+            if course is not None:
+                self.sessions_of_course.setdefault(course, []).append(session_id)
+
+        for constraint in self.constraints:
+            for session_id in constraint.target_ids:
+                self.constraints_of_session.setdefault(session_id, []).append(constraint)
+
+    def subjects_named_by(self, constraint: Constraint, kind: TargetKind) -> tuple[int, ...]:
+        """The instructors, groups or courses a global preference was narrowed to.
+
+        Empty means the whole term, which is what `unnarrowed` on the spec is for — a rule
+        with no targets applies to everyone, and one with targets applies to those only. The
+        rules screen already says which, and 3.5 records what happened when it did not: the
+        API reported "Give everyone at most 3 hour(s) in a row" for a rule about one person.
+        """
+        return tuple(sorted(t.id for t in constraint.targets if t.kind is kind))
 
     # -- the indexes -------------------------------------------------------------
 

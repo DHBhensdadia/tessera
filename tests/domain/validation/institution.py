@@ -16,10 +16,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from tessera.domain.entities import Room, Session, SessionKind, Unavailability, WeekPattern
+from tessera.domain.constraints import Constraint
+from tessera.domain.entities import (
+    Room,
+    Session,
+    SessionKind,
+    Unavailability,
+    WeekPattern,
+)
 from tessera.domain.groups import GroupKind, GroupSet, StudentGroup
 from tessera.domain.ids import (
     AssignmentId,
+    CourseId,
     FeatureId,
     InstructorId,
     RoomId,
@@ -116,6 +124,17 @@ SESSIONS = (
     ),
 )
 
+MATHS = CourseId(1)
+COMPUTING = CourseId(2)
+
+#: Which course each session belongs to. Sessions know their offering, not their course.
+COURSES = {
+    LECTURE: MATHS,
+    LAB_A: COMPUTING,
+    LAB_B: COMPUTING,
+    TUTORIAL: COMPUTING,
+}
+
 #: A timetable with nothing wrong with it. Every test asserts that first.
 ASSIGNMENTS = (
     Assignment(id=AssignmentId(1), session_id=LECTURE, start_slot=0, room_id=HALL),
@@ -135,6 +154,7 @@ class Institution:
     groups: GroupSet = GROUPS
     assignments: tuple[Assignment, ...] = ASSIGNMENTS
     unavailability: tuple[Unavailability, ...] = ()
+    constraints: tuple[Constraint, ...] = ()
 
     def snapshot(self) -> Snapshot:
         return Snapshot.of(
@@ -144,6 +164,8 @@ class Institution:
             groups=self.groups,
             assignments=self.assignments,
             unavailability=self.unavailability,
+            constraints=self.constraints,
+            course_of=COURSES,
         )
 
     def moved(
@@ -173,6 +195,21 @@ class Institution:
             sessions=tuple(
                 s.model_copy(update={"duration_slots": slots}) if s.id == session_id else s
                 for s in self.sessions
+            ),
+        )
+
+    def ruled(self, *constraints: Constraint) -> Institution:
+        """The same institution with rules in force. Nothing is in force by default, so a
+        test says which rule it is about and the baseline stays clean for the invariants."""
+        return replace(self, constraints=self.constraints + constraints)
+
+    def model_rooms(self, buildings: dict[RoomId, int]) -> Institution:
+        """The same rooms, put in buildings. Only `MINIMISE_BUILDING_CHANGES` cares."""
+        return replace(
+            self,
+            rooms=tuple(
+                r.model_copy(update={"building_id": buildings[r.id]}) if r.id in buildings else r
+                for r in self.rooms
             ),
         )
 

@@ -34,5 +34,19 @@ class Violation:
     conflicting_assignment_id: AssignmentId | None = None
 
     is_hard: bool = True
-    """False only for the weighted rules in part 2. A hard violation makes a timetable
-    invalid; a soft one makes it worse."""
+    """A hard violation makes a timetable invalid; a soft one makes it worse."""
+
+    units: int = 1
+    """How many times this counts. Three idle hours on a Tuesday is **one** sentence and
+    three units of cost — a person reading three identical lines learns nothing from the
+    second, and a score that counted it once would rate a wasted morning as a wasted hour."""
+
+    weight: int = 0
+    """What one unit costs, from the constraint that raised it. Zero for an invariant: a
+    hard rule is refused rather than priced, and a weight on one would suggest it could be
+    traded away."""
+
+    @property
+    def cost(self) -> int:
+        """What this violation adds to the timetable's penalty."""
+        return 0 if self.is_hard else self.units * self.weight
