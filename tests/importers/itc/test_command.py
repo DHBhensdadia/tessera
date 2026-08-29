@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tessera.cli import itc, main
+from tessera.cli import fidelity, itc, main
 from tessera.repository import models as m
 from tessera.repository.database import create_project_engine, session_factory
 
@@ -91,3 +91,34 @@ class TestTheCommand:
 
         assert "bet-sum18" in capsys.readouterr().out
 
+
+class TestTheFidelityCommand:
+    def test_it_refuses_a_directory_that_is_not_the_instances(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        parser = argparse.ArgumentParser()
+        fidelity.add_arguments(parser)
+        args = parser.parse_args(["--instances", str(tmp_path), "--out", str(tmp_path / "r.md")])
+
+        assert fidelity.run(args) == 1
+        assert "does not look like" in capsys.readouterr().out
+        assert not (tmp_path / "r.md").exists()
+
+    def test_it_refuses_to_write_a_partial_report(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A report over 31 instances that says "36" nowhere is still a report somebody
+        will quote, and the missing five would never be noticed."""
+        for band in ("Early", "Middle", "Late", "Test"):
+            (tmp_path / band).mkdir()
+        (tmp_path / "Test" / "one.xml").write_bytes(FIXTURE.read_bytes())
+        out = tmp_path / "r.md"
+
+        parser = argparse.ArgumentParser()
+        fidelity.add_arguments(parser)
+
+        assert (
+            fidelity.run(parser.parse_args(["--instances", str(tmp_path), "--out", str(out)])) == 1
+        )
+        assert "refusing to write a partial report" in capsys.readouterr().out
+        assert not out.exists()

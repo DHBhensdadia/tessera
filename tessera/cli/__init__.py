@@ -6,7 +6,7 @@ import argparse
 import sys
 
 import tessera
-from tessera.cli import itc
+from tessera.cli import fidelity, itc
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -26,6 +26,15 @@ def main(argv: list[str] | None = None) -> None:
     )
     itc.add_arguments(read_itc)
     read_itc.set_defaults(run=itc.run)
+
+    write_report = commands.add_parser(
+        "fidelity",
+        help="regenerate the ITC-2019 fidelity report",
+        description=fidelity.__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    fidelity.add_arguments(write_report)
+    write_report.set_defaults(run=fidelity.run)
 
     args = parser.parse_args(argv)
     if not hasattr(args, "run"):
