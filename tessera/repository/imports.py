@@ -26,7 +26,9 @@ from sqlalchemy.orm import Session as DbSession
 from tessera.domain import entities as d
 from tessera.domain import groups as dg
 from tessera.importers.detect import Kind
+from tessera.importers.itc import apply as itc
 from tessera.importers.plan import Catalogue, Plan, Prepared, Problem
+from tessera.repository import calendar as calendar_repo
 from tessera.repository import groups as groups_repo
 from tessera.repository import models as m
 from tessera.repository import people as people_repo
@@ -190,3 +192,101 @@ def _write(session: DbSession, prepared: Prepared, created: dict[str, int]) -> N
             parent_id=parent_id,
         )
         created[entity.name.casefold().strip()] = int(group.id or 0)
+
+
+@dataclass(frozen=True)
+class InstanceOutcome:
+    """What an ITC instance became inside a project."""
+
+    institution_id: int = 0
+    term_id: int = 0
+    grid_id: int = 0
+    rooms: int = 0
+    courses: int = 0
+    offerings: int = 0
+    closures: int = 0
+    rolled_back: bool = False
+
+
+def apply_instance(session: DbSession, plan: itc.Mapped, *, dry_run: bool) -> InstanceOutcome:
+    """Write an ITC instance into a project as its own institution and term.
+
+    **Its own**, rather than merged into whatever the project already holds. Two instances
+    name their rooms `Room 1` and mean different rooms, and an import that merged them would
+    produce a project that looks fine and describes nowhere. A `.tessera` file can hold
+    several institutions, so each instance gets one and the ambiguity never arises.
+
+    Every write goes through the ordinary repository functions, for the reason the module
+    docstring gives: `create_room` is the only place the rule "a room by this name already
+    exists here" lives for a room with no building.
+
+    The savepoint discipline is the spreadsheet importer's, and for the same reason — a dry
+    run that checks less than the commit turns "I checked" into confidence never earned.
+    """
+    savepoint = session.begin_nested()
+    try:
+        institution = structure_repo.create_institution(session, name=plan.institution)
+        assert institution.id is not None
+        grid = calendar_repo.create_time_grid(
+            session,
+            institution_id=institution.id,
+            name=plan.grid.to_domain().name,
+            days=plan.grid.days,
+            slots_per_day=plan.grid.slots_per_day,
+            slot_minutes=plan.grid.slot_minutes,
+            day_start_minute=plan.grid.day_start_minute,
+        )
+        assert grid.id is not None
+        term = calendar_repo.create_term(
+            session,
+            institution_id=institution.id,
+            time_grid_id=grid.id,
+            academic_year=plan.term.academic_year,
+            name=plan.term.name,
+        )
+        assert term.id is not None
+
+        rooms: dict[str, int] = {}
+        for room in plan.rooms:
+            written = structure_repo.create_room(
+                session, name=room.name, capacity=room.capacity, building_id=None, feature_ids=[]
+            )
+            assert written.id is not None
+            rooms[room.name] = written.id
+
+        offerings = 0
+        for course in plan.courses:
+            written_course = teaching_repo.create_course(
+                session, code=course.code, name=course.name, credits=0, department_id=None
+            )
+            assert written_course.id is not None
+            calendar_repo.create_offering(session, term_id=term.id, course_id=written_course.id)
+            offerings += 1
+
+        for closure in plan.closures:
+            people_repo.block_slots(
+                session,
+                term.id,
+                kind="room",
+                subject_id=rooms[closure.room],
+                slots=closure.slots,
+                reason=closure.reason,
+            )
+    except (RepositoryError, ValueError):
+        savepoint.rollback()
+        raise
+
+    if dry_run:
+        savepoint.rollback()
+        return InstanceOutcome(rolled_back=True)
+
+    savepoint.commit()
+    return InstanceOutcome(
+        institution_id=institution.id,
+        term_id=term.id,
+        grid_id=grid.id,
+        rooms=len(plan.rooms),
+        courses=len(plan.courses),
+        offerings=offerings,
+        closures=len(plan.closures),
+    )
