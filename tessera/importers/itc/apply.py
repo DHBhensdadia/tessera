@@ -23,6 +23,7 @@ from enum import StrEnum
 from math import ceil
 
 from tessera.domain import entities as d
+from tessera.domain.constraints import ConstraintKind
 from tessera.domain.time_grid import TimeGrid
 from tessera.importers.itc.format import Instance
 
@@ -199,6 +200,26 @@ def _window(instance: Instance) -> tuple[int, int]:
 
 
 @dataclass(frozen=True)
+class Fit:
+    """How well a teaching week would hold an instance's class times.
+
+    A measurement, not a ledger entry. Every class is dropped, so nothing here is *carried*
+    anywhere — but the number still says something worth saying: whether Tessera's grid could
+    represent these times at all, if the classes themselves ever became representable.
+
+    Kept apart from the ledger precisely because the two are easy to conflate, and conflating
+    them puts a million things in the "carried" column that are not in the project.
+    """
+
+    exact: int
+    moved: int
+
+    @property
+    def total(self) -> int:
+        return self.exact + self.moved
+
+
+@dataclass(frozen=True)
 class Closure:
     """A room, and the slots of the week it cannot be used in."""
 
@@ -224,6 +245,7 @@ class Mapped:
     courses: tuple[d.Course, ...] = ()
     offerings: tuple[str, ...] = ()
     closures: tuple[Closure, ...] = ()
+    fit: Fit = Fit(exact=0, moved=0)
     ledger: Ledger = field(default_factory=lambda: Ledger(instance=""))
 
 
@@ -257,7 +279,7 @@ def mapped(instance: Instance) -> Mapped:
     entries.append(Entry("courses", len(courses), Fate.CARRIED))
     entries.append(Entry("offerings", len(courses), Fate.CARRIED))
     entries.extend(closure_entries)
-    entries.extend(_grid_entries(instance, grid))
+    entries.extend(_grid_entries(instance))
     entries.extend(_dropped(instance))
 
     return Mapped(
@@ -269,16 +291,21 @@ def mapped(instance: Instance) -> Mapped:
         courses=courses,
         offerings=tuple(c.code for c in courses),
         closures=closures,
+        fit=_fit(instance, grid),
         ledger=Ledger(instance=instance.name, entries=tuple(entries)),
     )
 
 
-def _grid_entries(instance: Instance, grid: Grid) -> list[Entry]:
-    """What the move onto a coarser grid did to the instance's times."""
-    times = [t for k in instance.classes for t in k.times]
-    exact = sum(1 for t in times if grid.lands_exactly(t.start, t.length))
-    moved = len(times) - exact
-    entries = [
+def _grid_entries(instance: Instance) -> list[Entry]:
+    """What the teaching week itself carries.
+
+    **Not the class times.** They belong to classes, every class is dropped, and a ledger
+    that counted a time option as *carried* would be claiming something is in the project
+    that is not there — the exact self-flattery this report exists to avoid. How well the
+    grid *would* hold them is a property of the grid, measured by `Grid.fit`, and reported
+    where it is true rather than counted where it is not.
+    """
+    return [
         Entry(
             "teaching days",
             instance.nr_days,
@@ -286,22 +313,13 @@ def _grid_entries(instance: Instance, grid: Grid) -> list[Entry]:
             f"{instance.nr_days} days, as written",
         )
     ]
-    if moved:
-        entries.append(
-            Entry(
-                "class time options",
-                moved,
-                Fate.APPROXIMATED,
-                f"moved onto {grid.slot_minutes}-minute slots; ITC states them to "
-                f"{ITC_SLOT_MINUTES} minutes and {MAX_SLOTS_PER_DAY} slots is the domain's "
-                "ceiling",
-            )
-        )
-    if exact:
-        entries.append(
-            Entry("class time options", exact, Fate.CARRIED, "land on the grid unchanged")
-        )
-    return entries
+
+
+def _fit(instance: Instance, grid: Grid) -> Fit:
+    """How many of the instance's class times land on its grid unchanged."""
+    times = [t for k in instance.classes for t in k.times]
+    exact = sum(1 for t in times if grid.lands_exactly(t.start, t.length))
+    return Fit(exact=exact, moved=len(times) - exact)
 
 
 def _closures(instance: Instance, grid: Grid) -> tuple[tuple[Closure, ...], list[Entry]]:
@@ -317,7 +335,7 @@ def _closures(instance: Instance, grid: Grid) -> tuple[tuple[Closure, ...], list
     is counted apart rather than reported as a loss it is not.
     """
     carried: list[Closure] = []
-    partial = vacuous = 0
+    partial = vacuous = rounded = 0
     for room in instance.rooms:
         for window in room.unavailable:
             if set(window.weeks) != {"1"}:
@@ -331,6 +349,8 @@ def _closures(instance: Instance, grid: Grid) -> tuple[tuple[Closure, ...], list
             if not within:
                 vacuous += 1
                 continue
+            if not grid.lands_exactly(window.start, window.length):
+                rounded += 1
             carried.append(
                 Closure(
                     room=room_name(room.id),
@@ -347,8 +367,18 @@ def _closures(instance: Instance, grid: Grid) -> tuple[tuple[Closure, ...], list
             )
 
     entries = []
-    if carried:
-        entries.append(Entry("room closures", len(carried), Fate.CARRIED))
+    if exact := len(carried) - rounded:
+        entries.append(Entry("room closures", exact, Fate.CARRIED))
+    if rounded:
+        entries.append(
+            Entry(
+                "room closures",
+                rounded,
+                Fate.APPROXIMATED,
+                "widened to the coarser grid the instance had to be given; a closure "
+                "rounded inward would free a room that is shut",
+            )
+        )
     if vacuous:
         entries.append(
             Entry(
@@ -449,6 +479,15 @@ def _dropped(instance: Instance) -> list[Entry]:
             "capacity and features",
         )
     )
+    entries.append(
+        Entry(
+            "class time options",
+            sum(len(k.times) for k in classes),
+            Fate.DROPPED,
+            "dropped with the classes they belong to; see the grid section for how well "
+            "the teaching week would have held them",
+        )
+    )
     if penalised := sum(1 for k in classes for t in k.times if t.penalty):
         entries.append(
             Entry(
@@ -466,8 +505,7 @@ def _dropped(instance: Instance) -> list[Entry]:
                 varied,
                 Fate.DROPPED,
                 "Tessera's week pattern offers every week, odd weeks or even weeks; these "
-                "are arbitrary masks over a term of "
-                f"{instance.nr_weeks} weeks",
+                "are arbitrary masks over the term",
             )
         )
 
@@ -489,7 +527,7 @@ def _dropped(instance: Instance) -> list[Entry]:
                 len(instance.students),
                 Fate.DROPPED,
                 "individuals with course lists; a Tessera cohort must name the structural "
-                "groups it draws from, and this instance has no programme tree to draw on",
+                "groups it draws from, and an ITC instance has no programme tree to draw on",
             )
         )
 
@@ -506,31 +544,35 @@ def _dropped(instance: Instance) -> list[Entry]:
     return entries
 
 
-#: ITC distribution types against Tessera's constraint kinds, by name.
+#: ITC distribution types against Tessera's constraint kinds.
 #:
-#: Deliberately a table rather than a guess per type. The ones marked `None` are not
-#: oversights — each was checked against `domain/constraints.py`, and the report is more
-#: useful for naming them than a mapping invented to shorten the list would be.
-COUNTERPARTS: dict[str, str | None] = {
+#: Typed against the real `ConstraintKind` rather than against strings, so a counterpart that
+#: does not exist cannot be named. The report is read as a statement about Tessera's model;
+#: a plausible-looking `SAME_WEEK` in it that no code has ever heard of would be the worst
+#: kind of error here — checkable only by someone who already knew the answer.
+#:
+#: The ones marked `None` are not oversights. Each was checked, and the report is more useful
+#: for naming them than a mapping invented to shorten the list would be.
+COUNTERPARTS: dict[str, ConstraintKind | None] = {
     "SameStart": None,
-    "SameTime": "SAME_TIME",
+    "SameTime": ConstraintKind.SAME_TIME,
     "DifferentTime": None,
-    "SameDays": "SAME_DAY",
-    "DifferentDays": "DIFFERENT_DAY",
+    "SameDays": ConstraintKind.SAME_DAY,
+    "DifferentDays": ConstraintKind.DIFFERENT_DAY,
     "SameWeeks": None,
     "DifferentWeeks": None,
-    "SameRoom": "SAME_ROOM",
+    "SameRoom": ConstraintKind.SAME_ROOM,
     "DifferentRoom": None,
     "Overlap": None,
-    "NotOverlap": "NOT_OVERLAP",
+    "NotOverlap": ConstraintKind.NOT_OVERLAP,
     "SameAttendees": None,
-    "Precedence": "PRECEDES",
+    "Precedence": ConstraintKind.PRECEDES,
     "WorkDay": None,
-    "MinGap": "MIN_GAP",
+    "MinGap": ConstraintKind.MIN_GAP,
     "MaxDays": None,
     "MaxDayLoad": None,
     "MaxBreaks": None,
-    "MaxBlock": "LIMIT_CONSECUTIVE_SLOTS",
+    "MaxBlock": ConstraintKind.LIMIT_CONSECUTIVE_SLOTS,
 }
 
 
@@ -554,7 +596,7 @@ def _distributions(instance: Instance) -> list[Entry]:
                 f"distribution: {name}",
                 count,
                 Fate.DROPPED,
-                f"Tessera has {counterpart}, but it would refer to classes that were "
+                f"Tessera has {counterpart.name}, but it would refer to classes that were "
                 "themselves dropped"
                 if counterpart
                 else "no counterpart in Tessera",

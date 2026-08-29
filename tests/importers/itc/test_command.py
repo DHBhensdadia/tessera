@@ -52,7 +52,6 @@ class TestTheCommand:
         printed = capsys.readouterr().out
 
         assert "carried" in printed
-        assert "approximated" in printed
         assert "dropped" in printed
         assert "127  classes" in printed
         assert "10 minutes from 08:00" in printed
@@ -91,3 +90,4 @@ class TestTheCommand:
         main(["itc", str(FIXTURE), "--into", str(tmp_path / "p.tessera")])
 
         assert "bet-sum18" in capsys.readouterr().out
+

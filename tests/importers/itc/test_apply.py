@@ -207,25 +207,48 @@ class TestTheLedger:
         assert entry.fate is Fate.DROPPED
         assert entry.count == 2002
 
-    def test_the_moved_times_are_counted(self, bet: Instance) -> None:
-        plan = mapped(bet)
-        approximated = plan.ledger.of(Fate.APPROXIMATED)
+    def test_a_time_option_is_never_counted_as_carried(self, bet: Instance) -> None:
+        """The correction that matters most in this file.
 
-        assert approximated
-        assert sum(e.count for e in approximated) == sum(
-            1
-            for k in bet.classes
-            for t in k.times
-            if not plan.grid.lands_exactly(t.start, t.length)
+        The ledger once counted time options landing on the grid unchanged as *carried*,
+        which put over a million things in that column across the set — none of them in any
+        project, because every class they belong to is dropped. A report is not allowed to
+        claim something arrived when a reader who went looking would not find it.
+        """
+        plan = mapped(bet)
+        carried = {e.what for e in plan.ledger.of(Fate.CARRIED)}
+
+        assert "class time options" not in carried
+        assert _entry(bet, "class time options").fate is Fate.DROPPED
+
+    def test_every_time_option_is_dropped_with_its_class(self, bet: Instance) -> None:
+        entry = _entry(bet, "class time options")
+
+        assert entry.count == sum(len(k.times) for k in bet.classes)
+        assert "with the classes" in entry.because
+
+    def test_how_well_the_grid_holds_them_is_measured_separately(self, bet: Instance) -> None:
+        """Still worth knowing, and kept out of the ledger so it cannot be read as arrival.
+
+        If classes ever become representable, this says whether the teaching week would be
+        what stopped them.
+        """
+        plan = mapped(bet)
+
+        assert plan.fit.total == sum(len(k.times) for k in bet.classes)
+        assert plan.fit.exact == sum(
+            1 for k in bet.classes for t in k.times if plan.grid.lands_exactly(t.start, t.length)
         )
+        assert plan.fit.exact == 48
 
-    def test_time_options_are_never_double_counted(self, bet: Instance) -> None:
-        """Carried plus approximated must equal what the file holds. The two are computed
-        separately, so this is the guard that they partition rather than overlap."""
-        plan = mapped(bet)
-        counted = sum(e.count for e in plan.ledger.entries if e.what == "class time options")
-
-        assert counted == sum(len(k.times) for k in bet.classes)
+    def test_a_reason_never_names_one_instance(self, bet: Instance, purdue: Instance) -> None:
+        """Reasons are summed across 36 instances in the report, so one saying "a term of
+        16 weeks" is wrong for the 35 whose term is not 16 weeks. That exact line shipped
+        into a generated report before this test existed."""
+        for instance in (bet, purdue):
+            for entry in mapped(instance).ledger.entries:
+                assert str(instance.nr_weeks) not in entry.because
+                assert instance.name not in entry.because
 
     def test_every_distribution_type_is_named_with_its_count(self, bet: Instance) -> None:
         """Eight types in this instance, each its own line. A single 'distributions: 144'
