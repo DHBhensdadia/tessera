@@ -32,6 +32,12 @@ from pathlib import Path
 import pytest
 
 from tessera.importers.itc import Instance, read
+from tessera.importers.itc.apply import (
+    COUNTERPARTS,
+    GRANULARITIES,
+    MAX_SLOTS_PER_DAY,
+    mapped,
+)
 
 pytestmark = pytest.mark.benchmark
 
@@ -164,3 +170,65 @@ def test_the_files_are_the_ones_the_numbers_came_from() -> None:
         if found != digest:
             wrong[relative] = found
     assert wrong == {}
+
+
+@needs_download
+@pytest.mark.parametrize(
+    ("name", "path"), every_file(), ids=lambda v: v if isinstance(v, str) else ""
+)
+def test_it_maps_onto_a_grid_the_domain_accepts(name: str, path: Path) -> None:
+    """Every instance reaches a teaching week Tessera will actually store.
+
+    Built through the real `TimeGrid`, so the domain's own validators decide. The mapping
+    picks the finest granularity that fits `slots_per_day <= 96`, and that ceiling is not
+    moving — D2 rules out reshaping the domain for a benchmark — so an instance it could not
+    fit would be a genuine dead end rather than a tuning problem.
+    """
+    plan = mapped(read(path))
+    grid = plan.grid.to_domain()
+
+    assert grid.slots_per_day <= MAX_SLOTS_PER_DAY
+    assert grid.slot_count == grid.days * grid.slots_per_day
+    assert plan.grid.slot_minutes in GRANULARITIES
+
+
+@needs_download
+@pytest.mark.parametrize(
+    ("name", "path"), every_file(), ids=lambda v: v if isinstance(v, str) else ""
+)
+def test_every_closure_lands_inside_the_week(name: str, path: Path) -> None:
+    """The check that would otherwise be made only when a project refused the import.
+
+    A closure slot outside the grid means the day arithmetic is wrong, and the symptom in a
+    project would be a room blocked on the wrong day — consistent, plausible and false.
+    """
+    plan = mapped(read(path))
+    week = plan.grid.days * plan.grid.slots_per_day
+
+    for closure in plan.closures:
+        assert all(0 <= slot < week for slot in closure.slots)
+
+
+@needs_download
+def test_no_published_instance_imports_without_loss() -> None:
+    """The phase's headline, stated as a test so it cannot quietly stop being true.
+
+    If a later phase closes enough of the gap that one of these becomes lossless, this fails
+    and the fidelity report is rewritten — which is the correct outcome, and one nobody would
+    notice unaided.
+    """
+    lossless = [name for name, path in every_file() if mapped(read(path)).ledger.is_lossless]
+
+    assert lossless == []
+
+
+@needs_download
+def test_the_counterpart_table_names_every_distribution_type_in_the_set() -> None:
+    """A type missing from the table is reported as having no counterpart without anyone
+    having decided that. The set uses 19; the table must cover all of them."""
+    used: set[str] = set()
+    for _, path in every_file():
+        used |= {d.name for d in read(path).distributions}
+
+    assert used <= set(COUNTERPARTS)
+    assert len(used) == 19
