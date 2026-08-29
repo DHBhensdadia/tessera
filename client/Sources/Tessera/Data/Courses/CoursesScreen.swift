@@ -19,6 +19,15 @@ struct CoursesScreen: View {
         _store = State(initialValue: CourseStore(connection: connection))
     }
 
+    /// A screen around a store that has already loaded.
+    ///
+    /// For `--render`, as `ConstraintsScreen` has one: `ImageRenderer` has no run loop, so
+    /// `.task` never fires and a screen that loads itself draws its empty state.
+    init(loaded store: CourseStore, appearance: Appearance) {
+        self.appearance = appearance
+        _store = State(initialValue: store)
+    }
+
     var body: some View {
         EntityWorkspace(
             title: "Courses",

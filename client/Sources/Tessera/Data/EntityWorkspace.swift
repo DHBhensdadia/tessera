@@ -77,7 +77,11 @@ struct EntityWorkspace<Item: Identifiable, Detail: View>: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            list
+            // Pinned to the top rather than centred. In a window the list fills the height
+            // on its own and this changes nothing; drawn offscreen at full height it is the
+            // difference between a list at the top of its column and one floating in the
+            // middle of it, beside an inspector three times as tall.
+            list.frame(maxHeight: .infinity, alignment: .top)
             Rectangle()
                 .fill(appearance.swiftUI(LineRole.border))
                 .frame(width: 1)
@@ -122,7 +126,7 @@ struct EntityWorkspace<Item: Identifiable, Detail: View>: View {
                 )
                 Spacer()
             } else {
-                ScrollView {
+                ScrollsInAWindow {
                     VStack(spacing: 0) {
                         ForEach(shown) { item in
                             Row(
@@ -187,7 +191,7 @@ struct EntityWorkspace<Item: Identifiable, Detail: View>: View {
                 NoticeBar(text: notice, appearance: appearance, dismiss: dismissNotice)
             }
             if let selected {
-                ScrollView {
+                ScrollsInAWindow {
                     VStack(alignment: .leading, spacing: 0) {
                         detail(selected)
                         ContentSection(showsRule: false, appearance: appearance) {

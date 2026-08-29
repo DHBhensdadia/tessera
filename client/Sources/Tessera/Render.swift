@@ -125,6 +125,21 @@ enum Render {
             let store = ConstraintStore(connection: connection, term: term)
             await store.load()
             return AnyView(ConstraintsScreen(loaded: store, appearance: appearance).content)
+        case .rooms:
+            let store = RoomStore(connection: connection)
+            await store.load()
+            let availability = AvailabilityStore(connection: connection, kind: .room, term: term)
+            // Availability is per room, and the inspector shows the selected one. Loading
+            // the first gives the render a filled week rather than the sentence that
+            // appears when nothing is chosen.
+            if let first = store.rooms.first { await availability.load(subject: first.id) }
+            return AnyView(
+                RoomsScreen(loaded: store, availability: availability, appearance: appearance)
+            )
+        case .courses:
+            let store = CourseStore(connection: connection)
+            await store.load()
+            return AnyView(CoursesScreen(loaded: store, appearance: appearance))
         default:
             return nil
         }
@@ -161,6 +176,10 @@ enum Render {
             content: view
                 .frame(width: 1_040)
                 .background(Appearance(scheme: .dark).swiftUI(SurfaceRole.base))
+                // Lists stack instead of scrolling: `ImageRenderer` draws a `ScrollView`
+                // as nothing, so without this every entity screen renders its chrome
+                // around an empty space where the rows are.
+                .environment(\.isRenderingOffscreen, true)
         )
         // Retina, because half the point is judging type and hairlines.
         renderer.scale = 2

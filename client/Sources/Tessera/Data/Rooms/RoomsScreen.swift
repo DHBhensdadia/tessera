@@ -28,6 +28,18 @@ struct RoomsScreen: View {
         )
     }
 
+    /// A screen around a store that has already loaded.
+    ///
+    /// For `--render`, as `ConstraintsScreen` has one: `ImageRenderer` has no run loop, so
+    /// `.task` never fires and a screen that loads itself draws its empty state.
+    init(loaded store: RoomStore, availability: AvailabilityStore?, appearance: Appearance) {
+        self.connection = store.connection
+        self.term = 0
+        self.appearance = appearance
+        _store = State(initialValue: store)
+        _availability = State(initialValue: availability)
+    }
+
     var body: some View {
         EntityWorkspace(
             title: "Rooms",
@@ -62,7 +74,7 @@ struct RoomsScreen: View {
 @Observable
 @MainActor
 final class RoomStore {
-    private let connection: EngineConnection
+    let connection: EngineConnection
 
     private(set) var rooms: [Room] = []
     var selection: Room.ID?
