@@ -83,6 +83,12 @@ was carried, what was approximated and what was dropped.
 performs the import and regenerated in the test suite, so it cannot describe an importer other
 than the one that runs.
 
+The same is done for [ITC-2007](https://www.eeecs.qub.ac.uk/itc2007/), whose 21 curriculum-based
+instances are real University of Udine timetables:
+[**docs/fidelity/itc-2007.md**](docs/fidelity/itc-2007.md). There the teaching structure crosses
+intact — **19 of 21 are solved**, each verified by the validator — and the report says plainly
+where Tessera's stricter rules refuse a timetable a university actually ran.
+
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/) and Python 3.13.
@@ -101,7 +107,9 @@ Tests marked `benchmark` read the 36 published [ITC-2019](https://www.itc2019.or
 and are skipped unless you point them at a copy:
 
 ```bash
-TESSERA_ITC_INSTANCES=/path/to/Instances uv run pytest -m benchmark
+TESSERA_ITC_INSTANCES=/path/to/Instances \
+TESSERA_ITC2007_INSTANCES=/path/to/ITC-2007 \
+    uv run pytest -m benchmark
 ```
 
 The full set is not redistributed here — registration on itc2019.org is required. Two small
