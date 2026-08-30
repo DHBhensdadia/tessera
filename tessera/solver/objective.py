@@ -19,6 +19,10 @@ unsound. That solver burned the full 60 s unable to prove what it had already fo
 Here every unit variable is declared over a non-negative domain *and* clamped by
 `add_max_equality`, so it is impossible by construction rather than by care.
 
+All sixteen kinds have a term. A partial objective would silently ignore whichever slider a
+user moved, which is the worst kind of interface defect because it looks like it works — so a
+kind without one is refused rather than skipped.
+
 **Weights come from the constraints, never from constants.** 2.8 put a weight on `Constraint`
 and 3.5 put sliders on the rules screen; an objective with numbers baked in would make those
 sliders decorative, which is the worst kind of interface defect because it looks like it
@@ -29,46 +33,37 @@ zero units, refused rather than traded.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import combinations, pairwise
+from itertools import combinations, pairwise, permutations
 from typing import TYPE_CHECKING
 
 from ortools.sat.python import cp_model
 
-from tessera.domain.constraints import Constraint, ConstraintKind
-from tessera.domain.ids import SessionId
+from tessera.domain.constraints import Constraint, ConstraintKind, TargetKind
+from tessera.domain.ids import InstructorId, SessionId
+from tessera.domain.time_grid import Slot
 from tessera.domain.validation import Snapshot
 from tessera.solver.model import Model
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
 
-
-#: The kinds part 2 adds. Present so that ignoring one is impossible rather than merely
-#: unlikely: `add` raises on a kind it cannot score, and part 2 empties this set.
-#:
-#: Silence is the failure D4 is about. An institution sets "minimise gaps", a partial
-#: objective omits the term, the solver optimises everything else, and the number reported is
-#: confidently wrong — nothing in the output says a rule was skipped.
-PENDING: frozenset[ConstraintKind] = frozenset(
-    {
-        ConstraintKind.MINIMISE_GROUP_GAPS,
-        ConstraintKind.MINIMISE_INSTRUCTOR_GAPS,
-        ConstraintKind.AVOID_SAME_COURSE_TWICE_A_DAY,
-        ConstraintKind.RESPECT_INSTRUCTOR_PREFERENCES,
-        ConstraintKind.MINIMISE_BUILDING_CHANGES,
-        ConstraintKind.BALANCE_DAILY_LOAD,
-        ConstraintKind.PREFER_ROOM_STABILITY,
-        ConstraintKind.LIMIT_CONSECUTIVE_SLOTS,
-    }
-)
+#: Stands in for a room with no building. A real `building_id` is at least 1, so this cannot
+#: collide with one — and "unassigned" has to be a value rather than a gap, because two
+#: sessions in two unassigned rooms are in the same place as far as this rule is concerned.
+NOWHERE = 0
 
 
 class NotScorableError(NotImplementedError):
-    """A rule this part cannot express, met in a term it was asked to solve.
+    """A rule with no objective term, met in a term the solver was asked to score.
+
+    All sixteen kinds have one, so this fires only if a seventeenth is added to the enum
+    without one — the discipline `_named` is held to in the invariants (#193), and the reason
+    `SPECS` is checked against `ConstraintKind` rather than trusted.
 
     Loud on purpose. The quiet alternative — score the kinds we have and omit the rest —
     produces a timetable optimised against a rulebook nobody wrote down, and a penalty that
-    does not answer for the difference.
+    does not answer for the difference. An institution sets "minimise gaps", the term is
+    missing, and the number reported is confidently wrong with nothing to say so.
     """
 
 
@@ -214,6 +209,7 @@ class Terms:
     def distinct(
         self,
         constraint: Constraint,
+        targets: Sequence[SessionId],
         choices: Callable[[SessionId], Mapping[int, cp_model.IntVar]],
     ) -> list[cp_model.IntVar]:
         """How many different values these sessions take, less one. `rules._agree_on`.
@@ -224,8 +220,12 @@ class Terms:
 
         Fewer than two sessions is silence on both sides — one session cannot disagree with
         itself, and the validator's `len(placed) > 1` says so.
+
+        `targets` is passed rather than read from the constraint, because the same shape
+        answers two different questions: three sessions a rule names must share a room, and
+        every session of a course should. `PREFER_ROOM_STABILITY` is the second, over a
+        subject's sessions rather than over named ones.
         """
-        targets = self.targets(constraint)
         if len(targets) < 2:
             return []
 
@@ -283,7 +283,301 @@ class Terms:
         self.cp.add(self.day(first) != self.day(second)).only_enforce_if(~flag)
         return flag
 
+    # -- what a subject-scoped rule is about -----------------------------------------
+
+    def subjects(
+        self, constraint: Constraint, kind: TargetKind
+    ) -> Iterator[tuple[int, list[SessionId]]]:
+        """Each instructor, group or course this preference covers, and what they teach.
+
+        `rules._per_subject`, and the two awkward parts of it are deliberate rather than
+        incidental.
+
+        **A narrowed rule that names nothing of this kind covers nobody**, not everybody. The
+        four rules applying to both instructors and groups ask for each in turn, and falling
+        back to "everyone" per kind meant a rule aimed at one instructor also charged every
+        group in the term — the exact opposite of narrowing, and silent.
+
+        **Groups are indexed by leaf**, because that is how `Snapshot` relates them. A rule
+        narrowed to a parent group therefore covers nothing, which mirrors the validator
+        exactly; whether it *should* is a question for the backlog, not for a term that has
+        to agree with it.
+        """
+        index: dict[int, list[SessionId]] = {
+            TargetKind.INSTRUCTOR: self.snapshot.sessions_of_instructor,
+            TargetKind.GROUP: self.snapshot.sessions_of_group,
+            TargetKind.COURSE: self.snapshot.sessions_of_course,
+        }[kind]  # type: ignore[assignment]
+
+        named = self.snapshot.subjects_named_by(constraint, kind)
+        if constraint.targets and not named:
+            return
+        for subject in named or tuple(sorted(index)):
+            # Index order, not sorted: MINIMISE_BUILDING_CHANGES compares adjacent sessions
+            # in a day, and the validator's sort on start hour is stable — so two sessions at
+            # one hour keep the order they are indexed in, and this has to be that order.
+            taught = [s for s in index.get(subject, []) if s in self.model.starts]
+            if taught:
+                yield subject, taught
+
+    def people(self, constraint: Constraint) -> Iterator[tuple[int, list[SessionId]]]:
+        """Instructors and groups together, for the four kinds that apply to both."""
+        yield from self.subjects(constraint, TargetKind.INSTRUCTOR)
+        yield from self.subjects(constraint, TargetKind.GROUP)
+
+    def week(self) -> Iterator[tuple[int, range]]:
+        """Each day, and the slots in it."""
+        per_day = self.snapshot.grid.slots_per_day
+        for day in range(self.snapshot.grid.days):
+            yield day, range(day * per_day, (day + 1) * per_day)
+
+    # -- being busy at an hour, which is what the day-shaped rules count ---------------
+
+    def at(self, session_id: SessionId) -> dict[Slot, cp_model.IntVar]:
+        """One boolean per hour this session could begin at, true for the one it does.
+
+        The channelling the whole of part 2 rests on. Exactly one is true, by reification
+        against the start variable — nothing has to say so separately.
+        """
+        return {
+            slot: self._equals(session_id, "start", self.model.starts[session_id], slot)
+            for slot in self.model.legal[session_id]
+        }
+
+    def busy(self, session_id: SessionId, slot: Slot) -> cp_model.IntVar | None:
+        """True when this session is being taught at this hour. `None` when it never could.
+
+        Teaching time, not room occupancy: a room's turnaround is the room's, and a rule
+        about somebody's day is about when they are teaching or being taught (#190).
+
+        `None` rather than a variable fixed at zero, so a rule can leave out an hour it can
+        say nothing about instead of building a network of constants around it.
+        """
+        key = (session_id, "busy", slot)
+        if key not in self._is:
+            duration = self.duration(session_id)
+            covering = [
+                begin for begin in self.model.legal[session_id] if begin <= slot < begin + duration
+            ]
+            if not covering:
+                return None
+            starts = self.at(session_id)
+            self._is[key] = self.any_of(
+                f"busy[{session_id},{slot}]", [starts[begin] for begin in covering]
+            )
+        return self._is[key]
+
+    def busy_of(self, sessions: Sequence[SessionId], slot: Slot) -> cp_model.IntVar | None:
+        """True when a subject is occupied at this hour by any of these sessions.
+
+        A plain OR is exact because a subject's sessions cannot overlap — that is
+        `instructor_not_double_booked` and `group_not_double_booked`, already constraints in
+        the model rather than hopes about it.
+        """
+        found = [busy for s in sessions if (busy := self.busy(s, slot)) is not None]
+        if not found:
+            return None
+        if len(found) == 1:
+            return found[0]
+        return self.any_of(f"busy[{slot}]", found)
+
+    def in_building(self, session_id: SessionId) -> dict[int, cp_model.IntVar]:
+        """One boolean per building this session could be in, true for the one it is.
+
+        A room with no building is its own answer rather than an absence: two sessions in two
+        unassigned rooms have not moved between buildings, and the validator agrees because
+        `None == None`.
+        """
+        by_building: dict[int, list[cp_model.IntVar]] = {}
+        for candidate in self.model.candidates[session_id]:
+            room = self.snapshot.rooms[candidate.room]
+            where = room.building_id if room.building_id is not None else NOWHERE
+            by_building.setdefault(where, []).append(candidate.present)
+        return {
+            where: self.any_of(f"bldg[{session_id},{where}]", present)
+            for where, present in sorted(by_building.items())
+        }
+
+    # -- the shapes the day-scoped rules are built from --------------------------------
+
+    def gaps(self, constraint: Constraint, kind: TargetKind) -> list[cp_model.IntVar]:
+        """Idle hours between the first and last session of a day. `rules._gaps`.
+
+        Breaks do not count. A lunch hour in the middle of a day is not somebody waiting
+        through it — it is the timetable working — and charging for it would penalise every
+        full day equally and tell an institution nothing.
+
+        An hour is idle when the subject is free at it *and* busy somewhere earlier in the
+        day *and* busy somewhere later. Those two are running ORs built left to right and
+        right to left, so the whole day costs a handful of variables per hour rather than a
+        pair of ORs per hour over every other hour.
+        """
+        idle: list[cp_model.IntVar] = []
+        for subject, taught in self.subjects(constraint, kind):
+            for day, slots in self.week():
+                hours = list(slots)
+                busy = {slot: self.busy_of(taught, slot) for slot in hours}
+                if sum(busy[slot] is not None for slot in hours) < 2:
+                    continue
+
+                where = f"{kind.value[0]}{subject}d{day}"
+                earlier = self._running(busy, hours, f"upto[{where}]")
+                later = self._running(busy, hours[::-1], f"from[{where}]")
+
+                for position, slot in enumerate(hours):
+                    if self.snapshot.grid.is_break(slot):
+                        continue
+                    before = earlier.get(hours[position - 1]) if position else None
+                    after = later.get(hours[position + 1]) if position + 1 < len(hours) else None
+                    if before is None or after is None:
+                        continue
+                    free = busy[slot]
+                    idle.append(
+                        self.all_of(
+                            f"idle[{where}@{slot}]",
+                            [before, after] if free is None else [before, after, ~free],
+                        )
+                    )
+        return idle
+
+    def _running(
+        self,
+        busy: Mapping[Slot, cp_model.IntVar | None],
+        order: Sequence[Slot],
+        name: str,
+    ) -> dict[Slot, cp_model.IntVar]:
+        """ "Busy at or before this hour", accumulated in the order given.
+
+        Two literals per hour rather than a fresh OR over everything seen so far, which is
+        the difference between a linear model and a quadratic one on a rule that applies to
+        every group in the term.
+        """
+        carried: cp_model.IntVar | None = None
+        seen: dict[Slot, cp_model.IntVar] = {}
+        for slot in order:
+            here = busy[slot]
+            if here is not None:
+                carried = (
+                    here if carried is None else self.any_of(f"{name}@{slot}", [carried, here])
+                )
+            if carried is not None:
+                seen[slot] = carried
+        return seen
+
+    def moves(self, constraint: Constraint) -> list[cp_model.IntVar]:
+        """Changes of building between one session and the next one that day.
+
+        **Over sessions, not over hours**, and the first attempt got that wrong in a way
+        worth recording. Walking the day hour by hour carrying "the last building this
+        subject was in" is smaller and reads better — and it assumes a subject is in one
+        place at a time. A group is not: an odd-week lecture and an even-week lab can share
+        an hour, because `group_not_double_booked` compares week patterns and those two never
+        meet. The carry then had the group in two buildings at once and counted moves that
+        were not there.
+
+        So this is the validator's own shape — sort the day, compare adjacent pairs — with
+        "adjacent" as a variable, since which session follows which is what the solver is
+        deciding.
+        """
+        counted: list[cp_model.IntVar] = []
+        for _subject, taught in self.people(constraint):
+            if len({where for s in taught for where in self.in_building(s)}) < 2:
+                # Nowhere to move to. Worth checking rather than modelling: an institution on
+                # one site would otherwise pay for this rule in variables and never in cost.
+                continue
+            for first, second in permutations(taught, 2):
+                counted.append(
+                    self.all_of(
+                        f"move[{first},{second}]",
+                        [
+                            self._follows(taught, first, second),
+                            ~self._same_building(first, second),
+                        ],
+                    )
+                )
+        return counted
+
+    def _follows(
+        self, taught: Sequence[SessionId], first: SessionId, second: SessionId
+    ) -> cp_model.IntVar:
+        """True when `second` is the very next thing this subject does, the same day.
+
+        Order is by start hour, ties broken by the order the subject's sessions are indexed
+        in — which is what the validator's stable sort on `start_slot` leaves them in.
+        Multiplying the start by the number of sessions and adding the position gives one
+        number with exactly that ordering, so "before" is a single comparison.
+
+        Nothing has to check that a session in between is on the same day. Days are
+        contiguous ranges of hours, so anything starting between two sessions of one day
+        starts on that day.
+        """
+        span = len(taught)
+        rank: dict[SessionId, cp_model.LinearExprT] = {
+            session_id: span * self.model.starts[session_id] + position
+            for position, session_id in enumerate(taught)
+        }
+        return self.all_of(
+            f"next[{first},{second}]",
+            [
+                self.same_day(first, second),
+                self._earlier(rank, first, second),
+                *(
+                    ~self.all_of(
+                        f"between[{first},{second},{other}]",
+                        [self._earlier(rank, first, other), self._earlier(rank, other, second)],
+                    )
+                    for other in taught
+                    if other not in (first, second)
+                ),
+            ],
+        )
+
+    def _earlier(
+        self,
+        rank: Mapping[SessionId, cp_model.LinearExprT],
+        first: SessionId,
+        second: SessionId,
+    ) -> cp_model.IntVar:
+        key = (first, "rank", second)
+        if key not in self._is:
+            flag = self.cp.new_bool_var(f"rank[{first}<{second}]")
+            self.cp.add(rank[first] < rank[second]).only_enforce_if(flag)
+            self.cp.add(rank[first] > rank[second]).only_enforce_if(~flag)
+            self._is[key] = flag
+        return self._is[key]
+
+    def _same_building(self, first: SessionId, second: SessionId) -> cp_model.IntVar:
+        """True when these two sit in rooms of one building.
+
+        An unassigned building counts as a building: two rooms nobody has placed on a map are
+        not two buildings apart, and the validator agrees because it compares `None` with
+        `None`.
+        """
+        key = (first, "building", second)
+        if key not in self._is:
+            here, there = self.in_building(first), self.in_building(second)
+            both = [
+                self.all_of(f"both[{first},{second},{where}]", [here[where], there[where]])
+                for where in sorted(set(here) & set(there))
+            ]
+            self._is[key] = self.any_of(
+                f"together[{first},{second}]", both or [self.cp.new_constant(0)]
+            )
+        return self._is[key]
+
     # -- plumbing ------------------------------------------------------------------
+
+    def any_of(self, name: str, literals: Sequence[cp_model.LiteralT]) -> cp_model.IntVar:
+        if len(literals) == 1 and isinstance(literals[0], cp_model.IntVar):
+            return literals[0]
+        flag = self.cp.new_bool_var(name)
+        self.cp.add_max_equality(flag, literals)
+        return flag
+
+    def all_of(self, name: str, literals: Sequence[cp_model.LiteralT]) -> cp_model.IntVar:
+        flag = self.cp.new_bool_var(name)
+        self.cp.add_min_equality(flag, literals)
+        return flag
 
     def _over(self, values: Sequence[int], name: str) -> cp_model.IntVar:
         return self.cp.new_int_var_from_domain(cp_model.Domain.from_values(list(values)), name)
@@ -310,15 +604,15 @@ class Terms:
 
 
 def _same_time(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
-    return terms.distinct(constraint, terms.at_hour)
+    return terms.distinct(constraint, terms.targets(constraint), terms.at_hour)
 
 
 def _same_room(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
-    return terms.distinct(constraint, terms.in_room)
+    return terms.distinct(constraint, terms.targets(constraint), terms.in_room)
 
 
 def _same_day(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
-    return terms.distinct(constraint, terms.on_day)
+    return terms.distinct(constraint, terms.targets(constraint), terms.on_day)
 
 
 def _different_day(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
@@ -370,8 +664,141 @@ def _max_days_between(terms: Terms, constraint: Constraint) -> list[cp_model.Int
     return [terms.count(constraint, latest - earliest - allowed, last - allowed)]
 
 
-#: One builder per kind, and `test_every_kind_is_scored_or_named_as_pending` checks the enum
-#: against this rather than trusting it — the same discipline `EVALUATORS` is held to.
+# -- the preferences over a whole term ------------------------------------------------
+
+
+def _minimise_group_gaps(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
+    return terms.gaps(constraint, TargetKind.GROUP)
+
+
+def _minimise_instructor_gaps(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
+    return terms.gaps(constraint, TargetKind.INSTRUCTOR)
+
+
+def _minimise_building_changes(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
+    return terms.moves(constraint)
+
+
+def _avoid_same_course_twice_a_day(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
+    """One teaching of a course a day is free; each one after it costs."""
+    units = []
+    for _course, taught in terms.subjects(constraint, TargetKind.COURSE):
+        for day, _ in terms.week():
+            today = [terms.on_day(s)[day] for s in taught if day in terms.on_day(s)]
+            if len(today) > 1:
+                units.append(terms.count(constraint, sum(today) - 1, len(today) - 1))
+    return units
+
+
+def _prefer_room_stability(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
+    """How many rooms a course is spread over, less the one it is entitled to."""
+    units = []
+    for _course, taught in terms.subjects(constraint, TargetKind.COURSE):
+        units.extend(terms.distinct(constraint, taught, terms.in_room))
+    return units
+
+
+def _respect_instructor_preferences(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
+    """The hours somebody said they would rather not teach, at the price they put on them.
+
+    Soft unavailability, which the invariants pass over entirely — *would rather not* is not
+    *cannot*, and a solver treating them alike would make every stated preference an
+    impossibility.
+
+    Priced off the start variable rather than off a busy-at-this-hour network: what an hour
+    costs is known for every hour the session could begin at, so the whole rule is a weighted
+    sum over indicators that already exist.
+    """
+    units = []
+    for instructor, taught in terms.subjects(constraint, TargetKind.INSTRUCTOR):
+        who = InstructorId(instructor)
+        priced: list[tuple[cp_model.IntVar, int]] = []
+        for session_id in taught:
+            duration = terms.duration(session_id)
+            for begin, chosen in terms.at(session_id).items():
+                cost = sum(
+                    terms.snapshot.preferred_against.get((who, slot), 0)
+                    for slot in range(begin, begin + duration)
+                )
+                if cost:
+                    priced.append((chosen, cost))
+        if priced:
+            units.append(
+                terms.count(
+                    constraint,
+                    cp_model.LinearExpr.weighted_sum(
+                        [chosen for chosen, _ in priced], [cost for _, cost in priced]
+                    ),
+                    sum(cost for _, cost in priced),
+                )
+            )
+    return units
+
+
+def _balance_daily_load(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
+    """How far the heaviest day rises above a share nobody could avoid.
+
+    Measured against the even share rather than against the lightest day, so it can reach
+    zero — #196 found the other reading charging a floor no arrangement could remove, which
+    made the weight on this rule move nothing at all. The floor is whichever is larger: an
+    even share of the week, or the longest single session, since no day can be lighter than
+    something that has to sit somewhere.
+
+    Both of those are **constants**: how much a subject is taught and how long its longest
+    session runs do not depend on where anything is put. Only the heaviest day is a variable.
+    """
+    days = terms.snapshot.grid.days
+    units = []
+    for subject, taught in terms.people(constraint):
+        total = sum(terms.duration(s) for s in taught)
+        unavoidable = max(-(-total // days), max(terms.duration(s) for s in taught))
+
+        loads = []
+        for day, _ in terms.week():
+            load = terms.cp.new_int_var(0, total, f"load[{subject}d{day}]")
+            terms.cp.add(
+                load
+                == sum(
+                    terms.duration(s) * terms.on_day(s)[day]
+                    for s in taught
+                    if day in terms.on_day(s)
+                )
+            )
+            loads.append(load)
+
+        heaviest = terms.cp.new_int_var(0, total, f"heaviest[{subject}]")
+        terms.cp.add_max_equality(heaviest, loads)
+        units.append(terms.count(constraint, heaviest - unavoidable, total - unavoidable))
+    return units
+
+
+def _limit_consecutive_slots(terms: Terms, constraint: Constraint) -> list[cp_model.IntVar]:
+    """Hours in a row beyond what somebody will sit through.
+
+    A run of `n` hours costs `n - allowed`, and a run of `n` hours contains exactly
+    `n - allowed` stretches of `allowed + 1` consecutive busy hours. So the rule is: count
+    the over-long windows. A window straddling a gap or a break contains a free hour and is
+    never counted, and windows do not cross days because the validator groups by day first.
+    """
+    allowed = constraint.params["slots"]
+    units = []
+    for _subject, taught in terms.people(constraint):
+        for _day, slots in terms.week():
+            hours = list(slots)
+            for first in range(len(hours) - allowed):
+                window = [
+                    terms.busy_of(taught, slot) for slot in hours[first : first + allowed + 1]
+                ]
+                # A window with an hour nothing could occupy can never be entirely busy, so
+                # it is left out rather than modelled as a constant that is always false.
+                busy = [b for b in window if b is not None]
+                if len(busy) == len(window):
+                    units.append(terms.all_of(f"run[{hours[first]}+{allowed}]", busy))
+    return units
+
+
+#: One builder per kind, and `test_every_kind_is_scored` checks the enum against this rather
+#: than trusting it — the same discipline `EVALUATORS` is held to.
 TERMS: dict[ConstraintKind, Callable[[Terms, Constraint], list[cp_model.IntVar]]] = {
     ConstraintKind.SAME_TIME: _same_time,
     ConstraintKind.SAME_ROOM: _same_room,
@@ -381,6 +808,14 @@ TERMS: dict[ConstraintKind, Callable[[Terms, Constraint], list[cp_model.IntVar]]
     ConstraintKind.PRECEDES: _precedes,
     ConstraintKind.MIN_GAP: _min_gap,
     ConstraintKind.MAX_DAYS_BETWEEN: _max_days_between,
+    ConstraintKind.MINIMISE_GROUP_GAPS: _minimise_group_gaps,
+    ConstraintKind.MINIMISE_INSTRUCTOR_GAPS: _minimise_instructor_gaps,
+    ConstraintKind.AVOID_SAME_COURSE_TWICE_A_DAY: _avoid_same_course_twice_a_day,
+    ConstraintKind.RESPECT_INSTRUCTOR_PREFERENCES: _respect_instructor_preferences,
+    ConstraintKind.MINIMISE_BUILDING_CHANGES: _minimise_building_changes,
+    ConstraintKind.BALANCE_DAILY_LOAD: _balance_daily_load,
+    ConstraintKind.PREFER_ROOM_STABILITY: _prefer_room_stability,
+    ConstraintKind.LIMIT_CONSECUTIVE_SLOTS: _limit_consecutive_slots,
 }
 
 
@@ -435,19 +870,15 @@ def add(model: Model, snapshot: Snapshot) -> Objective | None:
 
 
 def _refuse_what_cannot_be_scored(snapshot: Snapshot) -> None:
-    """Part 2's kinds, met before part 2 exists.
+    """A rule with no term, refused rather than skipped.
 
-    Raising rather than skipping. A partial objective is not a smaller version of the right
-    answer — it is a different rulebook, silently substituted, and the penalty it reports
-    does not say so.
+    A partial objective is not a smaller version of the right answer — it is a different
+    rulebook, silently substituted, and the penalty it reports does not say so.
     """
     unscored = sorted({c.kind for c in snapshot.constraints} - set(TERMS))
-    if not unscored:
-        return
-    named = ", ".join(kind.value for kind in unscored)
-    if set(unscored) <= PENDING:
-        raise NotScorableError(f"4.3 part 2 adds the objective term(s) for: {named}")
-    raise NotScorableError(f"no objective term exists for: {named}")  # pragma: no cover
+    if unscored:
+        named = ", ".join(kind.value for kind in unscored)
+        raise NotScorableError(f"no objective term exists for: {named}")
 
 
 def _bounds(var: cp_model.IntVar) -> tuple[int, int]:

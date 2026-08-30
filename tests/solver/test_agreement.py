@@ -19,8 +19,9 @@ test compared zero with zero across eighty-seven solved terms and would have pas
 one of the eight rules unwritten. Measured, not suspected. So the model is now pointed at the
 *dearest* timetable as often as the cheapest, which is where a miscounted term actually shows.
 
-Part 1 covers the eight rules over named sessions. Part 2 adds the eight scoped to an
-instructor, a group or a course, and this file's strategy widens with it.
+All sixteen kinds are covered: the eight over named sessions, and the eight scoped to an
+instructor, a group or a course. `SCORED` is the registry itself rather than a list, so a
+seventeenth kind joins these tests by existing.
 """
 
 from __future__ import annotations
@@ -40,7 +41,8 @@ from tessera.solver.objective import TERMS, add
 from tests.domain.validation.generated import Instance
 from tests.solver.generated import judge, snapshot_of, to_enforce, to_score
 
-#: The kinds this part can express. Part 2 makes this every kind there is.
+#: Every kind there is, taken from the registry so nothing can be left out of these tests
+#: by being left out of a list.
 SCORED = frozenset(TERMS)
 
 THOROUGH = settings(
@@ -217,7 +219,17 @@ def test_this_kind_can_be_seen_to_cost_something(kind: ConstraintKind) -> None:
     find(
         to_score(frozenset({kind})),
         lambda instance: bool(score_at(instance, "dearest").penalty),
-        settings=settings(max_examples=200, deadline=None, database=None),
+        settings=settings(
+            max_examples=400,
+            deadline=None,
+            database=None,
+            # Reproducible on purpose. Some kinds need an uncommon shape to cost anything at
+            # all — `RESPECT_INSTRUCTOR_PREFERENCES` wants a *soft* unavailable hour on an
+            # instructor who then teaches in it, which a random draw finds a couple of times
+            # in a hundred. A search that passes most runs is a test that fails some, and a
+            # flaky guard gets ignored, which is the one thing a guard cannot afford.
+            derandomize=True,
+        ),
     )
 
 
