@@ -27,6 +27,7 @@ is evidence, and one reading agreeing with itself is not.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import combinations
 from typing import TYPE_CHECKING
 
 from ortools.sat.python import cp_model
@@ -35,6 +36,7 @@ from tessera.domain.entities import Session, WeekPattern
 from tessera.domain.ids import RoomId, SessionId
 from tessera.domain.time_grid import Slot
 from tessera.domain.validation import Snapshot
+from tessera.domain.validation.snapshot import Placement
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -280,14 +282,53 @@ def _pins(model: Model, snapshot: Snapshot) -> None:
 
     Decision #10 put `is_pinned` in the schema from day one *"because retrofitting reworks the
     solver interface"*. This is the phase where that either pays off or is quietly ignored;
-    it costs four lines, which is what R2 promised.
+    it costs a few lines, which is what R2 promised.
     """
-    for session_id, placement in sorted(snapshot.placements.items()):
-        if not placement.is_pinned:
-            continue
+    pinned = {
+        session_id: placement
+        for session_id, placement in sorted(snapshot.placements.items())
+        if placement.is_pinned
+    }
+
+    for session_id, placement in pinned.items():
         model.cp.add(model.starts[session_id] == placement.start_slot)
+        if not any(c.room == placement.room_id for c in model.candidates[session_id]):
+            raise UnsatisfiableError(
+                f"session {session_id} is pinned to room {placement.room_id}, which cannot "
+                "hold it — check capacity, the features it requires, and when that room is "
+                "closed"
+            )
         for candidate in model.candidates[session_id]:
             model.cp.add(candidate.present == (1 if candidate.room == placement.room_id else 0))
+
+    for first, second in combinations(sorted(pinned), 2):
+        if _pins_collide(snapshot, pinned, first, second):
+            raise UnsatisfiableError(
+                f"sessions {first} and {second} are both pinned into room "
+                f"{pinned[first].room_id} at the same time"
+            )
+
+
+def _pins_collide(
+    snapshot: Snapshot,
+    pinned: dict[SessionId, Placement],
+    first: SessionId,
+    second: SessionId,
+) -> bool:
+    """Two pins fighting over one room, in weeks that meet.
+
+    The search would find this on its own and report INFEASIBLE. Saying it here names the two
+    sessions and the room, which is the difference between a message somebody can act on and
+    one that sends them looking.
+    """
+    one, two = pinned[first], pinned[second]
+    if one.room_id != two.room_id:
+        return False
+    if not snapshot.sessions[first].week_pattern.coincides_with(
+        snapshot.sessions[second].week_pattern
+    ):
+        return False
+    return bool(set(snapshot.occupied(one)) & set(snapshot.occupied(two)))
 
 
 def size(model: Model) -> tuple[int, int]:

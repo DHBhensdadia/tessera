@@ -264,3 +264,61 @@ class TestARoomThatIsShut:
 
         assert found.solved
         assert all(p.start_slot >= 4 for p in found.placements if p.room == LAB)
+
+
+class TestPinsThatCannotWork:
+    def test_two_pins_into_one_room_at_one_hour_are_named(self) -> None:
+        """The search would find this and report INFEASIBLE. Saying it while building names
+        the two sessions and the room, which is the difference between a message somebody can
+        act on and one that sends them looking."""
+        clashing = (
+            Institution(assignments=())
+            .pinned_to(LAB_A, at=2, room=LAB)
+            .pinned_to(LAB_B, at=2, room=LAB)
+        )
+
+        with pytest.raises(UnsatisfiableError, match="both pinned into room"):
+            build(clashing.snapshot())
+
+    def test_pins_in_weeks_that_never_meet_are_fine(self) -> None:
+        """The same two pins, one in odd weeks and one in even. A check that ignored the
+        pattern would refuse a fortnightly arrangement that works."""
+        alternating = (
+            Institution(assignments=())
+            .patterned(LAB_A, WeekPattern.ODD_WEEKS)
+            .patterned(LAB_B, WeekPattern.EVEN_WEEKS)
+            .pinned_to(LAB_A, at=2, room=LAB)
+            .pinned_to(LAB_B, at=2, room=LAB)
+        )
+
+        assert solve(alternating.snapshot()).solved
+
+    def test_a_pin_into_a_room_that_cannot_hold_it_is_named(self) -> None:
+        """Pinning a sixty-student lecture into a ten-seat seminar room. The pin is the
+        mistake, and the message says which room and which session."""
+        wrong = Institution(assignments=()).pinned_to(LECTURE, at=0, room=CUPBOARD)
+
+        with pytest.raises(UnsatisfiableError, match=r"pinned to room \d+, which cannot hold it"):
+            build(wrong.snapshot())
+
+    def test_pins_in_different_rooms_are_not_a_collision(self) -> None:
+        """The first thing the check rules out, and the commonest case.
+
+        Asserted against the *check* rather than against the solve: these two share an
+        instructor, so pinning them to the same hour is genuinely impossible — just not for
+        this reason. Asking whether the term solves would have tested the instructor
+        invariant and called it a pin collision, which is how a test ends up passing for
+        the wrong reason.
+        """
+        apart = (
+            Institution(assignments=())
+            .pinned_to(LAB_A, at=2, room=LAB)
+            .pinned_to(TUTORIAL, at=2, room=STUDIO)
+        )
+
+        # Builds without complaint. These two do clash — they share an instructor — but that
+        # is the search's to find, and the pin check has nothing to say about it.
+        model = build(apart.snapshot())
+
+        assert set(model.starts) == {s.id for s in apart.sessions}
+        assert solve(apart.snapshot()).outcome is Outcome.IMPOSSIBLE
