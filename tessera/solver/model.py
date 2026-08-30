@@ -78,6 +78,12 @@ class Model:
     """When the people are busy — duration only. A room's turnaround is the room's time; the
     students have left and the instructor has stopped teaching (#190)."""
 
+    legal: dict[SessionId, tuple[Slot, ...]] = field(default_factory=dict)
+    """Every hour each session could begin at — the start's domain, kept in a form Python can
+    read. 4.3 needs it to know which days and hours a session can reach, and deriving that
+    back out of a CP-SAT variable's flattened domain would be a second answer to a question
+    this already knew."""
+
     def room_of(self, solver: cp_model.CpSolver, session: SessionId) -> RoomId:
         for candidate in self.candidates[session]:
             if solver.boolean_value(candidate.present):
@@ -118,6 +124,7 @@ def _session(model: Model, snapshot: Snapshot, session_id: SessionId, session: S
         cp_model.Domain.from_values(sorted(legal)), f"start[{session_id}]"
     )
     model.starts[session_id] = start
+    model.legal[session_id] = tuple(sorted(legal))
     model.teaching[session_id] = model.cp.new_fixed_size_interval_var(
         start, session.duration_slots, f"teaching[{session_id}]"
     )

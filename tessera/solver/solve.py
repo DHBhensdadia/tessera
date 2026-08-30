@@ -12,6 +12,7 @@ a person waiting and the wrong one for a benchmark.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 
@@ -19,6 +20,7 @@ from ortools.sat.python import cp_model
 
 from tessera.domain.validation import Snapshot
 from tessera.solver import model as build_model
+from tessera.solver import objective as score
 from tessera.solver.result import Outcome, Placed, Solution
 
 
@@ -52,6 +54,12 @@ def solve(snapshot: Snapshot, budget: Budget | None = None) -> Solution:
         # shortcut — and it is *proven*, which is what distinguishes it from a timeout.
         return Solution(outcome=Outcome.IMPOSSIBLE, seconds=time.perf_counter() - started)
 
+    # After the model, because the terms are arithmetic over its variables — and before the
+    # search, because a hard rule pinned to zero violations has to be there to be obeyed.
+    objective = score.add(model, snapshot)
+    if objective is not None:
+        model.cp.minimize(objective.total)
+
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = budget.seconds
     solver.parameters.num_workers = budget.workers
@@ -75,6 +83,9 @@ def solve(snapshot: Snapshot, budget: Budget | None = None) -> Solution:
             seconds=elapsed,
             sessions=sessions,
             candidates=candidates,
+            penalty=objective.penalty(solver) if objective else 0,
+            penalty_breakdown=objective.breakdown(solver) if objective else {},
+            lower_bound=_bound(solver) if objective else 0,
         )
 
     return Solution(
@@ -83,3 +94,14 @@ def solve(snapshot: Snapshot, budget: Budget | None = None) -> Solution:
         sessions=sessions,
         candidates=candidates,
     )
+
+
+def _bound(solver: cp_model.CpSolver) -> int:
+    """The best proof CP-SAT has that no timetable scores lower.
+
+    Rounded **up**, because the objective is a sum of integers: a bound of 4.2 means no
+    solution costs 4. Reported unclamped on purpose — a negative bound is exactly the defect
+    Phase 0.1 shipped for a phase, and `Solution` refuses to carry one, so hiding it behind a
+    `max(0, ...)` here would remove the only thing that notices.
+    """
+    return math.ceil(solver.best_objective_bound - 1e-6)
