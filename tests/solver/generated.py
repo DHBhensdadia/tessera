@@ -4,9 +4,8 @@ Reuses 4.1's strategy rather than writing a second one — the shapes that make 
 are the same shapes that make one hard to validate, and two generators would drift. Two things
 are changed for this phase:
 
-* **no constraints.** 4.2 is hard rules only; the weighted rules arrive in 4.3. A generated
-  rule would make the validator report violations the solver never considered, and the test
-  would fail for a reason that is not a defect.
+* **no constraints**, for `to_solve`. 4.2 is hard rules only; the weighted rules arrive in
+  4.3, and `to_score` is the strategy that asks for them.
 * **nothing placed.** The solver's job is to place them. Pins get their own tests, where the
   pin is the point rather than an accident of generation.
 """
@@ -19,11 +18,12 @@ from itertools import product
 
 from hypothesis import strategies as st
 
+from tessera.domain.constraints import Constraint, ConstraintKind
 from tessera.domain.ids import AssignmentId, RoomId, SessionId
 from tessera.domain.timetable import Assignment
 from tessera.domain.validation import Report, Snapshot, validate
 from tessera.solver import Placed
-from tests.domain.validation.generated import Instance, instances
+from tests.domain.validation.generated import PROJECTOR, Instance, instances
 
 
 def to_solve() -> st.SearchStrategy[Instance]:
@@ -31,7 +31,85 @@ def to_solve() -> st.SearchStrategy[Instance]:
     return instances().map(lambda i: replace(i, constraints=[], assignments=[]))
 
 
+def to_score(kinds: frozenset[ConstraintKind]) -> st.SearchStrategy[Instance]:
+    """A term whose rules are all soft and all cost something. Nothing placed.
+
+    Three deliberate narrowings, each of which was measured to matter.
+
+    `least_rules=1`, because left to chance most generated terms carry no rule of the kind
+    under test at all. **Soft**, because a hard rule costs nothing by definition and, on
+    instances this small, mostly makes the term infeasible — 213 of 300 were, so the
+    agreement test was running on the 87 that were left. **Weight at least one**, because a
+    rule worth nothing is scored zero by both implementations however wrong either is.
+    """
+    return instances(kinds=kinds, least_rules=1, least_sessions=2, least_targets=2).map(
+        lambda i: _roomier(
+            replace(
+                i,
+                assignments=[],
+                constraints=[_as(c, is_hard=False, weight=c.weight or 1) for c in i.constraints],
+            )
+        )
+    )
+
+
+def to_enforce(kinds: frozenset[ConstraintKind]) -> st.SearchStrategy[Instance]:
+    """The same, with every rule made hard — so a solved term is one that obeyed them."""
+    return instances(kinds=kinds, least_rules=1, least_sessions=2, least_targets=2).map(
+        lambda i: _roomier(
+            replace(
+                i,
+                assignments=[],
+                constraints=[_as(c, is_hard=True, weight=0) for c in i.constraints if c.targets],
+            )
+        )
+    )
+
+
+def _roomier(instance: Instance) -> Instance:
+    """The same term, with rooms able to hold what it contains.
+
+    **Measured, not assumed.** On the generator as it stands, 178 of 300 terms had a session
+    with no room big enough or equipped enough, so the agreement test spent most of its
+    examples discarding instances instead of scoring them — and of what survived, aiming the
+    objective at the *dearest* timetable still found a violation only eight times, because a
+    term with one possible arrangement cannot break a rule about two sessions.
+
+    Capacity and features are 4.2's subject and have their own tests. What this phase needs
+    is room to move, so that "is this timetable scored correctly" is asked of timetables that
+    differ.
+    """
+    seats = sum(g.size for g in instance.groups.all)
+    return replace(
+        instance,
+        rooms=[
+            r.model_copy(update={"capacity": max(r.capacity, seats), "features": {PROJECTOR}})
+            for r in instance.rooms
+        ],
+    )
+
+
+def _as(constraint: Constraint, **changes: object) -> Constraint:
+    """A constraint with fields changed, rebuilt rather than copied.
+
+    `model_copy` skips validation, and the domain has real opinions about which combinations
+    exist — a term-wide preference cannot be hard, for one. Rebuilding means an impossible
+    combination fails here rather than becoming a test running against input the application
+    would refuse.
+
+    `dict(...)` rather than `model_dump()`: the latter serialises nested models to plain
+    dicts, and `targets` is a frozenset of them, so dumping it asks Python to hash a dict.
+    """
+    return Constraint(**{**dict(constraint), **changes})
+
+
 def snapshot_of(instance: Instance, assignments: list[Assignment] | None = None) -> Snapshot:
+    """The term as both implementations see it.
+
+    Constraints and courses are passed through rather than dropped: 4.3 scores rules, and a
+    snapshot missing them would let the solver optimise a rulebook the validator then judged
+    by a different one. `to_solve` produces none, so 4.2's tests are unaffected.
+    """
     return Snapshot.of(
         grid=instance.grid,
         sessions=instance.sessions,
@@ -39,6 +117,8 @@ def snapshot_of(instance: Instance, assignments: list[Assignment] | None = None)
         groups=instance.groups,
         assignments=assignments or instance.assignments,
         unavailability=instance.unavailability,
+        constraints=instance.constraints,
+        course_of=instance.course_of,
     )
 
 

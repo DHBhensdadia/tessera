@@ -51,7 +51,22 @@ class Instance:
 
 
 @st.composite
-def instances(draw: st.DrawFn) -> Instance:
+def instances(
+    draw: st.DrawFn,
+    kinds: frozenset[ConstraintKind] | None = None,
+    least_rules: int = 0,
+    least_sessions: int = 1,
+    least_targets: int = 1,
+) -> Instance:
+    """A whole institution, and a timetable for some of it.
+
+    The four keywords narrow what a caller gets, and every one of them exists because a test
+    was measured to be running on nothing. 4.3 asks for rules of the kinds it can score
+    (`kinds`), at least one of them (`least_rules`), enough sessions for a rule about two
+    sessions to have two (`least_sessions`), and rules that actually name two
+    (`least_targets`) — without which a rule over one session is silence, and the agreement
+    it then tests is between two implementations that both said nothing.
+    """
     days = draw(st.integers(min_value=2, max_value=3))
     slots_per_day = draw(st.integers(min_value=4, max_value=6))
     # A break somewhere in the middle, sometimes, so "no session runs through one" is
@@ -97,7 +112,7 @@ def instances(draw: st.DrawFn) -> Instance:
         for i in range(1, draw(st.integers(min_value=1, max_value=3)) + 1)
     ]
 
-    how_many = draw(st.integers(min_value=1, max_value=5))
+    how_many = draw(st.integers(min_value=least_sessions, max_value=max(5, least_sessions)))
     sessions = [
         Session(
             id=SessionId(i),
@@ -178,7 +193,12 @@ def instances(draw: st.DrawFn) -> Instance:
     # which makes "did the move check consider this rule?" unanswerable. Multiplicity is
     # covered by `test_the_breakdown_is_by_kind_not_by_rule` instead.
     constraints = draw(
-        st.lists(_constraints(sessions, course_of), max_size=3, unique_by=lambda c: c.kind)
+        st.lists(
+            _constraints(sessions, course_of, kinds, least_targets),
+            min_size=least_rules,
+            max_size=max(3, least_rules),
+            unique_by=lambda c: c.kind,
+        )
     )
 
     return Instance(
@@ -195,18 +215,23 @@ def instances(draw: st.DrawFn) -> Instance:
 
 @st.composite
 def _constraints(
-    draw: st.DrawFn, sessions: list[Session], course_of: dict[SessionId, CourseId]
+    draw: st.DrawFn,
+    sessions: list[Session],
+    course_of: dict[SessionId, CourseId],
+    kinds: frozenset[ConstraintKind] | None = None,
+    least_targets: int = 1,
 ) -> Constraint:
     """One rule of any kind, pointed at whatever this instance happens to contain."""
-    kind = draw(st.sampled_from(list(ConstraintKind)))
+    kind = draw(st.sampled_from(sorted(kinds or set(ConstraintKind))))
     spec = kind.spec
     target_kind = draw(st.sampled_from(sorted(spec.targets, key=lambda t: t.value)))
 
     if target_kind is TargetKind.SESSION:
+        available = [s.id for s in sessions if s.id is not None]
         chosen = draw(
             st.lists(
-                st.sampled_from([s.id for s in sessions if s.id is not None]),
-                min_size=1,
+                st.sampled_from(available),
+                min_size=min(least_targets, len(available)),
                 max_size=3,
                 unique=True,
             )
