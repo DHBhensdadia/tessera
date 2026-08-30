@@ -63,6 +63,14 @@ class Placement:
     room_id: RoomId
     assignment_id: AssignmentId | None = None
 
+    is_pinned: bool = False
+    """Somebody placed this by hand and it is not to be moved.
+
+    Carried here because the solver fixes a pinned session's variables rather than searching
+    for it (#10, and 4.2's D3). The validator ignores it: a pinned assignment obeys the same
+    rules as any other, and a pin that could break one would be a way to write an invalid
+    timetable by hand."""
+
     @classmethod
     def of(cls, assignment: Assignment) -> Placement:
         return cls(
@@ -70,6 +78,7 @@ class Placement:
             start_slot=assignment.start_slot,
             room_id=assignment.room_id,
             assignment_id=assignment.id,
+            is_pinned=assignment.is_pinned,
         )
 
 
