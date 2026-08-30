@@ -213,6 +213,26 @@ class Institution:
             ),
         )
 
+    def rooms_of_only(self, *keep: RoomId) -> Institution:
+        """The same institution with all but these rooms removed."""
+        return replace(self, rooms=tuple(r for r in self.rooms if r.id in keep))
+
+    def pinned_to(self, session_id: SessionId, *, at: int, room: RoomId) -> Institution:
+        """Nail one session down. For the solver tests, which need a fact rather than a hint."""
+        return replace(
+            self,
+            assignments=(
+                *self.assignments,
+                Assignment(
+                    id=AssignmentId(len(self.assignments) + 1),
+                    session_id=session_id,
+                    start_slot=at,
+                    room_id=room,
+                    is_pinned=True,
+                ),
+            ),
+        )
+
     def closed(self, *unavailability: Unavailability) -> Institution:
         return replace(self, unavailability=self.unavailability + unavailability)
 
