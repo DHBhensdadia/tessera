@@ -39,7 +39,7 @@ from tessera.domain.validation import Snapshot
 from tessera.domain.validation.snapshot import Placement
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 
 class UnsatisfiableError(Exception):
@@ -143,19 +143,40 @@ class Model:
         raise AssertionError(f"session {session} was placed in no room")  # pragma: no cover
 
 
-def build(snapshot: Snapshot, formulation: Formulation | None = None) -> Model:
+def build(
+    snapshot: Snapshot,
+    formulation: Formulation | None = None,
+    fixed: Mapping[SessionId, Placement] | None = None,
+) -> Model:
     """Turn a term into a model that has a solution exactly when the term has a timetable.
 
     `formulation` switches the levers of §2.4 on. None of them changes which timetables are
     legal — that is what the tests around each of them assert, and for the symmetry break it
     is the assertion that matters most, because an over-strong break removes valid answers and
     the symptom is a slightly worse optimum nobody would attribute to the room grouping.
+
+    `fixed` holds the sessions a Fix-and-Optimize round is not moving, **and they are frozen
+    by narrowing their domains rather than by constraining them** (D3). The distinction is the
+    whole reason the loop can exist. A session pinned by a constraint still owns a boolean for
+    every hour it could have started at and every room it could have been in, and the
+    objective channels all of them — so #225's nine-fold model would be built in full every
+    round and merely told not to use most of it. A session with one legal start and one
+    candidate room contributes one boolean to `Terms.at`, one to `in_room`, and a `busy` that
+    collapses to a single literal. The channelling is then built only for what the round left
+    free, which is what makes a sub-problem small rather than merely constrained.
+
+    User pins are deliberately **not** routed through this. `_pins` keeps them, because it
+    also says which pin is impossible and which two collide, and a narrowed domain reports
+    that as "this session has no hour it could start in" — a true sentence about the wrong
+    thing. There are a handful of pins and hundreds of frozen sessions, so the mechanism that
+    matters for size is not the one that matters for the message.
     """
     formulation = formulation or Formulation()
+    fixed = fixed or {}
     model = Model(cp=cp_model.CpModel())
 
     for session_id, session in sorted(snapshot.sessions.items()):
-        _session(model, snapshot, session_id, session)
+        _session(model, snapshot, session_id, session, fixed.get(session_id))
 
     _rooms_hold_one_thing(model, snapshot)
     _people_are_in_one_place(model, snapshot)
@@ -170,7 +191,13 @@ def build(snapshot: Snapshot, formulation: Formulation | None = None) -> Model:
     return model
 
 
-def _session(model: Model, snapshot: Snapshot, session_id: SessionId, session: Session) -> None:
+def _session(
+    model: Model,
+    snapshot: Snapshot,
+    session_id: SessionId,
+    session: Session,
+    frozen: Placement | None = None,
+) -> None:
     """The variables for one session: when it starts, and which room it is in.
 
     The start's domain is the set of hours it could legally begin — not a range with
@@ -178,8 +205,15 @@ def _session(model: Model, snapshot: Snapshot, session_id: SessionId, session: S
     impossible placements (past the end of the week, across midnight, through a break) and
     says which, so re-deriving them as arithmetic would be a second answer to a settled
     question.
+
+    A `frozen` session narrows both domains to one value each. It keeps its variables rather
+    than disappearing, because the objective scores the **whole** timetable and not the
+    window: a round's cost is what the term costs, which is what makes accepting a round a
+    comparison of like with like.
     """
     legal = _legal_starts(snapshot, session_id, session)
+    if frozen is not None:
+        legal &= {frozen.start_slot}
     if not legal:
         raise UnsatisfiableError(
             f"session {session_id} has no hour it could start in: every slot is a break, "
@@ -195,7 +229,7 @@ def _session(model: Model, snapshot: Snapshot, session_id: SessionId, session: S
         start, session.duration_slots, f"teaching[{session_id}]"
     )
 
-    candidates = _candidates(model, snapshot, session_id, session, start, legal)
+    candidates = _candidates(model, snapshot, session_id, session, start, legal, frozen)
     if not candidates:
         raise UnsatisfiableError(
             f"session {session_id} has no room that can hold it — check capacity, the "
@@ -238,6 +272,7 @@ def _candidates(
     session: Session,
     start: cp_model.IntVar,
     legal: set[Slot],
+    frozen: Placement | None = None,
 ) -> list[Candidate]:
     """The rooms this session could be in, and an optional interval for each.
 
@@ -251,6 +286,8 @@ def _candidates(
     found: list[Candidate] = []
 
     for room_id, room in sorted(snapshot.rooms.items()):
+        if frozen is not None and room_id != frozen.room_id:
+            continue
         if not room.can_host(headcount, session.required_features, session.required_counts):
             continue
         # A room closed during the hours this session would occupy is not a candidate for
@@ -530,6 +567,26 @@ def _no_more_at_once_than_there_are_rooms(model: Model, snapshot: Snapshot) -> N
             model.cp.add_cumulative(running, [1] * len(running), len(snapshot.rooms))
 
 
+def start_from(model: Model, placements: Mapping[SessionId, Placement]) -> None:
+    """Hand the search a timetable to begin at, from wherever the caller got one.
+
+    The loop's warm start. `Formulation.hint` reads the term's own placements, which is right
+    for re-optimising what a person already has and useless to a round, whose incumbent came
+    from the previous round and is in no snapshot.
+
+    A placement that no longer fits is left out rather than repaired — see below.
+    """
+    for session_id, placement in sorted(placements.items()):
+        if session_id not in model.starts or placement.start_slot not in model.legal[session_id]:
+            continue
+        candidates = model.candidates[session_id]
+        if not any(candidate.room == placement.room_id for candidate in candidates):
+            continue
+        model.cp.add_hint(model.starts[session_id], placement.start_slot)
+        for candidate in candidates:
+            model.cp.add_hint(candidate.present, int(candidate.room == placement.room_id))
+
+
 def _start_from_what_is_already_placed(model: Model, snapshot: Snapshot) -> None:
     """Hand the search the timetable the term already has, as a starting point rather than a rule.
 
@@ -543,15 +600,7 @@ def _start_from_what_is_already_placed(model: Model, snapshot: Snapshot) -> None
     solver to make sense of a contradiction, and the honest answer is that this session has no
     starting point.
     """
-    for session_id, placement in sorted(snapshot.placements.items()):
-        if session_id not in model.starts or placement.start_slot not in model.legal[session_id]:
-            continue
-        candidates = model.candidates[session_id]
-        if not any(candidate.room == placement.room_id for candidate in candidates):
-            continue
-        model.cp.add_hint(model.starts[session_id], placement.start_slot)
-        for candidate in candidates:
-            model.cp.add_hint(candidate.present, int(candidate.room == placement.room_id))
+    start_from(model, snapshot.placements)
 
 
 def size(model: Model) -> tuple[int, int]:
