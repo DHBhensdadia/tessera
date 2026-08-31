@@ -53,6 +53,58 @@ class UnsatisfiableError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class Formulation:
+    """The three model-level levers P5 names as untested headroom — and what measuring them said.
+
+    P5 asks for these to be tried *before* assuming the outer search must do all the work.
+    They were, on the same instances at the same deterministic budget, and **two of the three
+    do not pay**. The defaults below are that measurement rather than a preference.
+
+    The reason they are flags at all is #207: grouping interchangeable rooms under
+    `add_cumulative` was obviously better on paper, cut the ceiling model by a factor of five
+    hundred, and then timed out at 30 s on an instance the per-room model solved in 5.45. A
+    lever nobody has weighed is a guess with a name on it.
+    """
+
+    symmetry: bool = False
+    """Fill interchangeable rooms in order, so forty identical rooms stop giving every
+    timetable 40! relabellings for the search to walk through.
+
+    **Off: the effect is smaller than the seed's.** On one seed it looked like a 13 % gain;
+    over three it was 520 against 558 on a generated department and *worse* on the real
+    instances, inside a run-to-run spread of 27 %. And on `comp11` it is not a small effect
+    but no effect at all — a real room estate is heterogeneous, so no two rooms are
+    interchangeable and the two formulations produce identical timetables on every seed.
+
+    Kept rather than deleted because part 2 re-measures it where the argument is different:
+    inside a Fix-and-Optimize sub-problem a handful of free sessions compete for the same
+    identical rooms, so the symmetry is a far larger share of a far smaller search space."""
+
+    redundant: bool = False
+    """State the obvious consequence — no more sessions run at once than there are rooms —
+    as a `cumulative` **alongside** the per-room no-overlap. #207 measured cumulative as a
+    poor *substitute*; it says nothing about it as an addition.
+
+    **Off, for the same reason and with the same caveat.** Medians of 2964 against 3018, and
+    1542 against 1395, on seed spreads several times wider."""
+
+    hint: bool = True
+    """Start from the timetable already in the term, where there is one.
+
+    **On, and this one is not about speed.** Re-solving `comp11` after handing it back its own
+    timetable, which scored 1395, returned **1618** without the hint and **1395** with it: told
+    to re-optimise, the solver produced something worse than what the person already had,
+    because it began from nothing and the budget ran out somewhere else.
+
+    **It is not a floor, and it was worth checking rather than assuming.** A hint is advice,
+    not a constraint: on a department of 150 sessions given a budget too small to find anything
+    at all, the hinted solve returned `OUT_OF_TIME` exactly as the unhinted one did, even though
+    it had been handed a complete valid timetable. #225 had already noted the same thing from
+    the other direction. What the hint buys is a better answer when the search gets far enough
+    to have one — making that answer *better* than the incumbent is the outer loop's job."""
+
+
+@dataclass(frozen=True, slots=True)
 class Candidate:
     """One session in one room it could actually occupy."""
 
@@ -91,8 +143,15 @@ class Model:
         raise AssertionError(f"session {session} was placed in no room")  # pragma: no cover
 
 
-def build(snapshot: Snapshot) -> Model:
-    """Turn a term into a model that has a solution exactly when the term has a timetable."""
+def build(snapshot: Snapshot, formulation: Formulation | None = None) -> Model:
+    """Turn a term into a model that has a solution exactly when the term has a timetable.
+
+    `formulation` switches the levers of §2.4 on. None of them changes which timetables are
+    legal — that is what the tests around each of them assert, and for the symmetry break it
+    is the assertion that matters most, because an over-strong break removes valid answers and
+    the symptom is a slightly worse optimum nobody would attribute to the room grouping.
+    """
+    formulation = formulation or Formulation()
     model = Model(cp=cp_model.CpModel())
 
     for session_id, session in sorted(snapshot.sessions.items()):
@@ -101,6 +160,13 @@ def build(snapshot: Snapshot) -> Model:
     _rooms_hold_one_thing(model, snapshot)
     _people_are_in_one_place(model, snapshot)
     _pins(model, snapshot)
+
+    if formulation.symmetry:
+        _fill_alike_rooms_in_order(model, snapshot)
+    if formulation.redundant:
+        _no_more_at_once_than_there_are_rooms(model, snapshot)
+    if formulation.hint:
+        _start_from_what_is_already_placed(model, snapshot)
     return model
 
 
@@ -336,6 +402,156 @@ def _pins_collide(
     ):
         return False
     return bool(set(snapshot.occupied(one)) & set(snapshot.occupied(two)))
+
+
+def _alike(model: Model, snapshot: Snapshot) -> list[list[RoomId]]:
+    """Rooms this model genuinely cannot tell apart, grouped.
+
+    Interchangeability is not "same capacity". Two rooms of sixty are different rooms if one
+    is closed on Tuesday morning, if one is in another building, or if one needs twenty
+    minutes to clear — `room_closed` is per `(room, slot)`, `MINIMISE_BUILDING_CHANGES` reads
+    `building_id`, and the turnaround is in the interval's length. Every one of those is in
+    the key, and so is the set of sessions each room ended up a candidate for, which is the
+    exact consequence of `can_host` and the closure filter rather than a second opinion about
+    them.
+
+    **A pinned room is nobody's twin.** A pin names one room, so the rooms of a class stop
+    being substitutable the moment one of them is fixed — and the search would then be told a
+    valid timetable is not one. Pinned rooms are excluded rather than reasoned about.
+    """
+    pinned = {p.room_id for p in snapshot.placements.values() if p.is_pinned}
+    users: dict[RoomId, set[SessionId]] = {room_id: set() for room_id in snapshot.rooms}
+    for session_id, candidates in model.candidates.items():
+        for candidate in candidates:
+            users[candidate.room].add(session_id)
+
+    closures: dict[RoomId, set[Slot]] = {}
+    for room_id, slot in snapshot.room_closed:
+        closures.setdefault(room_id, set()).add(slot)
+
+    classes: dict[tuple[object, ...], list[RoomId]] = {}
+    for room_id, room in sorted(snapshot.rooms.items()):
+        if room_id in pinned or not users[room_id]:
+            continue
+        key = (
+            frozenset(users[room_id]),
+            room.capacity,
+            frozenset(room.features),
+            tuple(sorted(room.feature_counts.items())),
+            room.building_id,
+            room.turnaround_slots,
+            frozenset(closures.get(room_id, ())),
+        )
+        classes.setdefault(key, []).append(room_id)
+    return [rooms for rooms in classes.values() if len(rooms) > 1]
+
+
+def _fill_alike_rooms_in_order(model: Model, snapshot: Snapshot) -> None:
+    """Interchangeable rooms are used in order, so their permutations stop being answers.
+
+    Forty rooms nothing can distinguish give every timetable 40! relabellings, and the search
+    walks them as though each were a different timetable. Value precedence keeps exactly one
+    of each set: **a room is used for the first time only after the room before it has been.**
+
+    Written over ranks rather than over pairs of literals. The obvious encoding says *this
+    session may be in room k+1 only if some earlier session is in room k*, which is a clause
+    per (room, session) pair carrying every earlier session in it — quadratic in the sessions,
+    five million literals at department scale. Ranking each session within the class and
+    carrying the running maximum is the same statement in a chain: one integer per session,
+    independent of how many rooms the class holds.
+
+    `rank` is 1-based so that **0 means "in none of these rooms"**, which is a real case — a
+    session may be placed in a room outside the class — and a 0-based rank would confuse it
+    with the first room.
+    """
+    for alike in _alike(model, snapshot):
+        places = {room_id: index for index, room_id in enumerate(alike, start=1)}
+        # A session can be a candidate for two different classes of room, so the class is in
+        # the name. Duplicate names are legal and turn the model dump — the only way to read
+        # one of these back when it says INFEASIBLE — into a guessing game.
+        like = alike[0]
+        users = sorted(
+            session_id
+            for session_id, candidates in model.candidates.items()
+            if any(candidate.room in places for candidate in candidates)
+        )
+
+        highest: cp_model.IntVar | None = None
+        for position, session_id in enumerate(users):
+            here = [
+                (candidate.present, places[candidate.room])
+                for candidate in model.candidates[session_id]
+                if candidate.room in places
+            ]
+            rank = model.cp.new_int_var(0, len(alike), f"rank[{session_id},{like}]")
+            model.cp.add(
+                rank
+                == cp_model.LinearExpr.weighted_sum(
+                    [present for present, _ in here], [place for _, place in here]
+                )
+            )
+            model.cp.add(rank <= 1 if highest is None else rank <= highest + 1)
+
+            # The last session has nobody after it to constrain, so its running maximum would
+            # be a variable nothing reads.
+            if position < len(users) - 1:
+                reached = model.cp.new_int_var(0, len(alike), f"reached[{session_id},{like}]")
+                if highest is None:
+                    model.cp.add(reached == rank)
+                else:
+                    model.cp.add_max_equality(reached, [highest, rank])
+                highest = reached
+
+
+def _no_more_at_once_than_there_are_rooms(model: Model, snapshot: Snapshot) -> None:
+    """The consequence the per-room no-overlap already implies, said out loud.
+
+    Every session is in exactly one room and a room holds one thing, so at any hour the number
+    of sessions being taught cannot exceed the number of rooms. CP-SAT has to derive that from
+    the per-room constraints; stating it gives the propagator one global fact instead of forty
+    local ones, and it is what rules out a half-built assignment that has already overfilled
+    the week.
+
+    Teaching time rather than room time, deliberately: a room's turnaround extends the room's
+    interval past the class, and counting it here would claim a room is occupied when the
+    argument above does not say so. Under-stating a redundant constraint is safe; over-stating
+    one removes timetables.
+
+    Added only where it can bite. With more rooms than sessions it is a constraint that is
+    true before the search starts.
+    """
+    for pattern in (WeekPattern.ODD_WEEKS, WeekPattern.EVEN_WEEKS):
+        running = [
+            model.teaching[session_id]
+            for session_id in sorted(model.teaching)
+            if snapshot.sessions[session_id].week_pattern.coincides_with(pattern)
+        ]
+        if len(running) > len(snapshot.rooms):
+            model.cp.add_cumulative(running, [1] * len(running), len(snapshot.rooms))
+
+
+def _start_from_what_is_already_placed(model: Model, snapshot: Snapshot) -> None:
+    """Hand the search the timetable the term already has, as a starting point rather than a rule.
+
+    A hint is not a constraint: CP-SAT is free to walk away from it, and a term with nothing
+    placed simply has nothing to say. What it buys is the difference between re-optimising and
+    restarting, which is the whole of *"keep what I have, make it better"* — R2 names
+    `AddHint()` as the reason that feature is not a separate mode.
+
+    A placement that no longer fits — a room since made too small, an hour since made a break —
+    is left out rather than repaired. Hinting a value outside a variable's domain asks the
+    solver to make sense of a contradiction, and the honest answer is that this session has no
+    starting point.
+    """
+    for session_id, placement in sorted(snapshot.placements.items()):
+        if session_id not in model.starts or placement.start_slot not in model.legal[session_id]:
+            continue
+        candidates = model.candidates[session_id]
+        if not any(candidate.room == placement.room_id for candidate in candidates):
+            continue
+        model.cp.add_hint(model.starts[session_id], placement.start_slot)
+        for candidate in candidates:
+            model.cp.add_hint(candidate.present, int(candidate.room == placement.room_id))
 
 
 def size(model: Model) -> tuple[int, int]:

@@ -55,13 +55,17 @@ class Budget:
     """
 
 
-def solve(snapshot: Snapshot, budget: Budget | None = None) -> Solution:
+def solve(
+    snapshot: Snapshot,
+    budget: Budget | None = None,
+    formulation: build_model.Formulation | None = None,
+) -> Solution:
     """Find a timetable for this term, or say why there is not one."""
     budget = budget or Budget()
 
     started = time.perf_counter()
     try:
-        model = build_model.build(snapshot)
+        model = build_model.build(snapshot, formulation)
     except build_model.UnsatisfiableError:
         # A session with no possible hour or no possible room. Arithmetic already knows the
         # answer, so reporting it as `IMPOSSIBLE` without searching is honest rather than a
