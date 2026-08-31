@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from itertools import pairwise
 
 from tessera.domain.ids import RoomId, SessionId
 from tessera.domain.time_grid import Slot
@@ -34,6 +35,27 @@ class Outcome(StrEnum):
     exists**, and must not be reported as though it did: "we could not find one" and "there
     is not one" are different sentences, and only the second is a reason to change the data.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class Step:
+    """One round of the outer search, and what it did with it.
+
+    Kept so the loop can be read afterwards rather than inferred from its answer. 4.5 wants the
+    shape of the descent to compare runs, 4.7 draws it live, and a round that changed nothing
+    is as informative as one that did — a long tail of refusals is what a stalled neighbourhood
+    strategy looks like from outside.
+    """
+
+    round: int
+    strategy: str
+    freed: int
+    """How many sessions this round was allowed to move. **Zero means the whole problem**,
+    which is the only kind of round whose lower bound is a bound (D6)."""
+
+    penalty: int
+    seconds: float
+    accepted: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +104,24 @@ class Solution:
     saying so is the difference between "this is the best there is" and "this is the best we
     found"."""
 
+    bound_is_proven: bool = False
+    """Whether anything actually proved the bound above (D6).
+
+    **A sub-problem's lower bound is not a lower bound.** A Fix-and-Optimize round searches a
+    restricted problem — every timetable it can reach agrees with the frozen part — so its
+    optimum is at or above the true one and its bound says nothing about the term. Reporting
+    it here would pass every check in `_the_score_makes_sense`, because a sub-bound is still
+    at or below the incumbent's penalty, and would make `is_optimal` true the moment a round
+    proved its own window: the whole timetable declared best possible because forty of its
+    five hundred sessions are.
+
+    So only an unrestricted solve sets this. When nothing did, the bound is 0 — true, sound,
+    and saying nothing, which is the right amount to say. *No bound* and *a bound of zero*
+    must not look the same to 4.7, and this is what tells them apart."""
+
+    trajectory: tuple[Step, ...] = ()
+    """Every round of the outer search, in order. Empty when there was no outer search."""
+
     @property
     def solved(self) -> bool:
         return self.outcome is Outcome.SOLVED
@@ -128,4 +168,36 @@ class Solution:
             raise ValueError(
                 f"the breakdown sums to {sum(self.penalty_breakdown.values())}, not "
                 f"{self.penalty} — a rule is being counted in one place and not the other"
+            )
+        if self.lower_bound and not self.bound_is_proven:
+            raise ValueError(
+                f"a lower bound of {self.lower_bound} is reported with nothing having proven "
+                "it — a Fix-and-Optimize round bounds its own window, not the term"
+            )
+        self._the_descent_makes_sense()
+
+    def _the_descent_makes_sense(self) -> None:
+        """What a monotone loop can never have produced (D5).
+
+        Every round hands CP-SAT the incumbent as a hint and lets it move a subset, so the
+        incumbent is a feasible point of the sub-problem and a round can only come back at or
+        below it. Accepting only a strict improvement makes the accepted scores strictly
+        decreasing — and that is a theorem about the loop rather than a hope about it, so a
+        violation is a bug in the fixing rather than a bad run.
+
+        The last accepted round is also the answer. A loop that improved and then returned
+        something else would be the same defect as a score that disagrees with its breakdown:
+        two numbers about one timetable, and no way to tell which is the timetable.
+        """
+        accepted = [step for step in self.trajectory if step.accepted]
+        for earlier, later in pairwise(accepted):
+            if later.penalty >= earlier.penalty:
+                raise ValueError(
+                    f"round {later.round} was accepted at {later.penalty}, which is not an "
+                    f"improvement on round {earlier.round}'s {earlier.penalty}"
+                )
+        if accepted and accepted[-1].penalty != self.penalty:
+            raise ValueError(
+                f"the last accepted round scored {accepted[-1].penalty} and the answer scores "
+                f"{self.penalty} — they are not the same timetable"
             )

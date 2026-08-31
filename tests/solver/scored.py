@@ -21,10 +21,11 @@ constraint set stated here rather than chosen per run.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from tessera.domain.constraints import Constraint, default_constraints
-from tessera.domain.entities import Room, Session, SessionKind
+from tessera.domain.entities import Room, Session, SessionKind, Unavailability
 from tessera.domain.groups import GroupKind, GroupSet, StudentGroup
 from tessera.domain.ids import (
     AssignmentId,
@@ -40,6 +41,7 @@ from tessera.domain.timetable import Assignment
 from tessera.domain.validation import Snapshot
 from tessera.importers.cbctt import read
 from tessera.importers.cbctt.apply import mapped
+from tessera.solver import Placed
 
 #: Five days of twenty half-hour slots — the hundred-hour week #225 was measured on, so the
 #: numbers here and the numbers there are about the same shape of thing.
@@ -123,6 +125,53 @@ def department(
         constraints=constraints,
         course_of={SessionId(i): CourseId(i % courses + 1) for i in range(1, sessions + 1)},
     )
+
+
+def with_timetable(term: Snapshot, placed: Sequence[Placed]) -> Snapshot:
+    """The same term with a timetable in it.
+
+    What re-optimisation is handed, and what the validator has to be given to judge a solve:
+    `Snapshot` indexes placements at construction, so a timetable cannot be attached to one
+    afterwards.
+    """
+    return Snapshot.of(
+        grid=term.grid,
+        sessions=list(term.sessions.values()),
+        rooms=list(term.rooms.values()),
+        groups=term.groups,
+        unavailability=_unavailability(term),
+        constraints=list(term.constraints),
+        course_of=term.course_of,
+        assignments=[
+            Assignment(
+                id=AssignmentId(i),
+                session_id=placement.session,
+                start_slot=placement.start_slot,
+                room_id=placement.room,
+            )
+            for i, placement in enumerate(placed, start=1)
+        ],
+    )
+
+
+def _unavailability(term: Snapshot) -> list[Unavailability]:
+    """The rows a snapshot was built from, read back out of what it indexed them into.
+
+    `Snapshot` keeps closures and preferences as three lookup sets rather than as the rows they
+    came from, so a term cannot simply be copied. Rebuilt exactly for everything the validator
+    reads; `reason` is dropped, which appears only in the sentence a person sees.
+    """
+    return [
+        *(Unavailability(room_id=room, slot=slot) for room, slot in sorted(term.room_closed)),
+        *(
+            Unavailability(instructor_id=who, slot=slot)
+            for who, slot in sorted(term.instructor_away)
+        ),
+        *(
+            Unavailability(instructor_id=who, slot=slot, is_hard=False, weight=weight)
+            for (who, slot), weight in sorted(term.preferred_against.items())
+        ),
+    ]
 
 
 def cbctt(instance: Path, constraints: tuple[Constraint, ...] = DEFAULTS) -> Snapshot:

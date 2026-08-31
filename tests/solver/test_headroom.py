@@ -43,7 +43,7 @@ from tessera.solver.model import Formulation, UnsatisfiableError, _alike, build
 from tessera.solver.objective import TERMS
 from tests.domain.validation.generated import Instance
 from tests.solver.generated import snapshot_of, to_score
-from tests.solver.scored import cbctt, department
+from tests.solver.scored import cbctt, department, with_timetable
 
 #: Every lever off, stated rather than defaulted. `Formulation()` is no longer this — the
 #: measurement turned the hint on — and a baseline that quietly acquires a lever is how a
@@ -385,45 +385,17 @@ class TestStartingFromWhatIsPlaced:
         """Written because the obvious claim — *the incumbent is a floor* — is false, and was
         asserted here for an hour before being checked.
 
-        A hint is not a constraint. Given a budget too small to reach any timetable, a solve
-        handed a complete valid one still reports `OUT_OF_TIME`: it never got far enough to
+        A hint is not a constraint. Given too little work to reach any timetable, a solve
+        handed a complete valid one still comes back with nothing: it never got far enough to
         evaluate what it was given. #225 saw the same thing from the other side, where a hint
-        did not rescue a department-scale solve either.
-
-        The honest claim is a measured improvement in the re-optimisation path, which is what
-        `test_re_optimising_a_real_instance_beats_starting_over` checks, and it needs an
-        instance big enough to have the download behind it.
+        did not rescue a department-scale solve either, and part 2 saw it again in the loop,
+        where a round with a window of forty returns no answer rather than a worse one.
         """
-        term = department(150, 12)
-        found = solve(term, Budget(seconds=300, deterministic_seconds=15.0), PLAIN)
-        assert found.solved
+        term = department(500, 40, placed=True)
+        starved = Budget(seconds=300, deterministic_seconds=0.5, rounds=0)
 
-        again = _placed(term, found)
-        hurried = Budget(seconds=300, deterministic_seconds=5.0)
-
-        assert not solve(again, hurried, Formulation(hint=True)).solved
-        assert not solve(again, hurried, PLAIN).solved
-
-
-def _placed(term: Snapshot, found: Solution) -> Snapshot:
-    """The same term with a timetable in it — what re-optimisation is handed."""
-    return Snapshot.of(
-        grid=term.grid,
-        sessions=list(term.sessions.values()),
-        rooms=list(term.rooms.values()),
-        groups=term.groups,
-        constraints=list(term.constraints),
-        course_of=term.course_of,
-        assignments=[
-            Assignment(
-                id=AssignmentId(i),
-                session_id=placement.session,
-                start_slot=placement.start_slot,
-                room_id=placement.room,
-            )
-            for i, placement in enumerate(found.placements, start=1)
-        ],
-    )
+        assert not solve(term, starved, Formulation(hint=True)).solved
+        assert not solve(term, starved, PLAIN).solved
 
 
 @pytest.mark.benchmark
@@ -449,7 +421,7 @@ def test_re_optimising_a_real_instance_beats_starting_over() -> None:
     first = solve(term, budget, PLAIN)
     assert first.solved
 
-    again = _placed(term, first)
+    again = with_timetable(term, first.placements)
     starting_over = solve(again, budget, PLAIN)
     hinted = solve(again, budget, Formulation(hint=True))
 
@@ -466,8 +438,9 @@ class TestABudgetMeasuredInWorkRatherThanTime:
 
     def test_the_same_work_budget_gives_the_same_timetable(self) -> None:
         snapshot = department(60, 8)
-        first = solve(snapshot, Budget(seconds=300, deterministic_seconds=2.0))
-        again = solve(snapshot, Budget(seconds=300, deterministic_seconds=2.0))
+        budget = Budget(seconds=300, deterministic_seconds=2.0, rounds=0)
+        first = solve(snapshot, budget)
+        again = solve(snapshot, budget)
 
         assert first.work == again.work
         assert first.placements == again.placements
@@ -475,15 +448,20 @@ class TestABudgetMeasuredInWorkRatherThanTime:
 
     def test_the_wall_clock_is_not_what_stopped_it(self) -> None:
         """Otherwise the deterministic budget is decoration on a stopwatch."""
-        found = solve(department(60, 8), Budget(seconds=300, deterministic_seconds=2.0))
+        found = solve(department(60, 8), Budget(seconds=300, deterministic_seconds=2.0, rounds=0))
 
         assert found.seconds < 300
 
     def test_a_smaller_budget_does_less_work(self) -> None:
-        """The anti-vacuity guard: a parameter nothing reads would pass both tests above."""
+        """The anti-vacuity guard: a parameter nothing reads would pass both tests above.
+
+        `rounds=0` keeps this about the one solve it is about. A deterministic budget caps
+        each *solve*; the outer loop keeps going while the clock allows, so leaving it to run
+        would compare two loops rather than two budgets.
+        """
         snapshot = department(60, 8)
-        brief = solve(snapshot, Budget(seconds=300, deterministic_seconds=1.0))
-        longer = solve(snapshot, Budget(seconds=300, deterministic_seconds=6.0))
+        brief = solve(snapshot, Budget(seconds=300, deterministic_seconds=1.0, rounds=0))
+        longer = solve(snapshot, Budget(seconds=300, deterministic_seconds=6.0, rounds=0))
 
         assert brief.work < longer.work
 
