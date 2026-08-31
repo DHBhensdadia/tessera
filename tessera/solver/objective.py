@@ -819,6 +819,29 @@ TERMS: dict[ConstraintKind, Callable[[Terms, Constraint], list[cp_model.IntVar]]
 }
 
 
+def enforce(model: Model, snapshot: Snapshot) -> None:
+    """The hard rules, and nothing priced. What a feasibility pass needs.
+
+    4.4 finds a timetable before it tries to find a good one, and the model it searches for
+    that first answer must not carry the objective: three of the sixteen terms need a boolean
+    per subject per hour, which multiplies a department-scale model by nine and stops it
+    reaching any solution at all (#225). Leaving the *whole* objective out would be a
+    different bug — a hard distribution rule is a constraint, and a first timetable that
+    breaks one is not a first timetable — so the hard half is written and the priced half is
+    not.
+
+    A term whose rules are all soft, which `default_constraints()` produces, adds nothing here
+    and the feasibility model stays exactly the size 4.2 measured.
+    """
+    terms = Terms(model=model, snapshot=snapshot)
+    _refuse_what_cannot_be_scored(snapshot)
+
+    for constraint in snapshot.constraints:
+        if constraint.is_hard:
+            for unit in TERMS[constraint.kind](terms, constraint):
+                model.cp.add(unit == 0)
+
+
 def add(model: Model, snapshot: Snapshot) -> Objective | None:
     """Write the term's rules into the model, and return what to minimise.
 
