@@ -40,6 +40,20 @@ class Budget:
 
     seed: int = 0
 
+    deterministic_seconds: float | None = None
+    """A budget measured in work done rather than in time passed (D4).
+
+    A pinned seed and one worker make a solve reproducible *on one machine*; they do not make
+    it reproducible on a slower one, because the wall clock decides when the search stops.
+    CP-SAT counts its own progress in a machine-independent unit, and capping that instead is
+    what lets a benchmark assert on a number rather than on a range — the flaky gate P5 warns
+    4.5 about, refused one phase early.
+
+    `seconds` stays set alongside it as a ceiling, so a deterministic budget calibrated on one
+    machine cannot run for an hour on another. A test asserts the ceiling is not what stopped
+    the search.
+    """
+
 
 def solve(snapshot: Snapshot, budget: Budget | None = None) -> Solution:
     """Find a timetable for this term, or say why there is not one."""
@@ -64,6 +78,8 @@ def solve(snapshot: Snapshot, budget: Budget | None = None) -> Solution:
     solver.parameters.max_time_in_seconds = budget.seconds
     solver.parameters.num_workers = budget.workers
     solver.parameters.random_seed = budget.seed
+    if budget.deterministic_seconds is not None:
+        solver.parameters.max_deterministic_time = budget.deterministic_seconds
 
     status = solver.solve(model.cp)
     elapsed = time.perf_counter() - started
@@ -86,6 +102,7 @@ def solve(snapshot: Snapshot, budget: Budget | None = None) -> Solution:
             penalty=objective.penalty(solver) if objective else 0,
             penalty_breakdown=objective.breakdown(solver) if objective else {},
             lower_bound=_bound(solver) if objective else 0,
+            work=solver.deterministic_time,
         )
 
     return Solution(
@@ -93,6 +110,7 @@ def solve(snapshot: Snapshot, budget: Budget | None = None) -> Solution:
         seconds=elapsed,
         sessions=sessions,
         candidates=candidates,
+        work=solver.deterministic_time,
     )
 
 

@@ -56,6 +56,14 @@ class Solution:
     sessions: int = 0
     candidates: int = 0
 
+    work: float = 0.0
+    """How much searching was done, in CP-SAT's own machine-independent unit.
+
+    `seconds` says how long this took here; this says how much was done, and two runs of the
+    same instance under a deterministic budget agree on it whatever else the machine was doing
+    (D4). It is what makes a comparison between two formulations a comparison of the
+    formulations rather than of the afternoon."""
+
     penalty: int = 0
     """What the soft rules cost, as the solver's objective measured it.
 
