@@ -31,7 +31,7 @@ def to_solve() -> st.SearchStrategy[Instance]:
     return instances().map(lambda i: replace(i, constraints=[], assignments=[]))
 
 
-def to_score(kinds: frozenset[ConstraintKind]) -> st.SearchStrategy[Instance]:
+def to_score(kinds: frozenset[ConstraintKind], least_rules: int = 1) -> st.SearchStrategy[Instance]:
     """A term whose rules are all soft and all cost something. Nothing placed.
 
     Three deliberate narrowings, each of which was measured to matter.
@@ -41,8 +41,12 @@ def to_score(kinds: frozenset[ConstraintKind]) -> st.SearchStrategy[Instance]:
     instances this small, mostly makes the term infeasible — 213 of 300 were, so the
     agreement test was running on the 87 that were left. **Weight at least one**, because a
     rule worth nothing is scored zero by both implementations however wrong either is.
+
+    The weight tests raise `least_rules` to 2, because they need something for a rule to be
+    traded *against*: with one rule in the term, raising its weight cannot change the answer
+    and the property under test would hold for a reason that has nothing to do with weights.
     """
-    return instances(kinds=kinds, least_rules=1, least_sessions=2, least_targets=2).map(
+    return instances(kinds=kinds, least_rules=least_rules, least_sessions=2, least_targets=2).map(
         lambda i: _roomier(
             replace(
                 i,
