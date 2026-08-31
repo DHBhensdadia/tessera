@@ -5,14 +5,22 @@ objective is arithmetic rather than a search result. A term that is subtly wrong
 as a wrong integer instead of as a slightly different timetable nobody can argue with.
 
 Each rule is tested twice: once on an arrangement that breaks it and once on one that does
-not. The second half is what stops a term that always returns 1 from passing, and it is D6's
-question — *can this kind reach zero at all?* — asked early for the eight kinds that have it.
+not. The second half is what stops a term that always returning 1 from passing, and it is
+half of D6's question — *can this kind reach zero at all?*
+
+The other half is at the bottom of this file, and it is the half that matters. A pinned zero
+shows a **person** can build an arrangement costing nothing. `TestEveryKindCanReachZero` shows
+the **solver** can find one and prove it is the best there is, which is what P5's exit test
+needs to mean anything: a weight that cannot be satisfied is one you can raise for ever and
+measure nothing (#196).
 
 The agreement with the validator is `test_agreement.py`. This file is about whether the
 arithmetic says what the rule says.
 """
 
 from __future__ import annotations
+
+from dataclasses import replace
 
 import pytest
 from ortools.sat.python import cp_model
@@ -827,3 +835,34 @@ class TestATermWithNoPreferences:
         assert found.penalty == 0
         assert found.penalty_breakdown == {}
         assert found.lower_bound == 0
+
+
+class TestEveryKindCanReachZero:
+    """D6. A kind whose cost no arrangement can remove is a bug in the term, not a strict rule.
+
+    #196 found exactly that: `BALANCE_DAILY_LOAD` measured against the *lightest* day charged
+    a floor nothing could clear, so an institution could raise its weight to fifty and watch
+    the timetable not move. The rule looked like it worked, and the slider did nothing.
+
+    Every rule in `BREAKS` is one that costs something on the pinned timetable. Here the pins
+    come off and the same rule is handed to the solver, which must find an arrangement costing
+    **nothing** and prove no cheaper one exists. That is the precondition for the weight tests
+    in `test_weights.py`, and it is cheap to check.
+    """
+
+    @pytest.mark.parametrize("kind", sorted(BREAKS, key=str), ids=str)
+    def test_the_solver_finds_an_arrangement_this_rule_costs_nothing_on(
+        self, kind: ConstraintKind
+    ) -> None:
+        institution, constraint = BREAKS[kind]
+        free = replace(institution, assignments=()).ruled(constraint)
+
+        found = solve(free.snapshot(), BUDGET)
+
+        assert found.solved, f"{kind.value}: no timetable at all"
+        assert found.penalty == 0, (
+            f"{kind.value} costs {found.penalty} even when the solver is free to arrange "
+            "the term however it likes — so the weight on it cannot be traded against "
+            "anything, and raising it would move nothing"
+        )
+        assert found.is_optimal, f"{kind.value}: zero found but not proven"
