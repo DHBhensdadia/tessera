@@ -13,11 +13,12 @@ from pathlib import Path
 
 import pytest
 
-from tessera.domain.ids import AssignmentId
+from tessera.domain.ids import AssignmentId, RoomId, SessionId
 from tessera.domain.timetable import Assignment
 from tessera.domain.validation import Snapshot, validate
 from tessera.importers.cbctt import Instance, read
-from tessera.importers.cbctt.apply import Mapped, mapped
+from tessera.importers.cbctt.apply import Mapped, as_solution, mapped
+from tessera.importers.cbctt.solution import Placement
 from tessera.solver import Budget, solve
 
 TOY = Path(__file__).parent / "fixtures" / "toy.ctt"
@@ -163,3 +164,35 @@ class TestItSolves:
 def _names(term: Mapped, session: object) -> set[str]:
     by_id = {g.id: g.name for g in term.groups.all}
     return {by_id[g] for g in session.attendee_ids}  # type: ignore[attr-defined]
+
+
+class TestWritingATimetableBackInTheCompetitionsFormat:
+    """`as_solution` is what lets a result be handed to somebody else's validator.
+
+    The correspondence it uses — which session is a lecture of which course — is the mapping's
+    own rather than the caller's. Rebuilding it at a call site would be a rule with no test on
+    it, agreeing with `mapped` right up until the loop that builds sessions is reordered.
+    """
+
+    def test_a_slot_becomes_a_day_and_a_period(self, term: Mapped) -> None:
+        """Four periods a day, so slot 7 is the last period of Tuesday. The toy's first three
+        sessions are SceCosC's, in the order the file lists its courses."""
+        written = as_solution(term, {SessionId(1): (7, RoomId(2))})
+
+        assert written == (Placement(course="SceCosC", day=1, period=3, room="B"),)
+
+    def test_every_lecture_comes_back_named(self, toy: Instance, term: Mapped) -> None:
+        found = solve(snapshot_of(term), Budget(seconds=30))
+        written = as_solution(term, {p.session: (p.start_slot, p.room) for p in found.placements})
+
+        assert len(written) == toy.lectures
+        assert {p.course for p in written} == {course.id for course in toy.courses}
+        assert {p.room for p in written} <= {room.id for room in toy.rooms}
+        assert all(0 <= p.day < toy.days for p in written)
+        assert all(0 <= p.period < toy.periods_per_day for p in written)
+
+    def test_a_session_this_mapping_never_made_is_refused(self, term: Mapped) -> None:
+        """Silently writing it would score a timetable for one term against another instance
+        and report the result as a very bad one."""
+        with pytest.raises(KeyError):
+            as_solution(term, {SessionId(9999): (0, RoomId(1))})

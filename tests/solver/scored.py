@@ -180,12 +180,15 @@ def cbctt(instance: Path, constraints: tuple[Constraint, ...] = DEFAULTS) -> Sna
     The mapping is 4.2's, unchanged and re-run rather than cached, so this cannot describe an
     importer other than the one that ships.
 
-    **Courses are recovered rather than invented.** `Mapped` carries no `course_of`, because
-    4.2 had nothing that needed it, and two of the seven defaults are about a course. The
-    mapping gives every course a group of its own to carry the headcount — *"CS101 students"* —
-    so the course a session belongs to is already in the term; this reads it back out by that
-    group rather than by re-deriving the order sessions were built in, which would agree with
-    `mapped` today and silently stop agreeing the day it changes.
+    **Courses are recovered rather than invented**, because two of the seven defaults are about
+    a course. The mapping gives every course a group of its own to carry the headcount —
+    *"CS101 students"* — so the course a session belongs to is already in the term; this reads
+    it back out by that group rather than by re-deriving the order sessions were built in,
+    which would agree with `mapped` today and silently stop agreeing the day it changes.
+
+    4.5 gave `Mapped` a `course_of`, and it is deliberately not used here: that one names the
+    *instance's* course, a string, for writing a result back in the competition's format. This
+    one needs Tessera `CourseId`s for a `Snapshot`. Same word, different quantity.
     """
     term = mapped(read(instance))
     of_course = {

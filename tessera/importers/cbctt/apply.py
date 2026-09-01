@@ -19,7 +19,8 @@ Two things still do not fit, and both were named in plan 4.2 §1 before any of t
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from tessera.domain.entities import Room, Session, SessionKind, Unavailability
 from tessera.domain.groups import GroupKind, GroupSet, StudentGroup
@@ -29,8 +30,9 @@ from tessera.domain.ids import (
     SessionId,
     StudentGroupId,
 )
-from tessera.domain.time_grid import TimeGrid
+from tessera.domain.time_grid import Slot, TimeGrid
 from tessera.importers.cbctt.format import Instance
+from tessera.importers.cbctt.solution import Placement
 
 #: CB-CTT periods have no clock time. An hour from nine is a readable default and nothing in
 #: the model depends on it — the grid's job here is to fix how many slots a day has.
@@ -58,6 +60,18 @@ class Mapped:
     carried: tuple[Entry, ...] = ()
     dropped: tuple[Entry, ...] = ()
 
+    course_of: Mapping[SessionId, str] = field(default_factory=dict)
+    """Which course each session is a lecture of, under the instance's own name for it.
+
+    The mapping already knows this and used to throw it away, which meant anything wanting to
+    write a result back in the competition's format had to rebuild the correspondence by
+    replaying the loop below — a second copy of a rule with no test on it. 4.5's benchmark
+    needs it, and a derived fact is cheaper to carry than to reconstruct.
+
+    There is no matching map for rooms because there does not need to be one: a Tessera
+    `Room.name` already *is* the instance's name for it.
+    """
+
     @property
     def is_lossless(self) -> bool:
         return not self.dropped
@@ -83,6 +97,7 @@ def mapped(instance: Instance) -> Mapped:
     }
 
     sessions: list[Session] = []
+    course_of: dict[SessionId, str] = {}
     for course in instance.courses:
         attending = frozenset(
             {group_of_course[course.id]}
@@ -93,6 +108,7 @@ def mapped(instance: Instance) -> Mapped:
             }
         )
         for occurrence in range(course.lectures):
+            course_of[SessionId(len(sessions) + 1)] = course.id
             sessions.append(
                 Session(
                     id=SessionId(len(sessions) + 1),
@@ -122,6 +138,7 @@ def mapped(instance: Instance) -> Mapped:
             Entry("teaching days", instance.days),
         ),
         dropped=tuple(dropped),
+        course_of=course_of,
     )
 
 
@@ -221,3 +238,29 @@ def _unavailability(
             )
         )
     return carried, dropped
+
+
+def as_solution(
+    term: Mapped, placed: Mapping[SessionId, tuple[Slot, RoomId]]
+) -> tuple[Placement, ...]:
+    """A timetable Tessera found, written the way the competition writes one.
+
+    The correspondence is `Mapped`'s rather than the caller's. Rebuilding it at each call site
+    — session 7 is the second lecture of the third course, because that is the order `mapped`
+    happens to loop in — would be a rule with no test on it, agreeing with the mapping right
+    up until somebody reorders the loop.
+
+    Raises `KeyError` on a session or room this mapping did not produce, deliberately: a
+    timetable for a different term written into this instance's format would otherwise be
+    scored against it and reported as a very bad result.
+    """
+    named = {room.id: room.name for room in term.rooms if room.id is not None}
+    return tuple(
+        Placement(
+            course=term.course_of[session_id],
+            day=term.grid.day_of(slot),
+            period=term.grid.slot_of_day(slot),
+            room=named[room_id],
+        )
+        for session_id, (slot, room_id) in sorted(placed.items())
+    )
