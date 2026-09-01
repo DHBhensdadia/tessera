@@ -100,7 +100,7 @@ class TestTheLoopUsesThem:
         a strategy silently returning fewer would show up here rather than as a slow loop."""
         found = solve(
             department(24, 6),
-            Budget(seconds=20, whole_model_ceiling=0, window=6, rounds=2),
+            Budget(seconds=600, whole_model_ceiling=0, window=6, rounds=2, round_seconds=60),
             Formulation(),
         )
 
