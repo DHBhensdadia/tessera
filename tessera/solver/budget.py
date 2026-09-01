@@ -55,15 +55,29 @@ class Budget:
     be reached, and `test_a_round_budget_does_not_run_out_of_time` asserts it is not.
     """
 
-    window: int = 20
-    """How many sessions a round may move. Everything else is frozen at its current placement.
+    windows: tuple[int, ...] = (3, 3, 8, 20)
+    """How many sessions a round may move, cycled round by round.
 
-    Twenty, measured over three seeds on two sizes rather than picked. A window is a trade
-    between how much a round can change and whether it can be solved at all: at forty, a
-    department-scale round comes back with **nothing** — not a worse answer, no answer — and
-    the loop spends its whole budget on refusals. Medians at 30 s, department scale: 11,740 at
-    a window of 8, 11,629 at 12, **11,427 at 20**, and 13,044 at 40, which is the untouched
-    incumbent.
+    A schedule rather than a number, because the best window is a property of the **term** and
+    not of the solver, and the split is sharp. Medians at thirty seconds over three seeds, as a
+    percentage above the best schedule for that instance:
+
+    | | (3,) | (20,) | (3,8,20) | (3,3,3,20) | **(3,3,8,20)** |
+    |---|---|---|---|---|---|
+    | dept(500,40) | +12 % | +31 % | +41 % | **best** | +11 % |
+    | dept(150,12) | **best** | +168 % | +356 % | +8 % | +14 % |
+    | `comp05` | +69 % | +13 % | **best** | +58 % | +35 % |
+    | `comp02` | +34 % | +4 % | **best** | +16 % | +22 % |
+    | **worst case** | +69 % | +168 % | +356 % | +58 % | **+35 %** |
+
+    The generated departments run at about a quarter of their room-slots occupied and reward
+    many cheap moves; `comp02` runs at about seven tenths, and a window of three cannot
+    rearrange anything there — it needs a big enough bite to escape where it is.
+
+    **Chosen on the worst case rather than the average**, because a default is what runs on the
+    institution nobody measured. No schedule is best everywhere, and one that is 356 % adrift
+    on a term of the wrong shape is a worse default than one that is never more than a third
+    off. Pass an explicit schedule to do better on a term you know.
     """
 
     round_seconds: float = 5.0
@@ -71,6 +85,15 @@ class Budget:
 
     round_deterministic_seconds: float | None = None
     """The same in work rather than time, for a reproducible loop."""
+
+    strategies: tuple[str, ...] = ()
+    """Which neighbourhood strategies to rotate through, or empty for all of them in order.
+
+    A rotation rather than a choice, because the four fail differently: one frees a day, one a
+    subject's week, one the sessions carrying the most cost, and one at random. A loop that used
+    only the best of them would stall wherever that one is blind, and the point of the set is
+    that its members are blind in different places.
+    """
 
     whole_model_ceiling: int = 120_000
     """How large a scored model may be before the loop stops trying to solve it whole.

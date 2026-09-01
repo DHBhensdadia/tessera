@@ -68,7 +68,13 @@ def improve(
     already: float = 0.0,
     on_improvement: Callable[[Solution], None] | None = None,
 ) -> Solution:
-    """Make a timetable better until the budget runs out, never returning a worse one."""
+    """Make a timetable better until the budget runs out, never returning a worse one.
+
+    The whole problem is attempted first when it is small enough to hold, and **cold**: handing
+    CP-SAT the feasibility answer as a starting point for a fresh optimisation makes it markedly
+    worse, because an arbitrary valid timetable is a bad neighbourhood to anchor a search in.
+    The rounds that follow are warm, where the incumbent is the thing being improved.
+    """
     rng = random.Random(budget.seed)
     # The loop supplies its own warm start, from the incumbent rather than from the term. A
     # `Formulation` that also hints would hint the same variables a second time, and CP-SAT
@@ -76,6 +82,14 @@ def improve(
     # that cannot build looks exactly like a round that found nothing.
     formulation = replace(formulation, hint=False)
     best = _what_it_costs(snapshot, formulation, incumbent)
+    if best is None and any(c.effective_weight for c in snapshot.constraints):
+        # The two reasons this can be `None` are not alike. A term that prices nothing costs
+        # nothing, and zero is the answer. A term that prices something and could not be
+        # scored has a cost nobody measured, and reporting zero would be #235 once more: the
+        # timetable that could not be judged comes back as the perfect one.
+        raise AssertionError(
+            "the incumbent could not be scored, so its cost is unknown and is not zero"
+        )
     if best is None:
         # Nothing is priced, so every timetable is as good as every other and there is no
         # search to run. Not an error: a term may carry no preferences at all.
@@ -102,18 +116,12 @@ def improve(
     objective = score.add(whole, snapshot)
     assert objective is not None  # `_what_it_costs` already established that something is
 
-    # The whole problem gets the **whole** remaining budget when it is small enough to be
-    # worth attempting, rather than a share of it. Measured: splitting the budget between one
-    # unrestricted attempt and a handful of rounds made a 150-session term score 2193 where a
-    # single solve of the same term in the same thirty seconds scored 533. A round is not yet
-    # a better use of a second than CP-SAT's own search on a model it can hold, so the ceiling
-    # decides the mode instead of dividing the clock — and part 3 lowers it if the strategies
-    # earn it.
     if len(whole.cp.proto.variables) <= budget.whole_model_ceiling:
         attempt, spent, burnt = _run(
             whole,
             objective,
-            start_from=best.placements,
+            incumbent=best.placements,
+            warm=False,
             budget=budget,
             seconds=_left(budget, started),
             deterministic=budget.deterministic_seconds,
@@ -148,10 +156,12 @@ def improve(
                     snapshot=snapshot,
                 )
 
-    choose = neighbourhood.STRATEGIES["anywhere"]
+    rotation = budget.strategies or tuple(neighbourhood.STRATEGIES)
     turn = len(trajectory)
     while _keep_going(budget, started, turn, best.penalty):
-        free = choose(snapshot, best.placements, rng, budget.window)
+        named = rotation[turn % len(rotation)]
+        window = budget.windows[turn % len(budget.windows)]
+        free = neighbourhood.STRATEGIES[named](snapshot, best.placements, rng, window)
         frozen = {s: p for s, p in best.placements.items() if s not in free}
         sub = build_model.build(snapshot, formulation, frozen)
         priced = score.add(sub, snapshot)
@@ -160,7 +170,8 @@ def improve(
         attempt, spent, burnt = _run(
             sub,
             priced,
-            start_from=best.placements,
+            incumbent=best.placements,
+            warm=True,
             budget=budget,
             seconds=min(budget.round_seconds, _left(budget, started)),
             deterministic=budget.round_deterministic_seconds,
@@ -170,7 +181,7 @@ def improve(
         trajectory.append(
             Step(
                 round=turn,
-                strategy="anywhere",
+                strategy=named,
                 freed=len(free),
                 penalty=attempt.penalty if improved and attempt else best.penalty,
                 seconds=spent,
@@ -220,7 +231,8 @@ def _what_it_costs(
     attempt, _, _ = _run(
         model,
         objective,
-        start_from=placed,
+        incumbent=placed,
+        warm=True,
         budget=Budget(seconds=30.0),
         seconds=30.0,
         deterministic=None,
@@ -232,12 +244,23 @@ def _run(
     model: build_model.Model,
     objective: score.Objective,
     *,
-    start_from: Mapping[SessionId, Placement],
+    incumbent: Mapping[SessionId, Placement],
+    warm: bool,
     budget: Budget,
     seconds: float,
     deterministic: float | None,
 ) -> tuple[Attempt | None, float, float]:
-    """Minimise from the timetable in hand. Returns the attempt, the seconds and the work.
+    """Minimise, optionally from the timetable in hand. Returns the attempt, seconds and work.
+
+    **`warm` is false for the unrestricted attempt, and that is not a detail.** Handing CP-SAT
+    the feasibility answer as a starting point for a *fresh* optimisation makes it markedly
+    worse — 3,470 to 4,565 on `comp05`, 1,434 to 2,273 on `comp11`, 603 to 835 on a generated
+    department — because an arbitrary valid timetable is a bad neighbourhood to anchor the
+    search in, and the solver spends its budget near it.
+
+    A round is the opposite case and stays warm: there the incumbent is the thing being
+    improved rather than an accident of how feasibility was reached, and starting from it is
+    what makes a round unable to come back worse.
 
     `None` when the round came back with nothing, which is a real outcome rather than an error:
     a hint is advice and not a floor, so a sub-solve given too little time can fail to produce
@@ -250,7 +273,8 @@ def _run(
     one whose window was too big to solve, and a run that spent its whole deterministic budget
     failing reports having done no work at all.
     """
-    build_model.start_from(model, start_from)
+    if warm:
+        build_model.start_from(model, incumbent)
     model.cp.minimize(objective.total)
 
     solver = cp_model.CpSolver()
@@ -279,7 +303,7 @@ def _run(
                 session_id=session_id,
                 start_slot=solver.value(model.starts[session_id]),
                 room_id=model.room_of(solver, session_id),
-                is_pinned=start_from[session_id].is_pinned if session_id in start_from else False,
+                is_pinned=incumbent[session_id].is_pinned if session_id in incumbent else False,
             )
             for session_id in sorted(model.starts)
         },

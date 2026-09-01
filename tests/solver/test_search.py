@@ -15,9 +15,12 @@ tests seconds rather than minutes.
 
 from __future__ import annotations
 
+import os
 import time
+from pathlib import Path
 
 import pytest
+from ortools.sat.python import cp_model
 
 from tessera.domain.constraints import Constraint, ConstraintKind
 from tessera.domain.ids import RoomId, SessionId
@@ -26,7 +29,7 @@ from tessera.solver import Budget, Formulation, Outcome, Placed, Solution, Step,
 from tessera.solver.model import build
 from tessera.solver.objective import add
 from tessera.solver.search import _keep_going, _left
-from tests.solver.scored import department, with_timetable
+from tests.solver.scored import cbctt, department, with_timetable
 
 #: Small enough to run in the gate, and forced through the loop rather than answered whole.
 #:
@@ -38,7 +41,7 @@ from tests.solver.scored import department, with_timetable
 LOOPED = Budget(
     seconds=600,
     whole_model_ceiling=0,
-    window=6,
+    windows=(6,),
     rounds=4,
     round_seconds=60,
     round_deterministic_seconds=1.0,
@@ -80,7 +83,7 @@ class TestTheLoopRuns:
         """#235's shape again: a round that gave up must not look like the cheap one."""
         starved = solve(
             department(24, 6),
-            Budget(seconds=600, whole_model_ceiling=0, rounds=1, window=6, round_seconds=0.0),
+            Budget(seconds=600, whole_model_ceiling=0, rounds=1, windows=(6,), round_seconds=0.0),
         )
 
         assert starved.trajectory[0].accepted is False
@@ -114,7 +117,8 @@ class TestAModelTheSolverWillNotReadIsABug:
             _run(
                 model,
                 objective,
-                start_from=placed,
+                incumbent=placed,
+                warm=True,
                 budget=Budget(seconds=5),
                 seconds=5.0,
                 deterministic=None,
@@ -132,6 +136,32 @@ class TestAModelTheSolverWillNotReadIsABug:
         assert found.outcome is Outcome.SOLVED
 
 
+class TestATimetableThatCouldNotBeScored:
+    def test_is_not_reported_as_costing_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """#235 a fourth time, pre-empted rather than discovered.
+
+        `_what_it_costs` returns `None` for two unlike reasons: the term prices nothing, where
+        zero is the answer, and the incumbent could not be scored, where the cost is simply
+        unknown. Collapsing them would report the timetable nobody could judge as the perfect
+        one — which is the same shape as a failed solve printing as a clean sweep.
+        """
+        import tessera.solver.search as under_test
+
+        monkeypatch.setattr(under_test, "_what_it_costs", lambda *_: None)
+
+        with pytest.raises(AssertionError, match="is not zero"):
+            solve(department(24, 6), LOOPED)
+
+    def test_but_a_term_that_prices_nothing_costs_nothing(self) -> None:
+        """The other half, and it must stay working: a term with no preferences at all is not
+        an error and its timetable really is free."""
+        found = solve(department(24, 6, constraints=()), LOOPED)
+
+        assert found.solved
+        assert found.penalty == 0
+        assert found.penalty_breakdown == {}
+
+
 class TestWhenTheLoopShouldStop:
     """The rule that turned a thirty-seven minute suite back into a three minute one.
 
@@ -146,7 +176,7 @@ class TestWhenTheLoopShouldStop:
         timetable found already costs nothing and there is nothing for a round to do."""
         term = department(24, 6, constraints=(NOTHING_TO_FIX,))
 
-        found = solve(term, Budget(seconds=120, whole_model_ceiling=0, window=6))
+        found = solve(term, Budget(seconds=120, whole_model_ceiling=0, windows=(6,)))
 
         assert found.penalty == 0
         assert found.trajectory == ()
@@ -297,7 +327,7 @@ class TestAnUnprovenWholeAttempt:
         proved it — and the rounds that follow must not overwrite it with their own."""
         found = solve(
             department(60, 8),
-            Budget(seconds=120, deterministic_seconds=8.0, rounds=1, window=8),
+            Budget(seconds=120, deterministic_seconds=8.0, rounds=1, windows=(8,)),
         )
         whole = [step for step in found.trajectory if step.freed == 0]
 
@@ -432,7 +462,7 @@ class TestABudgetCountedInRounds:
             Budget(
                 seconds=300,
                 whole_model_ceiling=0,
-                window=6,
+                windows=(6,),
                 rounds=3,
                 round_deterministic_seconds=1.0,
             ),
@@ -443,7 +473,11 @@ class TestABudgetCountedInRounds:
 
     def test_the_same_budget_twice_gives_the_same_timetable(self) -> None:
         budget = Budget(
-            seconds=300, whole_model_ceiling=0, window=6, rounds=3, round_deterministic_seconds=1.0
+            seconds=300,
+            whole_model_ceiling=0,
+            windows=(6,),
+            rounds=3,
+            round_deterministic_seconds=1.0,
         )
         term = department(24, 6)
 
@@ -532,3 +566,55 @@ class TestWhatPartTwoIsFor:
         assert found.bound_is_proven is False
         assert found.lower_bound == 0
         assert found.is_optimal is False
+
+
+@pytest.mark.benchmark
+@pytest.mark.skipif(
+    not (Path(os.environ.get("TESSERA_ITC2007_INSTANCES", "/nowhere")) / "comp05.ctt").exists(),
+    reason="set TESSERA_ITC2007_INSTANCES to the ITC-2007 directory",
+)
+def test_the_loop_beats_one_solve_at_the_same_work() -> None:
+    """The exit test, on the instance with the clearest margin.
+
+    **Budgeted in work, not seconds.** The same table swung twenty per cent between runs at
+    identical seeds when the clock decided how many rounds fit, and a comparison that moves
+    that much between runs cannot say which side is better. Both sides get the same
+    deterministic cap, and the assertion checks that they actually spent comparable work — a
+    win bought with more effort is not a win.
+
+    `comp05` under Tessera's own default preferences: one solve reaches 3,470 and the loop
+    reaches 2,593 for the same twenty-five units. Asserted as a margin rather than as those
+    two numbers, because the numbers are a property of this OR-Tools version and the margin is
+    the claim.
+    """
+    instance = Path(os.environ["TESSERA_ITC2007_INSTANCES"]) / "comp05.ctt"
+    term = cbctt(instance)
+    work = 25.0
+
+    model = build(term)
+    objective = add(model, term)
+    assert objective is not None
+    model.cp.minimize(objective.total)
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 900
+    solver.parameters.num_workers = 1
+    solver.parameters.random_seed = 0
+    solver.parameters.max_deterministic_time = work
+    assert solver.solve(model.cp) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    alone = solver.value(objective.total)
+
+    looped = solve(
+        term,
+        Budget(
+            seconds=900,
+            seed=0,
+            deterministic_seconds=work,
+            rounds=6,
+            round_seconds=120,
+            round_deterministic_seconds=3.0,
+        ),
+    )
+
+    assert looped.solved
+    assert looped.work < solver.deterministic_time * 1.1, "the loop won by spending more"
+    assert looped.penalty < alone * 0.9, f"the loop reached {looped.penalty}, one solve {alone}"
