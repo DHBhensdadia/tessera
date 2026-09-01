@@ -20,5 +20,6 @@ document links to the ADRs that constrain it.
 | [Importing a spreadsheet](import.md) | The two-step import, why pandas is fenced off from interpreting anything, and what "no partial write" means |
 | [The browser console](console.md) | The HTML UI, how a browser gets past the engine token, and why it calls the repository directly |
 | [Packaging and the sidecar](packaging.md) | How the engine and client become one `.dmg`, and how they find each other |
+| [Solving](solving.md) | How a term becomes a timetable and then a good one — the model, the objective, the outer search, and the one rulebook read twice |
 
-More arrive as the engine is built: the solver and the exporters.
+More arrive as the engine is built: the exporters.
