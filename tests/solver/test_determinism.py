@@ -6,18 +6,35 @@ Since then #206 pinned the seed and defaulted the worker count to one, and #231 
 deterministic. So the variance P5 says to measure may be **zero**, and the gate can then be
 exact rather than tolerant, which is a far stronger gate: it catches a change of one point.
 
-May be. That is a hypothesis, and this file is the experiment, in three parts:
+It was a hypothesis, the CI matrix answered it, and **the answer is not one thing** — which is
+the whole reason the three quantities below are asserted separately rather than rolled into
+one. Measured on `macos-14` (arm64) and `ubuntu-latest` (x86-64), the same commit, the same
+seed, the same work budget:
+
+| | arm64 | x86-64 | travels? |
+|---|---|---|---|
+| penalty | 1470 | 1470 | **yes, exactly** |
+| timetable | `688e1ce9` | `6d6d8c39` | **no** — a different arrangement, costing the same |
+| `deterministic_time` | 2.8773943755865643 | 2.8812268035781194 | **no** — 0.133 % apart |
+
+So CP-SAT's *answer* is architecture-independent here and its *route* is not, and its own work
+unit is machine-independent only to about a part in a thousand. A gate that had asserted the
+score alone would have called this settled; a gate that had hashed all three together would
+have said "different" and taught nothing.
+
+The file is therefore the experiment in four parts:
 
 1. **The same machine, twice.** `test_headroom.py` already asserts this for a single solve
    with `rounds=0`. A benchmark runs the whole loop, which chooses neighbourhoods from a
-   seeded `Random` and stops on a clock the machine controls, so it is a different claim.
-2. **Two machines, through CI.** The answer to a fixed term under a fixed budget is written
-   down below and asserted. The matrix runs `ubuntu-latest` (x86-64) and `macos-14` (arm64),
-   so a difference between architectures arrives as a red build with both numbers in it rather
-   than as a benchmark nobody else can reproduce.
-3. **The anti-vacuity guard.** A committed number proves nothing if every configuration
-   produces it. A different seed has to give a different answer, or 1 and 2 are asserting only
-   that the solver reliably does the same trivial thing.
+   seeded `Random` and stops on a clock the machine controls, so it is a different claim. This
+   holds on **both** architectures, so each machine is self-consistent.
+2. **The score, exactly, on any machine.** The one quantity that travels.
+3. **The timetable, from a set of two measured arrangements.** Weaker than an equality and
+   much stronger than nothing: any *third* timetable means the model or the search changed,
+   which is what the assertion is for. If a third runner is ever added the set grows by
+   measurement, not by loosening.
+4. **The anti-vacuity guard.** A committed number proves nothing if every configuration
+   produces it. A different seed has to give a different answer.
 
 **A red build here is not always a defect.** An OR-Tools upgrade changes CP-SAT's search and
 therefore these numbers, and that is the gate working: a solver upgrade is exactly the change
@@ -52,11 +69,30 @@ BUDGET = Budget(
     round_seconds=60,
 )
 
-#: Measured on macOS 15 / arm64, OR-Tools as locked, 2026-09-01. Two runs agreed exactly,
-#: including the last bit of `work`.
+#: The score, and it is the same on every machine measured. Exact, because nothing has been
+#: seen to move it.
 PENALTY = 1470
+
+#: The timetables, one per architecture, and each is exact *on* that architecture — two runs
+#: there agree bit for bit. Named rather than numbered so a failure says which machine's answer
+#: turned up somewhere unexpected.
+TIMETABLES = {
+    "arm64": "688e1ce9685c2f9c",
+    "x86-64": "6d6d8c39f4b6d053",
+}
+
+#: What the search spent, on arm64. x86-64 reports 2.8812268035781194 for the same work.
 WORK = 2.8773943755865643
-TIMETABLE = "688e1ce9685c2f9c"
+
+SPREAD = 0.01
+"""How far `work` may sit from the recorded figure before it counts as a change.
+
+**Derived, not chosen.** The two architectures differ by 0.133 %, so this is roughly seven
+times the largest difference anybody has measured. The headroom is there because two samples
+do not bound a distribution and a runner refresh is not an event anyone announces; it is not
+there to make the gate comfortable. Part 3's harness measures this over twenty-one instances
+instead of one term, and should replace this number with that one.
+"""
 
 
 def digest(found: Solution) -> str:
@@ -102,15 +138,24 @@ class TestTwoMachines:
     def test_the_score_is_the_one_that_was_committed(self, found: Solution) -> None:
         assert found.penalty == PENALTY
 
-    def test_the_timetable_is_the_one_that_was_committed(self, found: Solution) -> None:
-        assert digest(found) == TIMETABLE
+    def test_the_timetable_is_one_of_the_two_that_were_measured(self, found: Solution) -> None:
+        """arm64 and x86-64 find different arrangements of the same cost. Both are recorded,
+        and a third would mean the model or the search changed rather than the hardware."""
+        assert digest(found) in set(TIMETABLES.values()), (
+            f"{digest(found)} is neither of the measured timetables {TIMETABLES}"
+        )
 
-    def test_the_work_is_the_one_that_was_committed(self, found: Solution) -> None:
-        """Separate from the score deliberately. `deterministic_time` is a float CP-SAT
-        accumulates as it goes, and it is the likeliest of the three to differ in its last
-        bits between architectures — which would be worth knowing, and is not the same finding
-        as the two machines disagreeing about the timetable."""
-        assert found.work == WORK
+    def test_the_work_is_within_the_measured_spread(self, found: Solution) -> None:
+        """Separate from the score deliberately, and it is what that separation bought.
+
+        `deterministic_time` is CP-SAT's machine-independent unit, and it turns out to be
+        machine-independent to about a part in a thousand rather than exactly: 2.87739 on
+        arm64 against 2.88123 on x86-64. Asserted here as a band around the recorded figure,
+        which is P5's *measured, not guessed* with the measurement now in hand.
+        """
+        assert abs(found.work - WORK) / WORK <= SPREAD, (
+            f"{found.work} is more than {SPREAD:.0%} from the recorded {WORK}"
+        )
 
     def test_the_clock_is_not_what_stopped_it(self, found: Solution) -> None:
         """Without this, the three assertions above are wall-clock outcomes in disguise."""
@@ -123,5 +168,5 @@ class TestTheCommittedAnswerIsNotWhateverAnythingWouldProduce:
         elsewhere = solve(TERM, replace(BUDGET, seed=7))
 
         assert elsewhere.outcome is Outcome.SOLVED
-        assert digest(elsewhere) != TIMETABLE
+        assert digest(elsewhere) not in set(TIMETABLES.values())
         assert elsewhere.penalty != PENALTY
