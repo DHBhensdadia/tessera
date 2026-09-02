@@ -36,7 +36,18 @@ echo "==> waiting for CI on the commit just pushed"
 SHA=$(git rev-parse HEAD)
 sleep 20
 
-for _ in $(seq 1 60); do
+# Thirty minutes. The old window was ten, and CI has been taking eleven to twelve for
+# months — so the loop was falling out *before the run finished*, keeping a snapshot whose
+# conclusion was still null, and reporting that as red. It printed a job list fetched
+# afterwards, by which time everything really had passed, so the output contradicted its own
+# verdict: every job "success", followed by "RED".
+#
+# That is #49's failure with the sign flipped, and it is not the harmless direction it looks
+# like. A gate that cries wolf is a gate people learn to push past, and the one time it is
+# right nobody will read it.
+DEADLINE=180
+
+for _ in $(seq 1 "$DEADLINE"); do
     RUN=$(gh run list --workflow=CI --limit 20 \
             --json databaseId,headSha,status,conclusion \
             --jq "[.[] | select(.headSha == \"$SHA\")] | first" 2>/dev/null)
@@ -49,14 +60,26 @@ if [ -z "${RUN:-}" ] || [ "$RUN" = "null" ]; then
     exit 1
 fi
 
+STATUS=$(echo "$RUN" | jq -r .status)
+CONCLUSION=$(echo "$RUN" | jq -r .conclusion)
+
 gh run view "$(echo "$RUN" | jq -r .databaseId)" \
     --json jobs -q '.jobs[] | "  \(.name): \(.conclusion)"'
 
-if [ "$(echo "$RUN" | jq -r .conclusion)" = "success" ]; then
-    echo
+echo
+# "Did not finish" and "finished red" are different facts and used to print the same
+# sentence. Saying which one happened is the whole repair: one means look at the run, the
+# other means wait for it.
+if [ "$STATUS" != "completed" ]; then
+    echo "CI has not finished after $((DEADLINE / 6)) minutes — status $STATUS, nothing is claimed"
+    echo "  gh run watch \$(gh run list --workflow=CI --limit 20 \\"
+    echo "      --json databaseId,headSha --jq '[.[] | select(.headSha == \"$SHA\")] | first.databaseId')"
+    exit 1
+fi
+
+if [ "$CONCLUSION" = "success" ]; then
     echo "green on $(git rev-parse --short HEAD)"
 else
-    echo
-    echo "RED — the pushed commit is not green"
+    echo "RED — the pushed commit finished $CONCLUSION"
     exit 1
 fi
