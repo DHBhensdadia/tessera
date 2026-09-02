@@ -63,6 +63,50 @@ jobs:
           TESSERA_ITC2007_INSTANCES: ${{ github.workspace }}/.itc2007
         run: uv run pytest -m benchmark -q
 
+      # The sweep itself, and deliberately **without** `--baseline`.
+      #
+      # The committed baseline was measured at a three-hundred-second *wall clock*, which is
+      # the competition's protocol and the only budget a published comparison can honestly
+      # use — and a wall clock is not reproducible on other hardware. Comparing an
+      # `ubuntu-latest` runner against numbers taken on an arm64 laptop would fire D7's
+      # quality verdict on almost every row, which is a gate that cries wolf (#258) with the
+      # wolf built in at the design stage.
+      #
+      # So this is a **report**: the table goes into the job summary and the results are kept
+      # as an artefact. What actually guards against regression runs on every push and needs
+      # no download — `tests/solver/test_determinism.py` pins a penalty, a timetable and a work
+      # figure that CI's two architectures both reproduce, and `tests/bench/` exercises the
+      # harness itself. `--baseline` stays for a human re-running the sweep on the machine the
+      # baseline came from.
+      - name: the sweep
+        if: steps.instances.outputs.have == 'true'
+        id: sweep
+        run: |
+          uv run tessera bench --suite itc2007 \
+            --instances "$GITHUB_WORKSPACE/.itc2007" \
+            --write results.json | tee sweep.txt
+
+      # `always()` so the table is published whether or not a verdict fired: a run that found
+      # a regression is the one whose numbers somebody most wants to read.
+      - name: the table
+        if: always() && steps.instances.outputs.have == 'true'
+        run: |
+          {
+            echo "### ITC-2007"
+            echo
+            sed -n '/^| instance/,$p' sweep.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: keep the results
+        if: always() && steps.instances.outputs.have == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: itc2007-results
+          path: |
+            results.json
+            sweep.txt
+          retention-days: 90
+
       - name: say why nothing ran
         if: steps.instances.outputs.have != 'true'
         run: |
