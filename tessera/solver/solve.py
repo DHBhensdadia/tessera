@@ -27,9 +27,9 @@ from ortools.sat.python import cp_model
 from tessera.domain.validation import Snapshot
 from tessera.domain.validation.snapshot import Placement
 from tessera.solver import model as build_model
-from tessera.solver import objective as score
 from tessera.solver import search
 from tessera.solver.budget import Budget
+from tessera.solver.cost import CostModel, Preferences
 from tessera.solver.result import Outcome, Solution
 
 __all__ = ["Budget", "solve"]
@@ -40,10 +40,18 @@ def solve(
     budget: Budget | None = None,
     formulation: build_model.Formulation | None = None,
     on_improvement: Callable[[Solution], None] | None = None,
+    costs: CostModel | None = None,
 ) -> Solution:
-    """Find a timetable for this term, make it as good as the budget allows, or say why not."""
+    """Find a timetable for this term, make it as good as the budget allows, or say why not.
+
+    `costs` says what *better* means. It defaults to the term's own preferences, which is what
+    every caller in the product wants and what this did before there was anything else to
+    want; 4.5's benchmark passes CB-CTT's four soft constraints instead, so the published
+    metric is computed by the search that ships rather than by a copy of it.
+    """
     budget = budget or Budget()
     formulation = formulation or build_model.Formulation()
+    costs = costs if costs is not None else Preferences(snapshot)
 
     started = time.perf_counter()
     try:
@@ -54,7 +62,7 @@ def solve(
         # shortcut — and it is *proven*, which is what distinguishes it from a timeout.
         return Solution(outcome=Outcome.IMPOSSIBLE, seconds=time.perf_counter() - started)
 
-    score.enforce(model, snapshot)
+    costs.enforce(model)
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = budget.seconds
@@ -94,6 +102,7 @@ def solve(
         formulation=formulation,
         incumbent=first,
         started=started,
+        costs=costs,
         already=solver.deterministic_time,
         on_improvement=on_improvement,
     )

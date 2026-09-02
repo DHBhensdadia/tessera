@@ -71,14 +71,18 @@ class NotScorableError(NotImplementedError):
 class Objective:
     """What the model minimises, and how to read the result back out.
 
-    `by_kind` is per `ConstraintKind` rather than per constraint, matching
-    `Report.penalty_breakdown`: an institution with three narrowed `MIN_GAP` rules wants to
-    know what gaps cost it, not what rule 14 cost it. Reporting them the same way is what
-    makes the two comparable at all.
+    `by_kind` is per *kind* rather than per constraint, matching `Report.penalty_breakdown`:
+    an institution with three narrowed `MIN_GAP` rules wants to know what gaps cost it, not
+    what rule 14 cost it. Reporting them the same way is what makes the two comparable at all.
+
+    Keyed by the kind's **name** rather than by `ConstraintKind`, because 4.5's benchmark
+    minimises CB-CTT's four soft constraints through this same object and they are not Tessera
+    rules. `ConstraintKind` is a `StrEnum`, so for the sixteen this changes neither the keys
+    nor the order they sort in.
     """
 
     total: cp_model.IntVar
-    by_kind: dict[ConstraintKind, cp_model.IntVar]
+    by_kind: dict[str, cp_model.IntVar]
 
     units: tuple[cp_model.IntVar, ...] = ()
     """Every violation count the terms produced, hard ones included.
@@ -88,7 +92,7 @@ class Objective:
 
     def floors(self) -> tuple[int, ...]:
         """The lowest value each violation count may take. Every one of them is zero."""
-        return tuple(_bounds(unit)[0] for unit in self.units)
+        return tuple(bounds(unit)[0] for unit in self.units)
 
     def penalty(self, solver: cp_model.CpSolver) -> int:
         return int(solver.value(self.total))
@@ -99,7 +103,7 @@ class Objective:
         Zero-cost kinds are dropped for the same reason the validator drops them: a rule an
         institution set and never broke is not a line in a report about what went wrong.
         """
-        scored = {kind.value: int(solver.value(var)) for kind, var in self.by_kind.items()}
+        scored = {kind: int(solver.value(var)) for kind, var in self.by_kind.items()}
         return dict(sorted(((k, v) for k, v in scored.items() if v), key=lambda item: -item[1]))
 
 
@@ -874,10 +878,10 @@ def add(model: Model, snapshot: Snapshot) -> Objective | None:
     if not weighted:
         return None
 
-    by_kind: dict[ConstraintKind, cp_model.IntVar] = {}
+    by_kind: dict[str, cp_model.IntVar] = {}
     for kind, scored in sorted(weighted.items()):
         cost = model.cp.new_int_var(
-            0, sum(_bounds(unit)[1] * weight for unit, weight in scored), f"cost[{kind.value}]"
+            0, sum(bounds(unit)[1] * weight for unit, weight in scored), f"cost[{kind.value}]"
         )
         model.cp.add(
             cost
@@ -885,9 +889,9 @@ def add(model: Model, snapshot: Snapshot) -> Objective | None:
                 [unit for unit, _ in scored], [weight for _, weight in scored]
             )
         )
-        by_kind[kind] = cost
+        by_kind[kind.value] = cost
 
-    total = model.cp.new_int_var(0, sum(_bounds(c)[1] for c in by_kind.values()), "penalty")
+    total = model.cp.new_int_var(0, sum(bounds(c)[1] for c in by_kind.values()), "penalty")
     model.cp.add(total == sum(by_kind.values()))
     return Objective(total=total, by_kind=by_kind, units=tuple(every))
 
@@ -904,7 +908,7 @@ def _refuse_what_cannot_be_scored(snapshot: Snapshot) -> None:
         raise NotScorableError(f"no objective term exists for: {named}")
 
 
-def _bounds(var: cp_model.IntVar) -> tuple[int, int]:
+def bounds(var: cp_model.IntVar) -> tuple[int, int]:
     """The lowest and highest values a variable may take.
 
     **The `list` is load-bearing.** A variable's domain is a flattened list of bounds, and
@@ -914,6 +918,12 @@ def _bounds(var: cp_model.IntVar) -> tuple[int, int]:
     turned each soft rule into a hard one: the pinned tests all reported the term infeasible
     while the validator called the same timetable fine. Another API that answers a question
     it did not understand instead of refusing it.
+
+    **Public because the warning has to be reachable.** While this was `_bounds` the trap was
+    documented in a place a second module could not reuse, and 4.5's CB-CTT objective promptly
+    wrote its own ceiling with `domain[-1]` in it — every cost variable pinned to `[0, 0]`,
+    every frozen model infeasible, and the loop reporting a penalty of zero on a timetable the
+    checker priced at 2,664. The same trap, in the same repository, twice.
     """
     domain = list(var.proto.domain)
     return int(domain[0]), int(domain[-1])

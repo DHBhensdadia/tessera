@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable, Mapping
+from functools import partial
 
 from tessera.domain.entities import Unavailability
 from tessera.domain.ids import AssignmentId, SessionId
@@ -29,6 +30,9 @@ from tessera.domain.validation.snapshot import Placement
 type Strategy = Callable[
     [Snapshot, Mapping[SessionId, Placement], random.Random, int], frozenset[SessionId]
 ]
+
+type Blame = Callable[[Mapping[SessionId, Placement]], Mapping[SessionId, int]]
+"""What each session costs. `Preferences.blame` and the benchmark's checker both fit this."""
 
 
 def movable(snapshot: Snapshot) -> list[SessionId]:
@@ -106,28 +110,48 @@ def one_subject(
     return frozenset(rng.sample(chosen, min(window, len(chosen))))
 
 
+def blamed(snapshot: Snapshot, placed: Mapping[SessionId, Placement]) -> dict[SessionId, int]:
+    """What each session costs, as the **validator** attributes it.
+
+    Every soft violation names a session and states what it cost, so this is the reading that
+    shares none of the solver's logic (4.1's D1). Hard violations are left out: a timetable the
+    solver is holding should not have any, and a broken one is broken rather than expensive.
+
+    Public because it is also `Preferences.blame` — the same ranking, reached through the cost
+    model rather than by importing this. Two copies of it would be two answers to *which
+    sessions are worth moving*.
+    """
+    cost: dict[SessionId, int] = {}
+    for violation in judge(snapshot, placed).violations:
+        if not violation.is_hard:
+            cost[violation.session_id] = cost.get(violation.session_id, 0) + violation.cost
+    return cost
+
+
 def worst_first(
     snapshot: Snapshot,
     placed: Mapping[SessionId, Placement],
     rng: random.Random,
     window: int,
+    *,
+    blame: Blame | None = None,
 ) -> frozenset[SessionId]:
-    """The sessions carrying the most cost, as the **validator** attributes it.
+    """The sessions carrying the most cost, as an independent reading attributes it.
 
-    Every soft violation names a session and states what it cost, so the ranking comes from the
-    reading that shares none of the solver's logic (4.1's D1). Taking it from the objective
-    instead would let one implementation choose the neighbourhoods that flatter it.
+    `blame` defaults to the validator, which is what this always did and what the product
+    always wants. It is a parameter because 4.5's benchmark optimises **CB-CTT's** objective,
+    and ranking those sessions by Tessera's rules would free the wrong handful every round —
+    a working benchmark quietly reporting a worse solver. What must not happen is the ranking
+    coming from the objective itself, which would let one implementation choose the
+    neighbourhoods that flatter it; both readings passed here are independent of it.
 
     Ties are broken by the seeded `Random` rather than by session id, so a term where everything
     costs the same does not free the same handful every round for ever.
     """
-    blamed: dict[SessionId, int] = {}
-    for violation in judge(snapshot, placed).violations:
-        if not violation.is_hard:
-            blamed[violation.session_id] = blamed.get(violation.session_id, 0) + violation.cost
+    cost = blame(placed) if blame is not None else blamed(snapshot, placed)
 
     free = movable(snapshot)
-    guilty = sorted((s for s in free if blamed.get(s)), key=lambda s: (-blamed[s], rng.random()))
+    guilty = sorted((s for s in free if cost.get(s)), key=lambda s: (-cost[s], rng.random()))
     if not guilty:
         return frozenset(rng.sample(free, min(window, len(free))))
     return frozenset(guilty[:window])
@@ -202,3 +226,14 @@ STRATEGIES: dict[str, Strategy] = {
     "one_subject": one_subject,
     "worst_first": worst_first,
 }
+
+
+def with_blame(blame: Blame) -> dict[str, Strategy]:
+    """The same four strategies, with `worst_first` ranking by this reading of the cost.
+
+    A bound copy rather than a fifth argument on all four: three of them have no use for it,
+    and a parameter a function ignores is a worse interface than a table that binds it where
+    it means something. `STRATEGIES` keeps its four-argument shape and every caller that does
+    not care keeps working unchanged.
+    """
+    return {**STRATEGIES, "worst_first": partial(worst_first, blame=blame)}

@@ -40,8 +40,9 @@ from tessera.domain.validation import Snapshot
 from tessera.domain.validation.snapshot import Placement
 from tessera.solver import model as build_model
 from tessera.solver import neighbourhood
-from tessera.solver import objective as score
 from tessera.solver.budget import Budget
+from tessera.solver.cost import CostModel
+from tessera.solver.objective import Objective
 from tessera.solver.result import Outcome, Placed, Solution, Step
 
 
@@ -65,6 +66,7 @@ def improve(
     formulation: build_model.Formulation,
     incumbent: Mapping[SessionId, Placement],
     started: float,
+    costs: CostModel,
     already: float = 0.0,
     on_improvement: Callable[[Solution], None] | None = None,
 ) -> Solution:
@@ -74,6 +76,10 @@ def improve(
     CP-SAT the feasibility answer as a starting point for a fresh optimisation makes it markedly
     worse, because an arbitrary valid timetable is a bad neighbourhood to anchor a search in.
     The rounds that follow are warm, where the incumbent is the thing being improved.
+
+    **`costs` is what "better" means, and this function does not know.** Tessera's sixteen
+    weighted rules are one answer and CB-CTT's four are another (4.5's D1); everything below is
+    the same either way, which is the whole point of the split.
     """
     rng = random.Random(budget.seed)
     # The loop supplies its own warm start, from the incumbent rather than from the term. A
@@ -81,7 +87,7 @@ def improve(
     # answers that with MODEL_INVALID — which cost a full suite run to find, because a round
     # that cannot build looks exactly like a round that found nothing.
     formulation = replace(formulation, hint=False)
-    best = _what_it_costs(snapshot, formulation, incumbent)
+    best = _what_it_costs(snapshot, formulation, incumbent, costs)
     if best is None and any(c.effective_weight for c in snapshot.constraints):
         # The two reasons this can be `None` are not alike. A term that prices nothing costs
         # nothing, and zero is the answer. A term that prices something and could not be
@@ -113,7 +119,7 @@ def improve(
     work = already + best.work
 
     whole = build_model.build(snapshot, formulation)
-    objective = score.add(whole, snapshot)
+    objective = costs.add(whole)
     assert objective is not None  # `_what_it_costs` already established that something is
 
     if len(whole.cp.proto.variables) <= budget.whole_model_ceiling:
@@ -156,15 +162,20 @@ def improve(
                     snapshot=snapshot,
                 )
 
-    rotation = budget.strategies or tuple(neighbourhood.STRATEGIES)
+    # Bound to *this* cost model's reading of what a session costs. With the validator's
+    # ranking and a CB-CTT objective, `worst_first` would free the sessions Tessera dislikes
+    # while the search minimised something else — a loop that runs, improves, and reports a
+    # worse solver than the one that is there.
+    strategies = neighbourhood.with_blame(costs.blame)
+    rotation = budget.strategies or tuple(strategies)
     turn = len(trajectory)
     while _keep_going(budget, started, turn, best.penalty):
         named = rotation[turn % len(rotation)]
         window = budget.windows[turn % len(budget.windows)]
-        free = neighbourhood.STRATEGIES[named](snapshot, best.placements, rng, window)
+        free = strategies[named](snapshot, best.placements, rng, window)
         frozen = {s: p for s, p in best.placements.items() if s not in free}
         sub = build_model.build(snapshot, formulation, frozen)
-        priced = score.add(sub, snapshot)
+        priced = costs.add(sub)
         assert priced is not None
 
         attempt, spent, burnt = _run(
@@ -210,6 +221,7 @@ def _what_it_costs(
     snapshot: Snapshot,
     formulation: build_model.Formulation,
     placed: Mapping[SessionId, Placement],
+    costs: CostModel,
 ) -> Attempt | None:
     """What the solver's own objective makes of a timetable it has already got.
 
@@ -225,7 +237,7 @@ def _what_it_costs(
     error.
     """
     model = build_model.build(snapshot, formulation, placed)
-    objective = score.add(model, snapshot)
+    objective = costs.add(model)
     if objective is None:
         return None
     attempt, _, _ = _run(
@@ -242,7 +254,7 @@ def _what_it_costs(
 
 def _run(
     model: build_model.Model,
-    objective: score.Objective,
+    objective: Objective,
     *,
     incumbent: Mapping[SessionId, Placement],
     warm: bool,

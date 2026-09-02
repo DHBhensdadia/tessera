@@ -36,7 +36,7 @@ from tessera.domain.ids import InstructorId, RoomId, SessionId
 from tessera.domain.validation import validate
 from tessera.solver import Budget, Outcome, Solution, solve
 from tessera.solver.model import build
-from tessera.solver.objective import TERMS, NotScorableError, _bounds, add
+from tessera.solver.objective import TERMS, NotScorableError, add, bounds
 from tests.domain.validation.institution import (
     BATCH_A,
     BATCH_B,
@@ -697,9 +697,9 @@ class TestNoTermCanGoNegative:
         while the validator called the same timetable fine. Nothing raised.
         """
         model = cp_model.CpModel()
-        assert _bounds(model.new_bool_var("b")) == (0, 1)
-        assert _bounds(model.new_int_var(2, 9, "i")) == (2, 9)
-        assert _bounds(
+        assert bounds(model.new_bool_var("b")) == (0, 1)
+        assert bounds(model.new_int_var(2, 9, "i")) == (2, 9)
+        assert bounds(
             model.new_int_var_from_domain(cp_model.Domain.from_values([0, 3, 7]), "d")
         ) == (0, 7)
 
