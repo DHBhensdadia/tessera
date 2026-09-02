@@ -103,6 +103,25 @@ class Formulation:
     the other direction. What the hint buys is a better answer when the search gets far enough
     to have one — making that answer *better* than the incumbent is the outer loop's job."""
 
+    capacity_is_priced: bool = False
+    """Let a session into a room too small for it, and leave the overflow to the objective.
+
+    **Off, and it must stay off for anything Tessera does.** A room that seats sixty seats
+    sixty, and #213 keeps that a hard invariant knowing what it costs: `comp01` has 64 lectures
+    needing a room for 31 and a week containing 60 such room-periods, so Tessera refuses a
+    timetable the University of Udine actually ran.
+
+    It exists because **CB-CTT prices capacity at one point per standing student** and 4.5's
+    benchmark has to compute the published metric rather than a stricter one of our own. Under
+    a stricter rule the comparison would be against a different problem, and losing it would
+    prove nothing.
+
+    Note where this sits: capacity is a *filter on candidate rooms* (`_candidates`), not a
+    constraint that could be dropped, and a session with no room large enough raises
+    `UnsatisfiableError` before any search. So relaxing it means **generating candidates
+    differently**, which is why it is a formulation flag rather than something the objective can
+    undo, and why `tessera.bench` is a leaf no part of the product may import."""
+
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
@@ -176,7 +195,7 @@ def build(
     model = Model(cp=cp_model.CpModel())
 
     for session_id, session in sorted(snapshot.sessions.items()):
-        _session(model, snapshot, session_id, session, fixed.get(session_id))
+        _session(model, snapshot, session_id, session, formulation, fixed.get(session_id))
 
     _rooms_hold_one_thing(model, snapshot)
     _people_are_in_one_place(model, snapshot)
@@ -196,6 +215,7 @@ def _session(
     snapshot: Snapshot,
     session_id: SessionId,
     session: Session,
+    formulation: Formulation,
     frozen: Placement | None = None,
 ) -> None:
     """The variables for one session: when it starts, and which room it is in.
@@ -229,7 +249,9 @@ def _session(
         start, session.duration_slots, f"teaching[{session_id}]"
     )
 
-    candidates = _candidates(model, snapshot, session_id, session, start, legal, frozen)
+    candidates = _candidates(
+        model, snapshot, session_id, session, start, legal, formulation, frozen
+    )
     if not candidates:
         raise UnsatisfiableError(
             f"session {session_id} has no room that can hold it — check capacity, the "
@@ -272,6 +294,7 @@ def _candidates(
     session: Session,
     start: cp_model.IntVar,
     legal: set[Slot],
+    formulation: Formulation,
     frozen: Placement | None = None,
 ) -> list[Candidate]:
     """The rooms this session could be in, and an optional interval for each.
@@ -282,7 +305,10 @@ def _candidates(
     `room_has_required_features` invariants use, so the solver cannot consider a room the
     validator would reject.
     """
-    headcount = snapshot.headcount(session)
+    # Zero when capacity is priced rather than required, which leaves `can_host` answering
+    # about features alone. The features half is never relaxed: a lecture needing a projector
+    # in a room without one is not a cost, it is a lecture that cannot happen.
+    headcount = 0 if formulation.capacity_is_priced else snapshot.headcount(session)
     found: list[Candidate] = []
 
     for room_id, room in sorted(snapshot.rooms.items()):
