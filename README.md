@@ -48,8 +48,52 @@ approach that won the International Timetabling Competition 2019.
   balance and room utilisation, publish one.
 - **Exports** to PDF, self-contained HTML, CSV and calendar subscriptions.
 
-Quality is measured, not asserted: the solver is benchmarked in CI against published
-best-known results for the ITC-2007 curriculum-based course timetabling instances.
+Quality is measured, not asserted.
+
+## Benchmark
+
+The solver is run against the 21 ITC-2007 curriculum-based instances, under the competition's
+own rules and its own three-hundred-second budget. Every timetable below is checked by an
+independently written implementation of the same formulation, which shares no code with the
+model that produced it — a disagreement between the two stops the run rather than being
+reported.
+
+| | |
+|---|---|
+| instances solved | **21 / 21** |
+| valid CB-CTT solutions | **21 / 21** |
+| budget | 300 s wall, one worker, `random_seed = 0` |
+| hardware | macOS 15, arm64 · OR-Tools 9.15.6755 |
+
+| instance | penalty | rounds | | instance | penalty | rounds | | instance | penalty | rounds |
+|---|---|---|---|---|---|---|---|---|---|---|
+| comp01 | 14 | 1768 | | comp08 | 649 | 32 | | comp15 | 223 | 1240 |
+| comp02 | 282 | 1140 | | comp09 | 213 | 275 | | comp16 | 255 | 292 |
+| comp03 | 221 | 1255 | | comp10 | 1704 | 28 | | comp17 | 450 | 77 |
+| comp04 | 127 | 376 | | comp11 | **0** | 1 | | comp18 | 186 | 32 |
+| comp05 | 537 | 696 | | comp12 | 531 | 992 | | comp19 | 196 | 873 |
+| comp06 | 2986 | 24 | | comp13 | 164 | 252 | | comp20 | 3296 | 28 |
+| comp07 | 2697 | 28 | | comp14 | 163 | 392 | | comp21 | 278 | 632 |
+
+**No comparison against published best-known figures is shown, and that is deliberate.** The
+canonical results portal for this benchmark is gone — one host no longer resolves, another
+redirects to itself, and the competition's own results page is a 404 — so the values this
+project holds cannot be traced to a source. They are in
+[`benchmarks/best-known.toml`](benchmarks/best-known.toml) marked `verified = false`, and the
+harness prints its own absence rather than a comparison nobody has checked.
+
+**What the table does say is where the solver is weak, and why.** The `rounds` column is the
+number of Fix-and-Optimize iterations each instance fitted into its budget, and it predicts the
+result almost perfectly: `comp01` fitted 1,768 rounds, `comp06` fitted 24, and the difference
+between them is a factor of eighty in how long one round takes to build. Every instance below a
+hundred rounds scores badly and every instance above two hundred scores respectably. The
+bottleneck is not the search — it is rebuilding a sub-model in Python once per round, which is
+[a known cost](docs/internals/benchmarking.md) with a fix already scoped.
+
+`comp11` is solved to its optimum of zero, and `comp01` comes within nine points.
+
+How the benchmark works, what it relaxes and what it refuses to claim:
+[docs/internals/benchmarking.md](docs/internals/benchmarking.md).
 
 ## Architecture
 
