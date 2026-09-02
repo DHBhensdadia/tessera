@@ -415,18 +415,35 @@ class TestStartingFromWhatIsPlaced:
     reason="set TESSERA_ITC2007_INSTANCES to the ITC-2007 directory",
 )
 def test_re_optimising_a_real_instance_beats_starting_over() -> None:
-    """The measured claim, on the instance that showed it.
+    """The hint's whole case, on the instance that showed it, and stated so it can be checked.
 
-    `comp11` solved from nothing scores 1395. Put that timetable back into the term and solve
-    again on the same budget: without the hint the answer is **1618** — worse than what it was
-    handed — and with it, 1395.
+    Re-optimising means handing the solver a timetable somebody already has. Without the hint
+    it ignores that timetable entirely — it builds exactly the model it would have built for an
+    empty term, so it arrives at exactly the same answer and the person's work counted for
+    nothing. With the hint it starts from what it was given and does better. On `comp11` at four
+    rounds: **1064 either way without it, 778 with**.
 
-    Reproducible rather than lucky: one worker, a pinned seed and a deterministic budget, so
-    the same three numbers come back on any machine (#231). It needs the 272 KB download, so
-    it skips in CI for the same reason the CB-CTT sweep does.
+    **This test used to assert something it could only pass by luck.** It claimed
+    `starting_over.penalty > first.penalty` — that re-solving cold came back *worse* than the
+    first solve — which was measured in 4.4 part 1 under a wall-clock budget, before
+    deterministic budgets and before the loop. Under a work budget the two runs build the same
+    model and get the same number by construction, so the comparison was a coin flip on how many
+    rounds each happened to fit; it came up tails on 2026-09-02 with both at 259 (#267). The
+    equality is now asserted as the fact it is, and it is the *reason* the hint matters rather
+    than a rival to it.
+
+    Budgeted in rounds as well as work, because a deterministic cap bounds each solve and the
+    outer loop keeps going while the clock allows — `Budget.rounds` says so, and this is what
+    ignoring it looks like. It needs the 272 KB download, so it skips where that is absent.
     """
     instance = Path(os.environ["TESSERA_ITC2007_INSTANCES"]) / "comp11.ctt"
-    budget = Budget(seconds=900, deterministic_seconds=25.0)
+    budget = Budget(
+        seconds=900,
+        deterministic_seconds=25.0,
+        rounds=4,
+        round_seconds=60,
+        round_deterministic_seconds=2.0,
+    )
 
     term = cbctt(instance)
     first = solve(term, budget, PLAIN)
@@ -436,9 +453,12 @@ def test_re_optimising_a_real_instance_beats_starting_over() -> None:
     starting_over = solve(again, budget, PLAIN)
     hinted = solve(again, budget, Formulation(hint=True))
 
-    assert starting_over.penalty > first.penalty, "the instance no longer shows the defect"
-    assert hinted.penalty <= first.penalty
+    assert starting_over.penalty == first.penalty, (
+        "without the hint a term's own timetable changes nothing, and if that stopped being "
+        "true the hint would not be what this test is about"
+    )
     assert hinted.penalty < starting_over.penalty
+    assert hinted.penalty <= first.penalty
 
 
 class TestABudgetMeasuredInWorkRatherThanTime:
