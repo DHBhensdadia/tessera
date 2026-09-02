@@ -80,6 +80,30 @@ class Budget:
     off. Pass an explicit schedule to do better on a term you know.
     """
 
+    whole_seconds: float | None = None
+    """How much of the clock the one unrestricted attempt may take, or `None` for all of it.
+
+    **`None` is what this always did, and it is wrong for a long budget.** `_left()` hands the
+    whole-model solve everything remaining, so on a three-hundred-second job it takes three
+    hundred seconds and the Fix-and-Optimize rounds never run at all. Measured on ITC-2007 at
+    exactly that budget, penalties, whole attempt against rounds only:
+
+    | | whole attempt | rounds only |
+    |---|---|---|
+    | `comp02` | 2961 | **222** |
+    | `comp05` | 856 | **712** |
+    | `comp11` | **0**, proven | 8 |
+
+    **Neither wins.** The unrestricted attempt is the only thing that can prove an optimum, and
+    on `comp11` it finds one in thirty-three seconds; on `comp02` it spends five minutes to be
+    thirteen times worse than the loop. `whole_model_ceiling` was meant to decide this and
+    cannot: it reads the model's *size*, and these models are all small enough to attempt.
+
+    So the share is a share of the clock. Give the whole attempt a bounded slice — it returns
+    early when it proves an optimum, so a generous slice costs nothing on the instances it
+    suits — and the rounds get the rest.
+    """
+
     round_seconds: float = 5.0
     """The wall-clock ceiling on one round's sub-solve."""
 

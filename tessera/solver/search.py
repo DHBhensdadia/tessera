@@ -129,7 +129,7 @@ def improve(
             incumbent=best.placements,
             warm=False,
             budget=budget,
-            seconds=_left(budget, started),
+            seconds=_share(budget, started),
             deterministic=budget.deterministic_seconds,
         )
         work += burnt
@@ -338,6 +338,16 @@ RESERVE = 0.5
 def _left(budget: Budget, started: float) -> float:
     """How much of the wall clock is left to spend, less what it takes to stop cleanly."""
     return budget.seconds - RESERVE - (time.perf_counter() - started)
+
+
+def _share(budget: Budget, started: float) -> float:
+    """What the one unrestricted attempt may take.
+
+    All of it, unless the caller says otherwise — which is what it always did, and what makes a
+    long budget spend everything on a single solve and never reach a round (`Budget.whole_seconds`).
+    """
+    left = _left(budget, started)
+    return left if budget.whole_seconds is None else min(left, budget.whole_seconds)
 
 
 def _keep_going(budget: Budget, started: float, turn: int, penalty: int) -> bool:
