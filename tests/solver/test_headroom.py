@@ -263,6 +263,17 @@ SHAPED: list[tuple[str, int, int, int]] = [
     ("dept(24,6) on two sites", 24, 6, 2),
 ]
 
+#: Enough work to *prove* an optimum on these shapes, and budgeted in work so that whether it
+#: is proven stops being a fact about the machine. They need 3.2 to 4.5 units; this is twenty.
+#:
+#: It used to be `Budget(seconds=30)`, and the test failed once on a laptop six hours into
+#: continuous CP-SAT: the unrestricted attempt did not finish, the loop spun to round 93, and
+#: `is_optimal` was false for a reason with nothing to do with the levers (#264). Whether two
+#: formulations reach the *same* optimum is what this is about, and that is a fact about the
+#: model. `rounds=0` keeps it about the unrestricted attempt, which is the only thing that can
+#: prove one, and makes a failure quick rather than a five-minute spin.
+PROVEN = Budget(seconds=300, deterministic_seconds=20.0, rounds=0)
+
 
 @pytest.fixture(scope="module")
 def unlevered() -> dict[str, object]:
@@ -304,12 +315,12 @@ class TestNoLeverChangesTheAnswer:
 
         assert _alike(build(snapshot), snapshot), f"{name} has no interchangeable rooms"
         if name not in unlevered:
-            unlevered[name] = solve(snapshot, Budget(seconds=30), PLAIN)
+            unlevered[name] = solve(snapshot, PROVEN, PLAIN)
         plain = cast(Solution, unlevered[name])
         assert plain.is_optimal
         assert plain.penalty > 0, f"{name} costs nothing, so nothing can be lost"
 
-        levered = solve(snapshot, Budget(seconds=30), lever)
+        levered = solve(snapshot, PROVEN, lever)
 
         assert levered.is_optimal
         assert levered.penalty == plain.penalty

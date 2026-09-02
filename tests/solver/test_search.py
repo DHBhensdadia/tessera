@@ -47,6 +47,12 @@ LOOPED = Budget(
     round_deterministic_seconds=1.0,
 )
 
+#: Enough work to *prove* an optimum on `department(24, 6)`, which needs 3.3 units. Budgeted in
+#: work for the same reason `LOOPED` is: whether an unrestricted attempt finishes proving
+#: anything inside thirty seconds is a fact about the machine, and the sibling of this budget in
+#: `test_headroom.py` failed exactly that way once (#264).
+PROVEN = Budget(seconds=300, deterministic_seconds=20.0, rounds=0)
+
 #: A timetable of one session, for the guards that are about the *numbers* a `Solution` carries.
 #: A solved answer with nothing in it is refused first and separately, so a construction meant
 #: to trip a later guard has to get past that one.
@@ -236,7 +242,7 @@ class TestTheDescentIsMonotone:
         them would make the trajectory non-decreasing and `Solution` would refuse it.
         """
         term = department(24, 6)
-        best = solve(term, Budget(seconds=30))
+        best = solve(term, PROVEN)
         assert best.is_optimal and best.penalty > 0
 
         found = solve(with_timetable(term, best.placements), LOOPED)
@@ -347,7 +353,7 @@ class TestTheBoundHasProvenance:
         assert looped.lower_bound == 0
 
     def test_an_unrestricted_solve_does_claim_one(self) -> None:
-        whole = solve(department(24, 6), Budget(seconds=30))
+        whole = solve(department(24, 6), PROVEN)
 
         assert whole.bound_is_proven is True
         assert whole.is_optimal

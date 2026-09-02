@@ -48,18 +48,34 @@ def bare(sessions: int, rooms: int) -> Snapshot:
     )
 
 
+#: Twenty units of CP-SAT's own work, against the **1.17** a department at this scale actually
+#: needs — seventeen times over. `seconds` is a ceiling that should not be reached, not the
+#: budget (#231, #244).
+#:
+#: It used to be `Budget(seconds=30)` with `assert found.seconds < 30`, which is a claim about
+#: the machine wearing the clothes of a claim about the solver. It held for three phases and
+#: then failed on a laptop six hours into continuous CP-SAT (#264).
+AT_SCALE = Budget(seconds=300, deterministic_seconds=20.0, rounds=0)
+
+
 def test_a_department_is_solved_and_the_validator_accepts_it() -> None:
     """NFR-4 asks for a first feasible solution at department scale in under 30 seconds, and
     4.1 exists so that "solved" can be checked by something sharing none of the solver's logic.
 
     One solve, both questions. They were two tests solving the same institution twice, which
     cost ten seconds to learn nothing the first had not already established.
+
+    **The thirty seconds is measured, not asserted** (#244). What a fixed amount of *searching*
+    produces is a fact about the model and belongs in a test; how long that searching takes is a
+    fact about the hardware and belongs in the record. Measured 2026-09-02 on macOS 15 / arm64:
+    **5.4 seconds**, and 1.17 units of work. A model that regressed would need more work, which
+    is what the cap below catches — on any machine, at any speed.
     """
     snapshot = bare(sessions=500, rooms=40)
-    found = solve(snapshot, Budget(seconds=30))
+    found = solve(snapshot, AT_SCALE)
 
     assert found.solved
-    assert found.seconds < 30
+    assert found.seconds < AT_SCALE.seconds, "the wall clock was the ceiling, not the budget"
 
     judged = validate(
         Snapshot.of(
