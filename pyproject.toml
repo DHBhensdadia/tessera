@@ -194,3 +194,20 @@ name = "Exporters and importers are standalone"
 type = "forbidden"
 source_modules = ["tessera.export", "tessera.importers"]
 forbidden_modules = ["fastapi", "starlette", "sqlalchemy", "ortools"]
+
+# The benchmark is a leaf. It holds CB-CTT's formulation, which prices room capacity that
+# Tessera refuses outright (#213), and the one way that could damage the product is by being
+# imported into it. Nothing here is a dependency of anything that ships.
+[[tool.importlinter.contracts]]
+name = "Nothing depends on the benchmark"
+type = "forbidden"
+source_modules = [
+    "tessera.api",
+    "tessera.domain",
+    "tessera.repository",
+    "tessera.solver",
+    "tessera.importers",
+    "tessera.export",
+    "tessera.cli",
+]
+forbidden_modules = ["tessera.bench"]
