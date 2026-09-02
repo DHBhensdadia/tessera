@@ -47,3 +47,8 @@ CLAUDE.md
 packaging/out/
 packaging/dist/
 packaging/build/
+
+# The ITC-2007 instances, fetched by scripts/itc2007.py rather than committed: somebody
+# else's data with no declared licence (4.5's D10). The checksums beside the script are what
+# make a fetch as trustworthy as a commit.
+.itc2007/

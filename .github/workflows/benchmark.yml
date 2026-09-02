@@ -1,0 +1,72 @@
+# The ITC-2007 benchmark, on instances this repository does not contain.
+#
+# The 21 `.ctt` files are somebody else's data with no declared licence, so they are fetched
+# and verified rather than redistributed (4.5's D10). `scripts/itc2007.py` does that, and the
+# checksums it verifies against have been committed since 4.2 — which is what makes fetching
+# as trustworthy as committing.
+#
+# **It never gates a push.** The per-push suite in `ci.yml` exercises the whole CB-CTT path on
+# `toy.ctt`, which *is* committed, at full branch coverage. What this adds is scale, and scale
+# takes an hour. Somebody else's web server deciding how a push goes would be the tail wagging
+# the dog.
+name: Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays, early. Nothing waits on it.
+    - cron: "0 3 * * 1"
+
+jobs:
+  itc2007:
+    name: ITC-2007
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version-file: .python-version
+
+      - run: uv sync --locked --all-groups
+
+      # Keyed on the checksums, so a re-issued instance misses the cache and is fetched and
+      # re-verified rather than served stale from it.
+      - uses: actions/cache@v4
+        with:
+          path: .itc2007
+          key: itc2007-${{ hashFiles('scripts/itc2007-instances.sha256') }}
+
+      # Two failures, reported as the different facts they are. A host that cannot be reached
+      # says nothing about this repository, so the run is skipped and says so; a file that
+      # hashes wrong says a great deal, so the job fails.
+      - id: instances
+        name: the instances, fetched and verified
+        run: |
+          set +e
+          uv run python scripts/itc2007.py "$GITHUB_WORKSPACE/.itc2007"
+          code=$?
+          set -e
+          case "$code" in
+            0)  echo "have=true" >> "$GITHUB_OUTPUT" ;;
+            75) echo "have=false" >> "$GITHUB_OUTPUT"
+                echo "::notice::the instance host is unreachable, so nothing was measured" ;;
+            *)  exit "$code" ;;
+          esac
+
+      - name: pytest -m benchmark
+        if: steps.instances.outputs.have == 'true'
+        env:
+          TESSERA_ITC2007_INSTANCES: ${{ github.workspace }}/.itc2007
+        run: uv run pytest -m benchmark -q
+
+      - name: say why nothing ran
+        if: steps.instances.outputs.have != 'true'
+        run: |
+          echo "### ITC-2007 benchmark skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The instance host was unreachable. Nothing is claimed about the solver." \
+            >> "$GITHUB_STEP_SUMMARY"
