@@ -134,10 +134,11 @@ def check(instance: Instance, placements: tuple[Placement, ...]) -> Report:
     return Report(
         violations=violations,
         costs=Costs(
-            room_capacity=_capacity_cost(real, known_courses, capacities),
-            minimum_working_days=_working_days_cost(instance, real),
-            curriculum_compactness=_compactness_cost(instance, real),
-            room_stability=_stability_cost(real),
+            room_capacity=sum(_over_capacity(real, known_courses, capacities).values())
+            * CAPACITY_PENALTY,
+            minimum_working_days=sum(_days_short(instance, real).values()) * WORKING_DAY_PENALTY,
+            curriculum_compactness=len(_isolated(instance, real)) * ISOLATED_LECTURE_PENALTY,
+            room_stability=sum(_extra_rooms(real).values()) * EXTRA_ROOM_PENALTY,
         ),
     )
 
@@ -292,34 +293,32 @@ def _availability(instance: Instance, placements: tuple[Placement, ...]) -> list
     ]
 
 
-def _capacity_cost(
+def _over_capacity(
     placements: tuple[Placement, ...],
     known_courses: dict[str, Course],
     capacities: dict[str, int],
-) -> int:
-    """One point per student who would have to stand, per lecture."""
-    over = 0
-    for placement in placements:
-        if placement.room not in capacities:
-            continue
-        students = known_courses[placement.course].students
-        over += max(0, students - capacities[placement.room])
-    return over * CAPACITY_PENALTY
+) -> dict[Placement, int]:
+    """How many students would have to stand, per lecture."""
+    return {
+        placement: max(0, known_courses[placement.course].students - capacities[placement.room])
+        for placement in placements
+        if placement.room in capacities
+    }
 
 
-def _working_days_cost(instance: Instance, placements: tuple[Placement, ...]) -> int:
-    """Five points per day a course falls short of the spread it asked for."""
+def _days_short(instance: Instance, placements: tuple[Placement, ...]) -> dict[str, int]:
+    """How many days below its declared minimum each course is taught over."""
     days: defaultdict[str, set[int]] = defaultdict(set)
     for placement in placements:
         days[placement.course].add(placement.day)
-    short = sum(
-        max(0, course.min_working_days - len(days[course.id])) for course in instance.courses
-    )
-    return short * WORKING_DAY_PENALTY
+    return {
+        course.id: max(0, course.min_working_days - len(days[course.id]))
+        for course in instance.courses
+    }
 
 
-def _compactness_cost(instance: Instance, placements: tuple[Placement, ...]) -> int:
-    """Two points per lecture a curriculum holds with neither neighbouring period occupied.
+def _isolated(instance: Instance, placements: tuple[Placement, ...]) -> list[tuple[str, int, int]]:
+    """Every (curriculum, day, period) a curriculum holds with neither neighbour occupied.
 
     Per lecture and per curriculum: a course in two curricula is judged in both, and a course
     alone at period 1 with another of its curriculum at period 3 makes **two** isolated
@@ -330,18 +329,65 @@ def _compactness_cost(instance: Instance, placements: tuple[Placement, ...]) -> 
     for placement in placements:
         where[placement.course].add((placement.day, placement.period))
 
-    isolated = 0
+    alone = []
     for curriculum in instance.curricula:
         occupied = {slot for course_id in curriculum.courses for slot in where[course_id]}
-        for day, period in occupied:
+        for day, period in sorted(occupied):
             if (day, period - 1) not in occupied and (day, period + 1) not in occupied:
-                isolated += 1
-    return isolated * ISOLATED_LECTURE_PENALTY
+                alone.append((curriculum.id, day, period))
+    return alone
 
 
-def _stability_cost(placements: tuple[Placement, ...]) -> int:
-    """One point per room a course uses after the first."""
+def _extra_rooms(placements: tuple[Placement, ...]) -> dict[str, int]:
+    """How many rooms beyond the first each course uses."""
     rooms: defaultdict[str, set[str]] = defaultdict(set)
     for placement in placements:
         rooms[placement.course].add(placement.room)
-    return sum(max(0, len(used) - 1) for used in rooms.values()) * EXTRA_ROOM_PENALTY
+    return {course_id: max(0, len(used) - 1) for course_id, used in rooms.items()}
+
+
+def blame(instance: Instance, placements: tuple[Placement, ...]) -> dict[Placement, int]:
+    """What each lecture costs, for deciding which ones are worth moving.
+
+    4.5's D2: the Fix-and-Optimize loop's `worst_first` strategy ranks sessions by an
+    **independent** reading of the cost, never by the objective's own — otherwise one
+    implementation gets to choose the neighbourhoods that flatter it. This is that reading for
+    a CB-CTT run, and it is the same four counts `check` reports, attributed rather than
+    summed.
+
+    **The total is deliberately not the penalty.** Two of the four costs belong to a *course*
+    rather than to any one of its lectures: a course taught on too few days, or in three rooms,
+    is not a fault of the third lecture. Charging the whole of it to each lecture of that course
+    ranks them all as worth moving, which is what a neighbourhood chooser needs; dividing it
+    among them would round, and rounding a ranking to make it sum to a number nobody reads is
+    the wrong trade. `check` remains the only thing that says what a solution costs.
+    """
+    known_courses = {course.id: course for course in instance.courses}
+    capacities = {room.id: room.capacity for room in instance.rooms}
+    real = tuple(p for p in placements if p.course in known_courses)
+
+    cost: dict[Placement, int] = dict.fromkeys(real, 0)
+    for placement, over in _over_capacity(real, known_courses, capacities).items():
+        cost[placement] += over * CAPACITY_PENALTY
+
+    of_course: defaultdict[str, list[Placement]] = defaultdict(list)
+    for placement in real:
+        of_course[placement.course].append(placement)
+
+    for course_id, short in _days_short(instance, real).items():
+        for placement in of_course[course_id]:
+            cost[placement] += short * WORKING_DAY_PENALTY
+
+    for course_id, extra in _extra_rooms(real).items():
+        for placement in of_course[course_id]:
+            cost[placement] += extra * EXTRA_ROOM_PENALTY
+
+    members = {c.id: c.courses for c in instance.curricula}
+    for curriculum_id, day, period in _isolated(instance, real):
+        for placement in real:
+            if (placement.day, placement.period) == (day, period) and placement.course in members[
+                curriculum_id
+            ]:
+                cost[placement] += ISOLATED_LECTURE_PENALTY
+
+    return cost
