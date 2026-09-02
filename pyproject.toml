@@ -195,11 +195,16 @@ type = "forbidden"
 source_modules = ["tessera.export", "tessera.importers"]
 forbidden_modules = ["fastapi", "starlette", "sqlalchemy", "ortools"]
 
-# The benchmark is a leaf. It holds CB-CTT's formulation, which prices room capacity that
-# Tessera refuses outright (#213), and the one way that could damage the product is by being
-# imported into it. Nothing here is a dependency of anything that ships.
+# The benchmark holds CB-CTT's formulation, which prices room capacity that Tessera refuses
+# outright (#213), and the one way that could damage the product is by leaking into it.
+#
+# `tessera.cli` is deliberately not on this list, and it was when the contract was written in
+# 4.5 part 2. What the rule protects is the product's *logic* — a solver or a domain that
+# quietly acquired somebody else's rules would be measuring something nobody ships. A command
+# line that can invoke the benchmark is the intended consumer rather than the hazard, and a
+# benchmark nobody can run is not worth having a contract about.
 [[tool.importlinter.contracts]]
-name = "Nothing depends on the benchmark"
+name = "The product's logic does not depend on the benchmark"
 type = "forbidden"
 source_modules = [
     "tessera.api",
@@ -208,6 +213,5 @@ source_modules = [
     "tessera.solver",
     "tessera.importers",
     "tessera.export",
-    "tessera.cli",
 ]
 forbidden_modules = ["tessera.bench"]

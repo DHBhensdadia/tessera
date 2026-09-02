@@ -6,7 +6,7 @@ import argparse
 import sys
 
 import tessera
-from tessera.cli import fidelity, itc
+from tessera.cli import bench, fidelity, itc
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -26,6 +26,15 @@ def main(argv: list[str] | None = None) -> None:
     )
     itc.add_arguments(read_itc)
     read_itc.set_defaults(run=itc.run)
+
+    measure = commands.add_parser(
+        "bench",
+        help="run the ITC-2007 benchmark",
+        description=bench.__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    bench.add_arguments(measure)
+    measure.set_defaults(run=bench.run)
 
     write_report = commands.add_parser(
         "fidelity",
