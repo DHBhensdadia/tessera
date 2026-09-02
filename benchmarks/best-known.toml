@@ -1,0 +1,61 @@
+# What the field has published for each ITC-2007 curriculum-based instance.
+#
+# THESE VALUES ARE NOT VERIFIED, and the file says so in `verified` below rather than in a
+# comment somebody might not read. They are the column Phase 0.1 used, and 0.1 did not record
+# where it got them — which is the failure 4.5's D4 was written to prevent, repeated here only
+# because the alternative was inventing a provenance.
+#
+# The canonical source is gone. Checked 2026-09-02:
+#
+#   satt.diegm.uniud.it        does not resolve
+#   tabu.diegm.uniud.it/ctt/   301, redirecting to itself
+#   the competition's results page at eeecs.qub.ac.uk   404
+#
+# The group behind it renamed in January 2023 — SaTT became the Intelligent Optimization
+# Laboratory — and the portal now appears to be `opthub.uniud.it`, which is a single-page
+# application that serves the same shell to every path. That is the wall 4.0 hit with
+# itc2019.org, and it is why these numbers are still unverified.
+#
+# Two ways to fix it, and the second is already in motion:
+#
+#   1. Bonutti, De Cesco, Di Gaspero and Schaerf, "Benchmarking curriculum-based course
+#      timetabling: formulations, data formats, instances, validation, visualization, and
+#      results", Annals of Operations Research 194 (2012) 59-70. A citation does not 404.
+#   2. Andrea Schaerf, whose address is on the competition site, is already being written to
+#      about redistributing the instances. One email, two questions.
+#
+# Until one of those lands, `tessera bench` prints the column with the values marked unverified
+# and the README does not carry it at all. An unverified number on the front page is the kind of
+# claim this project spends its time refusing.
+
+[meta]
+verified = false
+source = "the column used by Phase 0.1; that phase did not record where it came from"
+retrieved = "unknown"
+checked = "2026-09-02"
+formulation = "UD2"
+note = "see the header of this file before publishing any comparison drawn from it"
+
+# The competition's own instances, comp01 to comp21.
+[best_known]
+comp01 = 5
+comp02 = 24
+comp03 = 64
+comp04 = 35
+comp05 = 284
+comp06 = 27
+comp07 = 6
+comp08 = 37
+comp09 = 96
+comp10 = 4
+comp11 = 0
+comp12 = 294
+comp13 = 59
+comp14 = 51
+comp15 = 62
+comp16 = 18
+comp17 = 56
+comp18 = 61
+comp19 = 57
+comp20 = 4
+comp21 = 74
