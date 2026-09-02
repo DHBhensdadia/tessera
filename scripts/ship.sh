@@ -1,5 +1,5 @@
 #!/bin/bash
-# Push, then wait for CI and report what it actually said.
+# Push the phase branch, wait for CI, and only then fast-forward main.
 #
 # This exists because "CI green" was reported three times when the final state of main
 # was red. The cause was ordering, not carelessness: gates ran before the code commits,
@@ -7,12 +7,37 @@
 # was never verified by anything. Documentation is not exempt — ruff formats fenced
 # Python inside markdown, and that is precisely what broke.
 #
-# So: gates before every push, CI checked after the *last* one.
+# The order changed again in 4.5, for a failure one step further out. The commits were
+# merged into main and pushed, and *then* CI ran and went red on `ubuntu-latest` alone —
+# so main sat broken for twenty-seven minutes while the fix was written. Reading CI after
+# the merge tells you what you have already published. Reading it before is the same work
+# in an order where the answer can still change something.
 #
-#   ./scripts/ship.sh
+# It is also what makes GitHub's "require status checks" usable here. Those checks admit a
+# direct push only when the commit already passed on another ref; a commit that has never
+# left the machine has nothing to admit.
+#
+#   ./scripts/ship.sh          — run it from the phase branch
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+DEADLINE=180
+
+if [ "$BRANCH" = "main" ]; then
+    cat <<'WHY'
+run this from the phase branch, not from main.
+
+The point of the change is that CI sees the commits before main does, and there is no way
+to arrange that once they are already on main. Undo the merge and try again:
+
+  git reset --hard origin/main       # discards nothing: the commits are on the branch
+  git checkout <phase branch>
+  ./scripts/ship.sh
+WHY
+    exit 1
+fi
 
 if [ -n "$(git status --porcelain)" ]; then
     echo "working tree is dirty — commit or stash first"
@@ -20,6 +45,27 @@ if [ -n "$(git status --porcelain)" ]; then
     exit 1
 fi
 
+echo "==> where things stand"
+git fetch --quiet origin || exit 1
+
+if [ "$(git rev-parse main)" != "$(git rev-parse origin/main)" ]; then
+    echo "  local main and origin/main differ — reconcile before shipping"
+    echo "    local  $(git rev-parse --short main)"
+    echo "    remote $(git rev-parse --short origin/main)"
+    exit 1
+fi
+
+# A merge that is not a fast-forward would put a merge commit on main, and main has had
+# none in 275 commits. Refusing here says so before the gates spend ten minutes.
+if ! git merge-base --is-ancestor main "$BRANCH"; then
+    echo "  $BRANCH is not ahead of main — rebase it, or main has moved on"
+    exit 1
+fi
+
+AHEAD=$(git rev-list --count main.."$BRANCH")
+echo "  $BRANCH is $AHEAD commit(s) ahead of main, fast-forward clean"
+
+echo
 echo "==> gates"
 if ! ./scripts/check.sh; then
     echo
@@ -28,11 +74,11 @@ if ! ./scripts/check.sh; then
 fi
 
 echo
-echo "==> push"
-git push origin "$(git rev-parse --abbrev-ref HEAD)" || exit 1
+echo "==> push $BRANCH"
+git push --set-upstream origin "$BRANCH" || exit 1
 
 echo
-echo "==> waiting for CI on the commit just pushed"
+echo "==> waiting for CI on the commit about to become main"
 SHA=$(git rev-parse HEAD)
 sleep 20
 
@@ -42,11 +88,9 @@ sleep 20
 # afterwards, by which time everything really had passed, so the output contradicted its own
 # verdict: every job "success", followed by "RED".
 #
-# That is #49's failure with the sign flipped, and it is not the harmless direction it looks
-# like. A gate that cries wolf is a gate people learn to push past, and the one time it is
-# right nobody will read it.
-DEADLINE=180
-
+# That is the failure this script exists to prevent with the sign flipped, and it is not the
+# harmless direction it looks like. A gate that cries wolf is a gate people learn to push
+# past, and the one time it is right nobody will read it.
 for _ in $(seq 1 "$DEADLINE"); do
     RUN=$(gh run list --workflow=CI --limit 20 \
             --json databaseId,headSha,status,conclusion \
@@ -72,14 +116,35 @@ echo
 # other means wait for it.
 if [ "$STATUS" != "completed" ]; then
     echo "CI has not finished after $((DEADLINE / 6)) minutes — status $STATUS, nothing is claimed"
-    echo "  gh run watch \$(gh run list --workflow=CI --limit 20 \\"
-    echo "      --json databaseId,headSha --jq '[.[] | select(.headSha == \"$SHA\")] | first.databaseId')"
+    echo "  main is untouched. Watch it, then run this again:"
+    echo "    gh run watch \$(gh run list --workflow=CI --limit 20 \\"
+    echo "        --json databaseId,headSha --jq '[.[] | select(.headSha == \"$SHA\")] | first.databaseId')"
     exit 1
 fi
 
-if [ "$CONCLUSION" = "success" ]; then
-    echo "green on $(git rev-parse --short HEAD)"
-else
-    echo "RED — the pushed commit finished $CONCLUSION"
+if [ "$CONCLUSION" != "success" ]; then
+    echo "RED — $BRANCH finished $CONCLUSION, and main is untouched"
     exit 1
 fi
+
+echo "green on $(git rev-parse --short HEAD) — merging"
+echo
+echo "==> main"
+git checkout --quiet main || exit 1
+if ! git merge --ff-only "$BRANCH"; then
+    echo "  the merge was not a fast-forward, which should have been caught above"
+    git checkout --quiet "$BRANCH"
+    exit 1
+fi
+
+if ! git push origin main; then
+    echo
+    echo "  main moved locally but the push failed. Nothing is lost — the commits are also"
+    echo "  on $BRANCH, and 'git reset --hard origin/main' puts local main back."
+    exit 1
+fi
+
+echo
+echo "green on $(git rev-parse --short HEAD), and main is that commit"
+echo "  the branch is still on the remote; delete it when you are done with it:"
+echo "    git push origin --delete $BRANCH"
