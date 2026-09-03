@@ -22,9 +22,11 @@ import pytest
 from hypothesis import HealthCheck, assume, find, given, settings
 
 from tessera.domain.entities import Room, Unavailability
-from tessera.domain.ids import InstructorId, RoomId
+from tessera.domain.ids import AssignmentId, InstructorId, RoomId, SessionId
+from tessera.domain.timetable import Assignment
 from tessera.domain.validation import Snapshot
 from tessera.solver import Budget, Outcome, preflight, solve
+from tessera.solver.model import Formulation
 from tessera.solver.preflight import (
     BY_CLASSES,
     BY_LOAD,
@@ -35,6 +37,7 @@ from tessera.solver.preflight import (
     _Term,
     _unplaceable,
 )
+from tessera.solver.result import Explanation, Solution
 from tests.domain.validation.generated import Instance
 from tests.domain.validation.test_scale import institution
 from tests.solver import impossible as no
@@ -324,6 +327,81 @@ class TestTheTwoCountings:
         assert [s.available for s in swept] == [s.available for s in flowed]
 
 
+class TestWhatTheSolverDoesWithIt:
+    """The count runs first, and what it found reaches the caller."""
+
+    def test_a_counted_term_is_refused_without_a_search(self) -> None:
+        found = solve(no.capacity_threshold(), BUDGET)
+
+        assert found.outcome is Outcome.IMPOSSIBLE
+        assert found.explanation is not None
+        assert [s.rule for s in found.explanation.shortfalls] == ["room_fits_group"]
+        assert found.work == 0.0, "nothing was searched, because nothing needed to be"
+
+    def test_a_refusal_from_the_builder_keeps_its_sentence(self) -> None:
+        """`model.build` names the two sessions and the room, and used to be ignored.
+
+        A pin cannot be counted — arithmetic has nothing to say about two sessions wanting
+        one room at one hour — so this is the path where the builder is the only thing that
+        knows, and until now `solve` caught the exception and discarded the message.
+        """
+        term = no.term(
+            sessions=[no.lecture(1, group=1), no.lecture(2, group=1)],
+            rooms=[no.room(1, seats=100)],
+            sizes={1: 10},
+        )
+        pinned = Snapshot.of(
+            grid=term.grid,
+            sessions=list(term.sessions.values()),
+            rooms=list(term.rooms.values()),
+            groups=term.groups,
+            assignments=[_pin(1, start=0, room=1), _pin(2, start=0, room=1)],
+        )
+        found = solve(pinned, BUDGET)
+
+        assert found.outcome is Outcome.IMPOSSIBLE
+        assert found.explanation is not None
+        assert "both pinned into room 1" in found.explanation.unbuildable
+        assert found.explanation.shortfalls == (), "the count had nothing to say about a pin"
+
+    def test_a_priced_capacity_leaves_the_count_with_nothing_to_say(self) -> None:
+        """CB-CTT's rules, where a room too small is a cost rather than a refusal (#260).
+
+        Without this the benchmark would report `comp01` — which 4.5 solves and scores as a
+        valid CB-CTT solution — as having no timetable, and the harness would lose two of
+        its twenty-one instances to a check that was measuring a different problem.
+        """
+        term = no.capacity_threshold()
+
+        assert preflight.check(term) != ()
+        assert preflight.check(term, capacity_is_priced=True) == ()
+        assert solve(term, BUDGET, formulation=Formulation(capacity_is_priced=True)).outcome is (
+            Outcome.SOLVED
+        )
+
+
+class TestTheExplanationRecord:
+    """`Solution` refuses the two shapes an explanation must never take."""
+
+    def test_an_explanation_belongs_only_to_an_impossible_solve(self) -> None:
+        with pytest.raises(ValueError, match="has not been shown that none does"):
+            Solution(
+                outcome=Outcome.OUT_OF_TIME,
+                explanation=Explanation(unbuildable="the budget ran out"),
+            )
+
+    def test_an_explanation_that_explains_nothing_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="explains nothing"):
+            Explanation()
+
+    def test_running_out_of_time_carries_no_explanation(self) -> None:
+        """The distinction `Outcome` exists for, asserted where it would be lost."""
+        found = solve(no.capacity_threshold(), Budget(seconds=0.001))
+
+        assert found.outcome is Outcome.IMPOSSIBLE, "counting does not need a budget"
+        assert found.explanation is not None
+
+
 def instances() -> Path | None:
     given = os.environ.get("TESSERA_ITC2007_INSTANCES")
     if not given:
@@ -425,3 +503,13 @@ class TestWhatItCosts:
             f"{varied * 1000:.1f} ms against {uniform * 1000:.1f} ms — an estate of many "
             "sizes is being counted class by class rather than swept"
         )
+
+
+def _pin(session: int, *, start: int, room: int) -> Assignment:
+    return Assignment(
+        id=AssignmentId(session),
+        session_id=SessionId(session),
+        start_slot=start,
+        room_id=RoomId(room),
+        is_pinned=True,
+    )

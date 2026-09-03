@@ -27,10 +27,10 @@ from ortools.sat.python import cp_model
 from tessera.domain.validation import Snapshot
 from tessera.domain.validation.snapshot import Placement
 from tessera.solver import model as build_model
-from tessera.solver import search
+from tessera.solver import preflight, search
 from tessera.solver.budget import Budget
 from tessera.solver.cost import CostModel, Preferences
-from tessera.solver.result import Outcome, Solution
+from tessera.solver.result import Explanation, Outcome, Solution
 
 __all__ = ["Budget", "solve"]
 
@@ -54,13 +54,31 @@ def solve(
     costs = costs if costs is not None else Preferences(snapshot)
 
     started = time.perf_counter()
+
+    shortfalls = preflight.check(snapshot, capacity_is_priced=formulation.capacity_is_priced)
+    if shortfalls:
+        # Counted, not searched. `comp01` is impossible for a reason that fits in one
+        # sentence and CP-SAT does not reach in thirty seconds under any formulation this
+        # project has (#213 and 4.6 §1a), so a term refuted here is one the search would
+        # otherwise have spent the whole budget failing to refute.
+        return Solution(
+            outcome=Outcome.IMPOSSIBLE,
+            seconds=time.perf_counter() - started,
+            explanation=Explanation(shortfalls=shortfalls),
+        )
+
     try:
         model = build_model.build(snapshot, formulation)
-    except build_model.UnsatisfiableError:
-        # A session with no possible hour or no possible room. Arithmetic already knows the
-        # answer, so reporting it as `IMPOSSIBLE` without searching is honest rather than a
-        # shortcut — and it is *proven*, which is what distinguishes it from a timeout.
-        return Solution(outcome=Outcome.IMPOSSIBLE, seconds=time.perf_counter() - started)
+    except build_model.UnsatisfiableError as refusal:
+        # A session with no possible hour, or two pins fighting over one room. Arithmetic
+        # already knows the answer, so reporting it as `IMPOSSIBLE` without searching is
+        # honest rather than a shortcut — and it is *proven*, which is what distinguishes it
+        # from a timeout. The sentence names what it found, and used to be discarded here.
+        return Solution(
+            outcome=Outcome.IMPOSSIBLE,
+            seconds=time.perf_counter() - started,
+            explanation=Explanation(unbuildable=str(refusal)),
+        )
 
     costs.enforce(model)
 

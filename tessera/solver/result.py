@@ -19,6 +19,7 @@ from itertools import pairwise
 
 from tessera.domain.ids import RoomId, SessionId
 from tessera.domain.time_grid import Slot
+from tessera.solver.preflight import Shortfall
 
 
 class Outcome(StrEnum):
@@ -35,6 +36,36 @@ class Outcome(StrEnum):
     exists**, and must not be reported as though it did: "we could not find one" and "there
     is not one" are different sentences, and only the second is a reason to change the data.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class Explanation:
+    """Why no timetable exists, as far as something has proved it.
+
+    **Only ever attached to `IMPOSSIBLE`.** `OUT_OF_TIME` means the search ran out, which
+    says nothing about whether a timetable exists, and attaching an explanation to it would
+    turn "we could not find one" into "there is not one" — the two sentences `Outcome` was
+    written to keep apart.
+
+    Part 1 carries the two things arithmetic can prove: a counting argument, and the
+    refusal `model.build` raises when a session has nowhere to go. The minimal conflict set
+    CP-SAT extracts from an UNSAT model joins them in part 2.
+    """
+
+    shortfalls: tuple[Shortfall, ...] = ()
+    """Counting arguments no timetable can satisfy, worst first."""
+
+    unbuildable: str = ""
+    """What `model.build` refused, in its own words.
+
+    It already names the session, the room or the two colliding pins, and until now `solve`
+    caught the exception and threw the sentence away — an explanation the code had already
+    written and nobody could read.
+    """
+
+    def __post_init__(self) -> None:
+        if not self.shortfalls and not self.unbuildable:
+            raise ValueError("an explanation that explains nothing is not one")
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +153,14 @@ class Solution:
     trajectory: tuple[Step, ...] = ()
     """Every round of the outer search, in order. Empty when there was no outer search."""
 
+    explanation: Explanation | None = None
+    """Why there is no timetable, when something proved there is none.
+
+    `None` on every outcome but `IMPOSSIBLE`, and `None` on an `IMPOSSIBLE` that CP-SAT
+    reached by search without anything being able to say which rules did it — which part 2
+    turns into a defect rather than a case, but is honest here.
+    """
+
     @property
     def solved(self) -> bool:
         return self.outcome is Outcome.SOLVED
@@ -132,6 +171,11 @@ class Solution:
         return self.solved and self.lower_bound == self.penalty
 
     def __post_init__(self) -> None:
+        if self.explanation is not None and self.outcome is not Outcome.IMPOSSIBLE:
+            raise ValueError(
+                f"{self.outcome} carries an explanation of why no timetable exists, and it "
+                "has not been shown that none does"
+            )
         if self.solved and not self.placements:
             raise ValueError("a solved timetable with no placements is not one")
         if not self.solved and self.placements:
