@@ -131,6 +131,14 @@ files = ["tessera", "tests"]
 module = "tests.*"
 disallow_untyped_defs = false
 
+# `ortools.sat.python` ships a `py.typed`; `ortools.graph.python` does not, although it
+# ships the same `.pyi` stubs beside its extension modules. Following it anyway uses those
+# stubs, which is strictly better than the alternative — an `ignore_missing_imports` here or
+# a `type: ignore` at the import would make `max_flow` `Any` and stop checking the calls.
+[[tool.mypy.overrides]]
+module = "ortools.graph.*"
+follow_untyped_imports = true
+
 # ---------------------------------------------------------------------------
 # pytest
 # ---------------------------------------------------------------------------
