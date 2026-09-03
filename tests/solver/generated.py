@@ -82,12 +82,20 @@ def _roomier(instance: Instance) -> Instance:
     Capacity and features are 4.2's subject and have their own tests. What this phase needs
     is room to move, so that "is this timetable scored correctly" is asked of timetables that
     differ.
+
+    **`frozenset`, and it has to be spelled out.** `model_copy` skips validation — `_as` below
+    says so and rebuilds rather than copies for that reason — so a plain `{PROJECTOR}` here
+    produced rooms whose `features` was a `set`, against a domain that declares a
+    `frozenset`. Nothing noticed while every reader only tested membership; it surfaced when
+    4.6 grouped rooms by what they offer and asked Python to hash one.
     """
     seats = sum(g.size for g in instance.groups.all)
     return replace(
         instance,
         rooms=[
-            r.model_copy(update={"capacity": max(r.capacity, seats), "features": {PROJECTOR}})
+            r.model_copy(
+                update={"capacity": max(r.capacity, seats), "features": frozenset({PROJECTOR})}
+            )
             for r in instance.rooms
         ],
     )
