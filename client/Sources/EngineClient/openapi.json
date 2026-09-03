@@ -404,10 +404,11 @@
         "type": "object"
       },
       "ConflictingRequirement": {
-        "description": "One member of a minimal conflicting set.",
+        "description": "One member of a minimal conflicting set, and the thing it is about.",
         "properties": {
           "detail": {
             "default": "",
+            "description": "Why the rule is unconditional, where the domain says so, or the arithmetic behind a shortage \u2014 '64 sessions need 64 hours and the rooms that could take them offer 60'.",
             "title": "Detail",
             "type": "string"
           },
@@ -420,12 +421,12 @@
           },
           "subject_kind": {
             "default": "",
-            "description": "instructor, room, group, course or constraint.",
+            "description": "instructor, room, group, constraint \u2014 or grid, for the one rule that belongs to the teaching week itself rather than to anything in it.",
             "title": "Subject Kind",
             "type": "string"
           },
           "summary": {
-            "description": "Plain language, e.g. 'Prof. Sharma is available Mon-Wed only'.",
+            "description": "The rule in the words the rules screen uses for it, e.g. 'No instructor teaches two sessions at once'. Subject-agnostic: the engine holds ids and the client holds names, so 'Prof. Sharma' is composed from this and `subject_id`.",
             "title": "Summary",
             "type": "string"
           }
@@ -1334,7 +1335,7 @@
         "type": "object"
       },
       "InfeasibilityReport": {
-        "description": "Why no valid timetable exists.\n\nThe differentiating feature: every comparable tool reports \"no solution found\". This\ncarries the minimal set of requirements that cannot hold together, each linked to\nthe screen that can relax it.",
+        "description": "Why no valid timetable exists.\n\nThe differentiating feature: every comparable tool reports \"no solution found\". This\ncarries a set of requirements that cannot hold together, each linked to the screen that\ncan relax it.",
         "properties": {
           "requirements": {
             "items": {
@@ -1345,7 +1346,7 @@
           },
           "suggestion": {
             "default": "",
-            "description": "What relaxing any one of them would achieve.",
+            "description": "What is and is not known about the set. Every requirement listed is necessary \u2014 remove any one and a timetable becomes possible under the rest \u2014 but where several independent conflicts exist the solver reports one of them, so this never promises that relaxing a member is sufficient. It used to; it could not.",
             "title": "Suggestion",
             "type": "string"
           },

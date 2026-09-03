@@ -47,14 +47,23 @@ class SolveStatus(Wire):
 
 
 class ConflictingRequirement(Wire):
-    """One member of a minimal conflicting set."""
+    """One member of a minimal conflicting set, and the thing it is about."""
 
     summary: str = Field(
-        description="Plain language, e.g. 'Prof. Sharma is available Mon-Wed only'."
+        description="The rule in the words the rules screen uses for it, e.g. 'No instructor "
+        "teaches two sessions at once'. Subject-agnostic: the engine holds ids and the client "
+        "holds names, so 'Prof. Sharma' is composed from this and `subject_id`."
     )
-    detail: str = ""
+    detail: str = Field(
+        default="",
+        description="Why the rule is unconditional, where the domain says so, or the "
+        "arithmetic behind a shortage — '64 sessions need 64 hours and the rooms that could "
+        "take them offer 60'.",
+    )
     subject_kind: str = Field(
-        default="", description="instructor, room, group, course or constraint."
+        default="",
+        description="instructor, room, group, constraint — or grid, for the one rule that "
+        "belongs to the teaching week itself rather than to anything in it.",
     )
     subject_id: int | None = None
 
@@ -63,13 +72,19 @@ class InfeasibilityReport(Wire):
     """Why no valid timetable exists.
 
     The differentiating feature: every comparable tool reports "no solution found". This
-    carries the minimal set of requirements that cannot hold together, each linked to
-    the screen that can relax it.
+    carries a set of requirements that cannot hold together, each linked to the screen that
+    can relax it.
     """
 
     summary: str
     requirements: list[ConflictingRequirement] = Field(default_factory=list)
-    suggestion: str = Field(default="", description="What relaxing any one of them would achieve.")
+    suggestion: str = Field(
+        default="",
+        description="What is and is not known about the set. Every requirement listed is "
+        "necessary — remove any one and a timetable becomes possible under the rest — but "
+        "where several independent conflicts exist the solver reports one of them, so this "
+        "never promises that relaxing a member is sufficient. It used to; it could not.",
+    )
 
 
 class PreflightProblem(Wire):
