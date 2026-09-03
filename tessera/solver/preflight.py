@@ -117,6 +117,63 @@ class Shortfall:
         less is not one, and `check` does not construct it."""
         return self.needed - self.available
 
+    @property
+    def statement(self) -> str:
+        """The count as a sentence, and it is shaped by the rule rather than by the subject.
+
+        The one piece of prose 4.6 writes rather than looks up, because it is the only part
+        with no wording anywhere else: `INVARIANTS` says *a room must seat everyone assigned
+        to it*, and what a reader needs here is **64 against 60**. The rule's own sentence
+        travels beside this, from the domain (D8).
+
+        Deliberately without a name in it. `Snapshot` holds ids, and turning instructor 4 into
+        Prof. Sharma is the client's half of the division `Violation` already describes.
+        """
+        counted = len(self.sessions)
+        subject = f"{counted} {'session' if counted == 1 else 'sessions'}"
+        verb = "needs" if counted == 1 else "need"
+
+        if self.available == 0:
+            return f"{subject} {self._nowhere.format(verb=verb)}."
+        return (
+            f"{subject}{self._narrowed} {verb} {_hours(self.needed)}, and "
+            f"{self._resource} {_hours(self.available)} — {self.short} short."
+        )
+
+    @property
+    def _nowhere(self) -> str:
+        """A session with no room at all, which is not a shortage but an absence."""
+        return {
+            "room_fits_group": f"cannot fit in any room here — the largest seats fewer than "
+            f"{self.threshold}",
+            "room_has_required_features": "{verb} equipment no room in the institution has",
+            "availability_respected": "could only go in rooms that are closed all week",
+        }[self.rule]
+
+    @property
+    def _narrowed(self) -> str:
+        """Why this set of sessions is competing for less than the whole estate.
+
+        Empty where nothing narrowed it — `room_not_double_booked` is the week being too
+        small rather than the big rooms being too few, and a clause about seats there would
+        send a reader to look at capacities that are fine.
+        """
+        if self.rule == "room_fits_group" and self.threshold:
+            return f" needing a room that seats {self.threshold} or more"
+        return ""
+
+    @property
+    def _resource(self) -> str:
+        return {
+            "room": "the rooms that could take them offer",
+            "instructor": f"instructor {self.subject_id} is free for",
+            "group": f"group {self.subject_id} has",
+        }[self.subject_kind]
+
+
+def _hours(count: int) -> str:
+    return f"{count} hour" if count == 1 else f"{count} hours"
+
 
 @dataclass(frozen=True, slots=True)
 class _Term:

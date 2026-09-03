@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from itertools import pairwise
 
+from tessera.domain.constraints import INVARIANT_BY_KEY, ConstraintKind
 from tessera.domain.ids import RoomId, SessionId
 from tessera.domain.time_grid import Slot
 from tessera.solver.preflight import Shortfall
@@ -62,6 +63,38 @@ class Requirement:
 
     subject_id: int | None = None
 
+    @property
+    def statement(self) -> str:
+        """What this rule says, in the words the domain already uses for it.
+
+        Looked up rather than written (D8). The seven invariants carry a `statement` that the
+        rules screen has shown since 3.5, and every other kind carries a `summary` with a
+        `{targets}` slot; an eighth set of sentences here would drift from them, and the
+        symptom would be a rule described one way on the screen that sets it and another in
+        the sentence explaining why the term is impossible.
+
+        **Subject-agnostic on purpose.** This says *no instructor teaches two sessions at
+        once*, not *Prof. Sharma teaches two at once*: the engine has ids and the client has
+        names, which is the division 3.5 settled for the import report and `Violation` records
+        in as many words — the engine says what is wrong, the screen says whose.
+        """
+        invariant = INVARIANT_BY_KEY.get(self.rule)
+        if invariant is not None:
+            return invariant.statement
+        kind = ConstraintKind(self.rule)
+        return kind.spec.describe({})
+
+    @property
+    def because(self) -> str:
+        """Why the rule is unconditional, where the domain says. Empty for a stored rule.
+
+        A hard distribution constraint is hard because somebody set it that way, and this has
+        nothing to add; an invariant is hard for a reason, and the reason is the difference
+        between *the software refuses* and *the world refuses*.
+        """
+        invariant = INVARIANT_BY_KEY.get(self.rule)
+        return invariant.because if invariant is not None else ""
+
     def __str__(self) -> str:
         where = f" {self.subject_id}" if self.subject_id is not None else ""
         return f"{self.rule}/{self.subject_kind}{where}"
@@ -102,6 +135,38 @@ class Explanation:
     caught the exception and threw the sentence away — an explanation the code had already
     written and nobody could read.
     """
+
+    @property
+    def summary(self) -> str:
+        """One sentence saying what kind of impossibility this is, and what is not known.
+
+        **The second half is the part that had to be argued for.** A conflict is one minimal
+        set and not the only one, so a report that stopped after listing it would leave a
+        reader to infer that relaxing something in it is enough. It is not, and P7's mockup
+        and the wire schema both said otherwise until this phase (D5).
+        """
+        if self.shortfalls:
+            worst = self.shortfalls[0]
+            return (
+                f"No valid timetable exists: {worst.statement} "
+                "Nothing can be arranged around a shortage this size."
+            )
+        if self.conflict:
+            return (
+                "No valid timetable exists. These requirements cannot all hold, and every one "
+                "of them is needed for the contradiction — but there may be others, so "
+                "relaxing one of them is not on its own a promise that a timetable appears."
+            )
+        return f"No valid timetable exists: {self.unbuildable}"
+
+    @property
+    def statements(self) -> tuple[str, ...]:
+        """A line per thing that was proven, in the order a reader should meet them."""
+        return (
+            tuple(shortfall.statement for shortfall in self.shortfalls)
+            + tuple(requirement.statement for requirement in self.conflict)
+            + ((self.unbuildable,) if self.unbuildable else ())
+        )
 
     def __post_init__(self) -> None:
         if not self.shortfalls and not self.conflict and not self.unbuildable:

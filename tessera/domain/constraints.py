@@ -254,6 +254,14 @@ INVARIANTS: tuple[Invariant, ...] = (
     ),
 )
 
+#: The invariants by key, because everything that reports one has an id and needs a sentence.
+#:
+#: Derived rather than written a second time. 4.6's explainer names rules by key and must not
+#: carry prose of its own — a rule whose wording lived in two places would be described one way
+#: on the rules screen and another in the sentence saying why a term is impossible.
+INVARIANT_BY_KEY: Mapping[str, Invariant] = {rule.key: rule for rule in INVARIANTS}
+
+
 _PEOPLE_AND_GROUPS = frozenset({TargetKind.INSTRUCTOR, TargetKind.GROUP})
 _SESSIONS = frozenset({TargetKind.SESSION})
 
