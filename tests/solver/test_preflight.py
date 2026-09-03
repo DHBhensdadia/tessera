@@ -207,6 +207,23 @@ class TestTheReasonsItCanName:
         )
         assert preflight.check(shorter) == (), "six hours of teaching fit six teaching hours"
 
+    def test_a_room_that_is_shut_is_not_a_room_that_is_too_small(self) -> None:
+        """The rule named has to be the rule that is broken.
+
+        The only room could seat the class comfortably and is closed every hour of the week.
+        Calling that `room_fits_group` sends somebody to look at capacities that are fine —
+        which is what this did until 4.6's conflict set read the same term through CP-SAT,
+        named `availability_respected`, and was right.
+        """
+        (found,) = preflight.check(no.the_only_room_is_shut_all_week())
+
+        assert (found.rule, found.available) == ("availability_respected", 0)
+
+        open_again = no.term(
+            sessions=[no.lecture(1, group=1)], rooms=[no.room(1, seats=100)], sizes={1: 10}
+        )
+        assert preflight.check(open_again) == ()
+
     def test_an_institution_with_no_rooms_names_its_sessions(self) -> None:
         (found,) = preflight.check(no.an_institution_with_no_rooms())
 

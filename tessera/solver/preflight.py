@@ -207,19 +207,14 @@ def _unplaceable(term: _Term) -> list[Shortfall]:
     found: list[Shortfall] = []
     for session_id in sorted(term.snapshot.sessions):
         session = term.session(session_id)
-        if any(
-            term.fits(room, session_id)
-            for room_id, room in term.snapshot.rooms.items()
-            if room_id in open_at_all
-        ):
+        able = {
+            room_id for room_id, room in term.snapshot.rooms.items() if term.fits(room, session_id)
+        }
+        if able & open_at_all:
             continue
         found.append(
             Shortfall(
-                rule=_named(
-                    "room_has_required_features"
-                    if session.required_features or session.required_counts
-                    else "room_fits_group"
-                ),
+                rule=_named(_why_nowhere(session, able)),
                 subject_kind="room",
                 subject_id=None,
                 sessions=(session_id,),
@@ -230,6 +225,21 @@ def _unplaceable(term: _Term) -> list[Shortfall]:
             )
         )
     return found
+
+
+def _why_nowhere(session: Session, able: set[RoomId]) -> str:
+    """Which rule leaves this session with nowhere to go.
+
+    **A room that could hold it and is shut all week is a different problem**, and saying
+    `room_fits_group` about it sends somebody to look at capacities that are fine. Part 1
+    conflated the two; 4.6's core, which reads the same term through CP-SAT, named
+    `availability_respected` where the count named capacity, and the core was right.
+    """
+    if able:
+        return "availability_respected"
+    if session.required_features or session.required_counts:
+        return "room_has_required_features"
+    return "room_fits_group"
 
 
 def _rooms(term: _Term, homeless: set[SessionId]) -> list[Shortfall]:
