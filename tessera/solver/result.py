@@ -76,14 +76,24 @@ class Explanation:
     turn "we could not find one" into "there is not one" — the two sentences `Outcome` was
     written to keep apart.
 
-    Part 1 carries the two things arithmetic can prove: a counting argument, and the refusal
-    `model.build` raises when a session has nowhere to go. The minimal conflict set CP-SAT
-    extracts from an UNSAT model joins them next, and `Requirement` above is what it will be
-    made of.
+    Three things can prove it, and they are kept apart rather than flattened into a list of
+    sentences, because they are not equally strong. A count is arithmetic and needs no search.
+    A refusal from the builder names one session. A **conflict** is CP-SAT's: a set of
+    requirements that cannot all hold, every member of which has been shown to be necessary.
     """
 
     shortfalls: tuple[Shortfall, ...] = ()
     """Counting arguments no timetable can satisfy, worst first."""
+
+    conflict: tuple[Requirement, ...] = ()
+    """A set of requirements that cannot hold together, and **not necessarily the only one**.
+
+    Every member is necessary — dropping any one of them makes the term solvable, and the
+    tests prove that by re-solving rather than by asserting it. What is *not* true, and what
+    P7's mockup and the wire schema both used to claim, is that relaxing one of them makes a
+    timetable possible: where several independent conflicts exist, CP-SAT returns one of them
+    and never mentions the others (D5). The report says so instead of implying otherwise.
+    """
 
     unbuildable: str = ""
     """What `model.build` refused, in its own words.
@@ -94,7 +104,7 @@ class Explanation:
     """
 
     def __post_init__(self) -> None:
-        if not self.shortfalls and not self.unbuildable:
+        if not self.shortfalls and not self.conflict and not self.unbuildable:
             raise ValueError("an explanation that explains nothing is not one")
 
 

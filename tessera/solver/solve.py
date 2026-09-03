@@ -26,8 +26,8 @@ from ortools.sat.python import cp_model
 
 from tessera.domain.validation import Snapshot
 from tessera.domain.validation.snapshot import Placement
+from tessera.solver import explain, preflight, search
 from tessera.solver import model as build_model
-from tessera.solver import preflight, search
 from tessera.solver.budget import Budget
 from tessera.solver.cost import CostModel, Preferences
 from tessera.solver.result import Explanation, Outcome, Solution
@@ -94,12 +94,17 @@ def solve(
     sessions, candidates = build_model.size(model)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        proven = status == cp_model.INFEASIBLE
         return Solution(
-            outcome=Outcome.IMPOSSIBLE if status == cp_model.INFEASIBLE else Outcome.OUT_OF_TIME,
+            outcome=Outcome.IMPOSSIBLE if proven else Outcome.OUT_OF_TIME,
             seconds=elapsed,
             sessions=sessions,
             candidates=candidates,
             work=solver.deterministic_time,
+            # Only once something has proved there is no timetable. Running out of time says
+            # nothing about whether one exists, and a set of rules attached to that would read
+            # as a reason to change the data when the honest answer is "we did not find one".
+            explanation=_why_not(snapshot, budget, formulation) if proven else None,
         )
 
     first = {
@@ -125,3 +130,19 @@ def solve(
         on_improvement=on_improvement,
     )
     return replace(found, sessions=sessions, candidates=candidates)
+
+
+def _why_not(
+    snapshot: Snapshot, budget: Budget, formulation: build_model.Formulation
+) -> Explanation | None:
+    """Which rules cannot hold together, if the weaker model can be made to say.
+
+    Deliberately *after* the refutation rather than instead of it. The model that names rules
+    is the one that cannot prove them contradictory in reasonable time (#275), so asking it
+    first would trade a proof for a sentence and often get neither.
+
+    `None` when nothing was proven inside `explain_seconds`, and that is not an error: the
+    term still has no timetable and `Outcome` still says so. Only the sentence is missing.
+    """
+    found = explain.conflict(snapshot, replace(budget, seconds=budget.explain_seconds), formulation)
+    return Explanation(conflict=found) if found else None

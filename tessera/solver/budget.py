@@ -104,6 +104,20 @@ class Budget:
     suits — and the rounds get the rest.
     """
 
+    explain_seconds: float = 5.0
+    """How long the explainer may spend naming the rules that cannot hold together.
+
+    Its own slice, and small. It runs only after something has already proved the term
+    impossible, so the answer is not in doubt and what is being bought is a *sentence* — and
+    the model it searches is the weak one: every hard rule sits behind an assumption literal,
+    which keeps the rule's meaning and costs its propagation (#275). Spending a person's whole
+    budget on a better-worded refusal would be the wrong trade.
+
+    Bounded rather than generous for a second reason: coming back with nothing is a supported
+    answer. `Outcome` already says the term has no timetable; the conflict set is the part
+    that may be missing, and a missing sentence is better than a slow one.
+    """
+
     round_seconds: float = 5.0
     """The wall-clock ceiling on one round's sub-solve."""
 
