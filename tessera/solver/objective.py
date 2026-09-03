@@ -823,7 +823,7 @@ TERMS: dict[ConstraintKind, Callable[[Terms, Constraint], list[cp_model.IntVar]]
 }
 
 
-def enforce(model: Model, snapshot: Snapshot) -> None:
+def enforce(model: Model, snapshot: Snapshot, *, relaxable: bool = False) -> None:
     """The hard rules, and nothing priced. What a feasibility pass needs.
 
     4.4 finds a timetable before it tries to find a good one, and the model it searches for
@@ -836,14 +836,26 @@ def enforce(model: Model, snapshot: Snapshot) -> None:
 
     A term whose rules are all soft, which `default_constraints()` produces, adds nothing here
     and the feasibility model stays exactly the size 4.2 measured.
+
+    `relaxable` writes each hard rule behind an assumption literal of its own, so 4.6 can
+    report *which* rule cannot hold rather than only that something cannot. One literal per
+    constraint rather than per kind: an institution with three narrowed `MIN_GAP` rules wants
+    to be told which of the three, and it is a single row it would edit.
     """
     terms = Terms(model=model, snapshot=snapshot)
     _refuse_what_cannot_be_scored(snapshot)
 
     for constraint in snapshot.constraints:
         if constraint.is_hard:
+            because = (
+                model.assume(constraint.kind.value, "constraint", constraint.id)
+                if relaxable
+                else None
+            )
             for unit in TERMS[constraint.kind](terms, constraint):
-                model.cp.add(unit == 0)
+                obeyed = model.cp.add(unit == 0)
+                if because is not None:
+                    obeyed.only_enforce_if(because)
 
 
 def add(model: Model, snapshot: Snapshot) -> Objective | None:

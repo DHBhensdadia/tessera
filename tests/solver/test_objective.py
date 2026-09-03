@@ -36,7 +36,8 @@ from tessera.domain.ids import InstructorId, RoomId, SessionId
 from tessera.domain.validation import validate
 from tessera.solver import Budget, Outcome, Solution, solve
 from tessera.solver.model import build
-from tessera.solver.objective import TERMS, NotScorableError, add, bounds
+from tessera.solver.objective import TERMS, NotScorableError, add, bounds, enforce
+from tessera.solver.result import Requirement
 from tests.domain.validation.institution import (
     BATCH_A,
     BATCH_B,
@@ -52,6 +53,7 @@ from tests.domain.validation.institution import (
     TUTORIAL,
     Institution,
 )
+from tests.solver import impossible as no
 
 #: Long enough that a pinned term is never the thing that runs out of time, short enough
 #: that a mistake fails the suite rather than hanging it.
@@ -866,3 +868,55 @@ class TestEveryKindCanReachZero:
             "anything, and raising it would move nothing"
         )
         assert found.is_optimal, f"{kind.value}: zero found but not proven"
+
+
+class TestAHardRuleCanBeSwitchedOff:
+    """The relaxable half of `enforce`, which exists so a conflict can name a rules-screen row.
+
+    Per **constraint** rather than per kind: an institution with four hard `SAME_DAY` rules
+    needs to be told which of the four, and it is one row it would edit.
+    """
+
+    @staticmethod
+    def contradiction() -> object:
+        return no.rules_that_contradict_each_other()
+
+    def test_each_hard_rule_gets_a_literal_of_its_own(self) -> None:
+        term = self.contradiction()
+        model = build(term, relaxable=True)  # type: ignore[arg-type]
+
+        enforce(model, term, relaxable=True)  # type: ignore[arg-type]
+
+        assert Requirement("same_day", "constraint", 7) in model.assumptions
+        assert Requirement("different_day", "constraint", 8) in model.assumptions
+
+    def test_with_neither_asserted_the_contradiction_goes_away(self) -> None:
+        """Two rules that cannot both hold, and a model that solves once neither is asserted.
+
+        The property that makes an empty conflict set a defect: if a hard rule were written
+        unconditionally here, this term would stay infeasible with nothing to blame.
+        """
+        term = self.contradiction()
+        model = build(term, relaxable=True)  # type: ignore[arg-type]
+        enforce(model, term, relaxable=True)  # type: ignore[arg-type]
+
+        solver = cp_model.CpSolver()
+        solver.parameters.num_workers = 1
+        solver.parameters.max_time_in_seconds = 10.0
+
+        assert solver.solve(model.cp) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    def test_an_ordinary_enforce_writes_no_literals(self) -> None:
+        term = self.contradiction()
+        model = build(term)  # type: ignore[arg-type]
+
+        enforce(model, term)  # type: ignore[arg-type]
+
+        assert model.assumptions == {}
+        solver = cp_model.CpSolver()
+        solver.parameters.num_workers = 1
+        solver.parameters.max_time_in_seconds = 10.0
+
+        assert solver.solve(model.cp) == cp_model.INFEASIBLE, (
+            "the two rules still contradict each other when nothing can be switched off"
+        )

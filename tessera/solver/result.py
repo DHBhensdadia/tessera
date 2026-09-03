@@ -39,6 +39,35 @@ class Outcome(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class Requirement:
+    """One rule, narrowed to the thing it is about.
+
+    The unit an explanation is made of, and the unit a person can actually change: you extend
+    *one* instructor's availability, not "availability". P7 draws each line of the
+    infeasibility panel with a button beside it, and `subject_kind` and `subject_id` are what
+    let 4.7 point that button at the screen that would relax this one (D4).
+
+    It is also the granularity the assumption literals are created at. Per *rule* would give
+    seven literals and a core that says "instructors clash" while naming nobody, which is "no
+    solution found" with a longer sentence; per *session* would give thousands and a core
+    listing forty of them, which is not an explanation either.
+    """
+
+    rule: str
+    """An `INVARIANTS` key, or a `ConstraintKind` value for a hard distribution rule."""
+
+    subject_kind: str
+    """`room`, `instructor`, `group`, `constraint` — or `grid`, for the one rule that belongs
+    to the teaching week itself rather than to anything in it."""
+
+    subject_id: int | None = None
+
+    def __str__(self) -> str:
+        where = f" {self.subject_id}" if self.subject_id is not None else ""
+        return f"{self.rule}/{self.subject_kind}{where}"
+
+
+@dataclass(frozen=True, slots=True)
 class Explanation:
     """Why no timetable exists, as far as something has proved it.
 
@@ -47,9 +76,10 @@ class Explanation:
     turn "we could not find one" into "there is not one" — the two sentences `Outcome` was
     written to keep apart.
 
-    Part 1 carries the two things arithmetic can prove: a counting argument, and the
-    refusal `model.build` raises when a session has nowhere to go. The minimal conflict set
-    CP-SAT extracts from an UNSAT model joins them in part 2.
+    Part 1 carries the two things arithmetic can prove: a counting argument, and the refusal
+    `model.build` raises when a session has nowhere to go. The minimal conflict set CP-SAT
+    extracts from an UNSAT model joins them next, and `Requirement` above is what it will be
+    made of.
     """
 
     shortfalls: tuple[Shortfall, ...] = ()

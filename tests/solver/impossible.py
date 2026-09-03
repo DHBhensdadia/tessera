@@ -18,9 +18,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
+from tessera.domain.constraints import (
+    Constraint,
+    ConstraintKind,
+    ConstraintTarget,
+    TargetKind,
+)
 from tessera.domain.entities import Room, Session, SessionKind, Unavailability, WeekPattern
 from tessera.domain.groups import GroupKind, GroupSet, StudentGroup
 from tessera.domain.ids import (
+    AssignmentId,
+    ConstraintId,
     FeatureId,
     InstructorId,
     RoomId,
@@ -28,6 +36,7 @@ from tessera.domain.ids import (
     StudentGroupId,
 )
 from tessera.domain.time_grid import TimeGrid
+from tessera.domain.timetable import Assignment
 from tessera.domain.validation import Snapshot
 
 #: Two days of four hours. Eight slots is enough for a shortfall of one to be visible and
@@ -237,6 +246,119 @@ def an_institution_with_no_rooms() -> Snapshot:
         sessions=[lecture(1, group=1, features=frozenset({PROJECTOR}))],
         rooms=[],
         sizes={1: 10},
+    )
+
+
+def one_instructor_pinned_into_two_rooms() -> Snapshot:
+    """Two classes, one person, both pinned to nine o'clock in different rooms.
+
+    **Nothing here is short of anything**, which is the point: two rooms, two hours of
+    teaching, a week of eight. No count sees it, and the pin check does not either — it looks
+    for two pins fighting over one *room*. Only the search can find it, and only the conflict
+    set can say what it found.
+    """
+    base = term(
+        sessions=[lecture(1, group=1, instructor=1), lecture(2, group=2, instructor=1)],
+        rooms=[room(1, seats=100), room(2, seats=100)],
+        sizes={1: 10, 2: 10},
+    )
+    return Snapshot.of(
+        grid=base.grid,
+        sessions=list(base.sessions.values()),
+        rooms=list(base.rooms.values()),
+        groups=base.groups,
+        assignments=[
+            Assignment(
+                id=AssignmentId(1),
+                session_id=SessionId(1),
+                start_slot=0,
+                room_id=RoomId(1),
+                is_pinned=True,
+            ),
+            Assignment(
+                id=AssignmentId(2),
+                session_id=SessionId(2),
+                start_slot=0,
+                room_id=RoomId(2),
+                is_pinned=True,
+            ),
+        ],
+    )
+
+
+def two_pins_in_one_room() -> Snapshot:
+    """The case the builder refuses before a model exists, naming both sessions and the room.
+
+    Kept because it is the one path where `model.build` is a *better* explanation than any
+    conflict set: it says which two sessions and which room, where a core would say
+    `room_not_double_booked` and leave the reader to find them.
+    """
+    base = term(
+        sessions=[lecture(1, group=1), lecture(2, group=2)],
+        rooms=[room(1, seats=100), room(2, seats=100)],
+        sizes={1: 10, 2: 10},
+    )
+    return Snapshot.of(
+        grid=base.grid,
+        sessions=list(base.sessions.values()),
+        rooms=list(base.rooms.values()),
+        groups=base.groups,
+        assignments=[
+            Assignment(
+                id=AssignmentId(n),
+                session_id=SessionId(n),
+                start_slot=0,
+                room_id=RoomId(1),
+                is_pinned=True,
+            )
+            for n in (1, 2)
+        ],
+    )
+
+
+def rules_that_contradict_each_other() -> Snapshot:
+    """Two sessions asked to be on the same day and on different days, both rules hard.
+
+    A conflict between rows of the rules screen rather than between a term and its building,
+    and the explanation has to name the rows: an institution with a dozen hard rules needs to
+    be told which two, and it is a single row it would edit.
+    """
+    base = term(
+        sessions=[lecture(1, group=1), lecture(2, group=2)],
+        rooms=[room(1, seats=100), room(2, seats=100)],
+        sizes={1: 10, 2: 10},
+    )
+    return Snapshot.of(
+        grid=base.grid,
+        sessions=list(base.sessions.values()),
+        rooms=list(base.rooms.values()),
+        groups=base.groups,
+        constraints=[
+            Constraint(
+                id=ConstraintId(7),
+                kind=ConstraintKind.SAME_DAY,
+                is_hard=True,
+                weight=0,
+                targets=frozenset(ConstraintTarget(kind=TargetKind.SESSION, id=n) for n in (1, 2)),
+            ),
+            Constraint(
+                id=ConstraintId(8),
+                kind=ConstraintKind.DIFFERENT_DAY,
+                is_hard=True,
+                weight=0,
+                targets=frozenset(ConstraintTarget(kind=TargetKind.SESSION, id=n) for n in (1, 2)),
+            ),
+        ],
+    )
+
+
+def the_only_room_is_shut_all_week() -> Snapshot:
+    """A room that could hold the class, closed every hour of the week."""
+    return term(
+        sessions=[lecture(1, group=1)],
+        rooms=[room(1, seats=100)],
+        sizes={1: 10},
+        unavailability=[Unavailability(room_id=RoomId(1), slot=slot) for slot in range(WEEK)],
     )
 
 

@@ -32,11 +32,12 @@ from typing import TYPE_CHECKING
 
 from ortools.sat.python import cp_model
 
-from tessera.domain.entities import Session, WeekPattern
+from tessera.domain.entities import Room, Session, WeekPattern
 from tessera.domain.ids import RoomId, SessionId
 from tessera.domain.time_grid import Slot
 from tessera.domain.validation import Snapshot
 from tessera.domain.validation.snapshot import Placement
+from tessera.solver.result import Requirement
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -86,7 +87,16 @@ class Formulation:
     poor *substitute*; it says nothing about it as an addition.
 
     **Off, for the same reason and with the same caveat.** Medians of 2964 against 3018, and
-    1542 against 1395, on seed spreads several times wider."""
+    1542 against 1395, on seed spreads several times wider.
+
+    It has a second life as a *refutation* lever and it did not survive measurement either.
+    Unconditionally stated, this turns a 120-session two-room pigeonhole from fifteen seconds
+    of nothing into `INFEASIBLE` in 0.02 s, and a per-headcount family of the same argument
+    does the same for `comp01`. 4.6 was going to add that family — and then `preflight`
+    refuted every one of those terms by counting, in about a millisecond, without a model at
+    all. Across eleven impossible terms of four shapes, **no term was found that the cumulative
+    refutes and the count does not** (#282). A lever nobody has weighed is a guess with a name
+    on it; a lever weighed and found weightless is worse, so that one was not kept."""
 
     hint: bool = True
     """Start from the timetable already in the term, where there is one.
@@ -149,11 +159,33 @@ class Model:
     """When the people are busy — duration only. A room's turnaround is the room's time; the
     students have left and the instructor has stopped teaching (#190)."""
 
+    assumptions: dict[Requirement, cp_model.IntVar] = field(default_factory=dict)
+    """The literal standing for each rule, when the model was built to be relaxed.
+
+    Empty for every model the product solves. A rule written under one of these can be
+    switched off, which is what lets CP-SAT report *which* rules cannot hold together — and
+    what costs it the propagation that would let it refute the term in the first place
+    (#275). The two models are built by one function so that a rule is expressed once."""
+
     legal: dict[SessionId, tuple[Slot, ...]] = field(default_factory=dict)
     """Every hour each session could begin at — the start's domain, kept in a form Python can
     read. 4.3 needs it to know which days and hours a session can reach, and deriving that
     back out of a CP-SAT variable's flattened domain would be a second answer to a question
     this already knew."""
+
+    def assume(
+        self, rule: str, subject_kind: str, subject_id: int | None = None
+    ) -> cp_model.IntVar:
+        """The literal for one requirement, created once and reused.
+
+        Reused rather than re-created because a rule about a room is one requirement however
+        many constraints express it: a room's capacity rules out forty sessions and that is
+        still the single thing a person would change.
+        """
+        requirement = Requirement(rule=rule, subject_kind=subject_kind, subject_id=subject_id)
+        if requirement not in self.assumptions:
+            self.assumptions[requirement] = self.cp.new_bool_var(f"assume[{requirement}]")
+        return self.assumptions[requirement]
 
     def room_of(self, solver: cp_model.CpSolver, session: SessionId) -> RoomId:
         for candidate in self.candidates[session]:
@@ -166,6 +198,8 @@ def build(
     snapshot: Snapshot,
     formulation: Formulation | None = None,
     fixed: Mapping[SessionId, Placement] | None = None,
+    *,
+    relaxable: bool = False,
 ) -> Model:
     """Turn a term into a model that has a solution exactly when the term has a timetable.
 
@@ -192,13 +226,17 @@ def build(
     """
     formulation = formulation or Formulation()
     fixed = fixed or {}
+    if relaxable and fixed:  # pragma: no cover - no caller does both, and neither should
+        raise ValueError("a relaxable model explains a whole term; it does not freeze part of one")
     model = Model(cp=cp_model.CpModel())
 
     for session_id, session in sorted(snapshot.sessions.items()):
-        _session(model, snapshot, session_id, session, formulation, fixed.get(session_id))
+        _session(
+            model, snapshot, session_id, session, formulation, fixed.get(session_id), relaxable
+        )
 
-    _rooms_hold_one_thing(model, snapshot)
-    _people_are_in_one_place(model, snapshot)
+    _rooms_hold_one_thing(model, snapshot, relaxable)
+    _people_are_in_one_place(model, snapshot, relaxable)
     _pins(model, snapshot)
 
     if formulation.symmetry:
@@ -217,6 +255,7 @@ def _session(
     session: Session,
     formulation: Formulation,
     frozen: Placement | None = None,
+    relaxable: bool = False,
 ) -> None:
     """The variables for one session: when it starts, and which room it is in.
 
@@ -232,6 +271,11 @@ def _session(
     comparison of like with like.
     """
     legal = _legal_starts(snapshot, session_id, session)
+    if relaxable:
+        # Everything the domain would have filtered becomes a constraint that can be blamed.
+        # What is left in the domain is the one thing nobody can relax: a session cannot start
+        # so late in a day that it runs into the next one.
+        legal = _within_a_day(snapshot, session)
     if frozen is not None:
         legal &= {frozen.start_slot}
     if not legal:
@@ -249,8 +293,11 @@ def _session(
         start, session.duration_slots, f"teaching[{session_id}]"
     )
 
+    if relaxable:
+        _restate_the_filters_as_rules(model, snapshot, session_id, session, start, legal)
+
     candidates = _candidates(
-        model, snapshot, session_id, session, start, legal, formulation, frozen
+        model, snapshot, session_id, session, start, legal, formulation, frozen, relaxable
     )
     if not candidates:
         raise UnsatisfiableError(
@@ -263,6 +310,73 @@ def _session(
     # keeps completeness a separate question precisely so a solver cannot pass by leaving
     # sessions out, and this is the constraint that stops it.
     model.cp.add_exactly_one(c.present for c in candidates)
+
+
+def _within_a_day(snapshot: Snapshot, session: Session) -> set[Slot]:
+    """Every start that leaves the session inside the day it begins in.
+
+    The floor under the relaxable model. Running past midnight is arithmetic about the grid
+    rather than a rule anyone could waive, so it stays in the domain while breaks and
+    availability come out of it and become constraints somebody can be told about.
+    """
+    grid = snapshot.grid
+    return {
+        start
+        for start in range(grid.slot_count)
+        if grid.slot_of_day(start) + session.duration_slots <= grid.slots_per_day
+    }
+
+
+def _restate_the_filters_as_rules(
+    model: Model,
+    snapshot: Snapshot,
+    session_id: SessionId,
+    session: Session,
+    start: cp_model.IntVar,
+    legal: set[Slot],
+) -> None:
+    """Say, as constraints, what `_legal_starts` would have said by leaving values out.
+
+    A value missing from a domain cannot be blamed for anything — there is no constraint to
+    put an assumption literal on — so the relaxable model widens the domain and writes the
+    same rules back as tables. **Derived from `TimeGrid.can_hold` rather than re-implemented**:
+    the break rule is exactly the starts that fit the day and that `can_hold` still refuses,
+    so the domain's reading of it stays the only reading.
+
+    Each is written only where it bites. A term with no breaks and nobody marked away adds
+    nothing here, and its relaxable model is the ordinary one with wider domains.
+    """
+    grid = snapshot.grid
+    teachable = {slot for slot in legal if grid.can_hold(slot, session.duration_slots)}
+    if teachable != legal:
+        _allow(model, start, teachable, model.assume("breaks_protected", "grid"))
+
+    for instructor in sorted(session.instructor_ids):
+        away = {
+            slot
+            for slot in range(grid.slot_count)
+            if (instructor, slot) in snapshot.instructor_away
+        }
+        if not away:
+            continue
+        free = {
+            slot for slot in legal if not away & set(range(slot, slot + session.duration_slots))
+        }
+        _allow(
+            model,
+            start,
+            free,
+            model.assume("availability_respected", "instructor", instructor),
+        )
+
+
+def _allow(
+    model: Model, start: cp_model.IntVar, values: set[Slot], because: cp_model.IntVar
+) -> None:
+    """`start` must take one of `values`, but only while `because` holds."""
+    model.cp.add_allowed_assignments([start], [(v,) for v in sorted(values)]).only_enforce_if(
+        because
+    )
 
 
 def _legal_starts(snapshot: Snapshot, session_id: SessionId, session: Session) -> set[Slot]:
@@ -296,6 +410,7 @@ def _candidates(
     legal: set[Slot],
     formulation: Formulation,
     frozen: Placement | None = None,
+    relaxable: bool = False,
 ) -> list[Candidate]:
     """The rooms this session could be in, and an optional interval for each.
 
@@ -314,7 +429,8 @@ def _candidates(
     for room_id, room in sorted(snapshot.rooms.items()):
         if frozen is not None and room_id != frozen.room_id:
             continue
-        if not room.can_host(headcount, session.required_features, session.required_counts):
+        refusals = _why_not(room, headcount, session)
+        if refusals and not relaxable:
             continue
         # A room closed during the hours this session would occupy is not a candidate for
         # those hours. Computed rather than constrained, for the same reason as the starts.
@@ -326,16 +442,23 @@ def _candidates(
                 for slot in range(begin, begin + session.duration_slots + room.turnaround_slots)
             )
         }
-        if not usable:
+        if not usable and not relaxable:
             continue
 
         present = model.cp.new_bool_var(f"in[{session_id},{room_id}]")
+        for rule in refusals:
+            # The room stays a candidate and is forbidden instead, so that forbidding it is a
+            # constraint somebody can be told about. One literal per (rule, room): a room's
+            # capacity rules out many sessions and is still the single thing to change.
+            model.cp.add(present == 0).only_enforce_if(model.assume(rule, "room", room_id))
         if usable != legal:
             # Only where it bites. An unconditional table constraint per candidate would be
             # thousands of them saying nothing.
-            model.cp.add_allowed_assignments(
+            closures = model.cp.add_allowed_assignments(
                 [start], [(v,) for v in sorted(usable)]
             ).only_enforce_if(present)
+            if relaxable:
+                closures.only_enforce_if(model.assume("availability_respected", "room", room_id))
         found.append(
             Candidate(
                 session=session_id,
@@ -352,7 +475,28 @@ def _candidates(
     return found
 
 
-def _rooms_hold_one_thing(model: Model, snapshot: Snapshot) -> None:
+def _why_not(room: Room, headcount: int, session: Session) -> tuple[str, ...]:
+    """Which rules stop this room holding this session, if any.
+
+    `Room.can_host` answers *whether*; an explanation needs *which*, and a room can fail both
+    tests at once. Asking `can_host` twice — once about seats alone and once about the
+    equipment alone — keeps the answer the validator's rather than a second reading of it.
+    """
+    if room.can_host(headcount, session.required_features, session.required_counts):
+        return ()
+    seats = room.can_host(headcount, frozenset(), None)
+    equipment = room.can_host(0, session.required_features, session.required_counts)
+    return tuple(
+        rule
+        for rule, holds in (
+            ("room_fits_group", seats),
+            ("room_has_required_features", equipment),
+        )
+        if not holds
+    )
+
+
+def _rooms_hold_one_thing(model: Model, snapshot: Snapshot, relaxable: bool = False) -> None:
     """`room_not_double_booked`, as a constraint rather than a check."""
     by_room: dict[RoomId, list[Candidate]] = {}
     for candidates in model.candidates.values():
@@ -365,10 +509,11 @@ def _rooms_hold_one_thing(model: Model, snapshot: Snapshot) -> None:
             snapshot,
             [(c.session, c.interval) for c in sharing],
             name=f"room {room_id}",
+            because=model.assume("room_not_double_booked", "room", room_id) if relaxable else None,
         )
 
 
-def _people_are_in_one_place(model: Model, snapshot: Snapshot) -> None:
+def _people_are_in_one_place(model: Model, snapshot: Snapshot, relaxable: bool = False) -> None:
     """`instructor_not_double_booked` and `group_not_double_booked`.
 
     Groups are taken by **leaf**, exactly as the validator does: a lecture to an intake and a
@@ -376,12 +521,24 @@ def _people_are_in_one_place(model: Model, snapshot: Snapshot) -> None:
     named group instead would let that pair through, which is the failure a solver produces
     and a person discovers at the door.
     """
-    for _instructor, sessions in sorted(snapshot.sessions_of_instructor.items()):
+    for instructor, sessions in sorted(snapshot.sessions_of_instructor.items()):
         _no_overlap(
-            model, snapshot, [(s, model.teaching[s]) for s in sessions], name="an instructor"
+            model,
+            snapshot,
+            [(s, model.teaching[s]) for s in sessions],
+            name="an instructor",
+            because=model.assume("instructor_not_double_booked", "instructor", instructor)
+            if relaxable
+            else None,
         )
-    for _group, sessions in sorted(snapshot.sessions_of_group.items()):
-        _no_overlap(model, snapshot, [(s, model.teaching[s]) for s in sessions], name="a group")
+    for group, sessions in sorted(snapshot.sessions_of_group.items()):
+        _no_overlap(
+            model,
+            snapshot,
+            [(s, model.teaching[s]) for s in sessions],
+            name="a group",
+            because=model.assume("group_not_double_booked", "group", group) if relaxable else None,
+        )
 
 
 def _no_overlap(
@@ -390,6 +547,7 @@ def _no_overlap(
     sharing: Sequence[tuple[SessionId, cp_model.IntervalVar]],
     *,
     name: str,
+    because: cp_model.IntVar | None = None,
 ) -> None:
     """Nothing here may overlap anything else here — except across weeks that never meet.
 
@@ -410,7 +568,12 @@ def _no_overlap(
             if snapshot.sessions[session_id].week_pattern.coincides_with(pattern)
         ]
         if len(together) > 1:
-            model.cp.add_no_overlap(together)
+            clash = model.cp.add_no_overlap(together)
+            if because is not None:
+                # Sound, and it costs the propagator: the same constraint refutes a pigeonhole
+                # in a millisecond unconditional and does not refute it at all in ten seconds
+                # from behind a literal (#275). Only the explaining model pays that.
+                clash.only_enforce_if(because)
 
 
 def _pins(model: Model, snapshot: Snapshot) -> None:

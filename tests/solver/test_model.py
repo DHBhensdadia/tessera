@@ -12,12 +12,14 @@ The other half — that a solved timetable actually satisfies the rules — is
 from __future__ import annotations
 
 import pytest
+from ortools.sat.python import cp_model
 
 from tessera.domain.entities import Unavailability, WeekPattern
 from tessera.domain.ids import AssignmentId, InstructorId
 from tessera.domain.timetable import Assignment
 from tessera.solver import Outcome, solve
 from tessera.solver.model import UnsatisfiableError, build, size
+from tessera.solver.result import Requirement
 from tests.domain.validation.institution import (
     CUPBOARD,
     HALL,
@@ -30,6 +32,7 @@ from tests.domain.validation.institution import (
     TUTORIAL,
     Institution,
 )
+from tests.solver import impossible as no
 
 
 @pytest.fixture
@@ -322,3 +325,102 @@ class TestPinsThatCannotWork:
 
         assert set(model.starts) == {s.id for s in apart.sessions}
         assert solve(apart.snapshot()).outcome is Outcome.IMPOSSIBLE
+
+
+class TestTheModelCanBeRelaxed:
+    """The second way to build a term: every hard rule behind a literal that can turn it off.
+
+    Not a second model — the same builder, so a rule is expressed once and cannot drift into
+    saying two things (Decision #5 one layer out, #281). What changes is *how* each rule is
+    written: the fast model expresses most of them by leaving values out of a domain, and a
+    value that is absent cannot be blamed, because there is no constraint to attach a literal
+    to. So the domains widen and the filtering comes back as constraints.
+
+    What these tests protect is that **every** hard rule made it across. A rule that stayed in
+    the domain would be silently unblameable: the term would still be refused, correctly, and
+    the explanation would simply never mention it.
+    """
+
+    @staticmethod
+    def satisfiable(term: object) -> bool:
+        model = build(term, relaxable=True)  # type: ignore[arg-type]
+        solver = cp_model.CpSolver()
+        solver.parameters.num_workers = 1
+        solver.parameters.max_time_in_seconds = 10.0
+        return solver.solve(model.cp) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    @pytest.mark.parametrize(
+        "term",
+        [
+            no.more_sessions_than_room_periods(),
+            no.instructor_away_most_of_the_week(),
+            no.rules_that_contradict_each_other(),
+            no.capacity_threshold(),
+            no.short_only_once_lunch_is_taken_out(),
+            no.the_only_room_is_shut_all_week(),
+        ],
+        ids=["pigeonhole", "away", "rules", "capacity", "lunch", "closed"],
+    )
+    def test_with_no_rule_asserted_every_term_has_a_timetable(self, term: object) -> None:
+        """Nothing is left to refuse a term once every rule is switched off.
+
+        The guard that makes an empty conflict set a defect rather than a case: if this fails,
+        some constraint was written unconditionally and no explanation could ever name it.
+        """
+        assert self.satisfiable(term)
+
+    def test_the_rules_that_can_be_switched_off_are_the_ones_that_bind(self) -> None:
+        """A literal exists for each rule the term actually narrows something with.
+
+        Created where a rule bites and not otherwise: a term with no breaks and nobody marked
+        away writes nothing about either, and its relaxable model is the ordinary one with
+        wider domains.
+        """
+        away = build(no.instructor_away_most_of_the_week(), relaxable=True)
+
+        assert Requirement("availability_respected", "instructor", 1) in away.assumptions
+        assert Requirement("instructor_not_double_booked", "instructor", 1) in away.assumptions
+        assert Requirement("breaks_protected", "grid") not in away.assumptions
+
+        lunch = build(no.short_only_once_lunch_is_taken_out(), relaxable=True)
+
+        assert Requirement("breaks_protected", "grid") in lunch.assumptions
+
+    def test_a_room_can_be_refused_for_two_reasons_at_once(self) -> None:
+        """Capacity and equipment are separate rules and a room can fail both.
+
+        Reported as two, because they are two things to fix and a reader told only about seats
+        would buy a bigger room and hit the same refusal.
+        """
+        term = no.term(
+            sessions=[
+                no.lecture(1, group=1, features=frozenset({no.PROJECTOR})),
+            ],
+            rooms=[no.room(1, seats=5)],
+            sizes={1: 40},
+        )
+        model = build(term, relaxable=True)
+
+        assert Requirement("room_fits_group", "room", 1) in model.assumptions
+        assert Requirement("room_has_required_features", "room", 1) in model.assumptions
+
+    def test_an_ordinary_build_creates_no_literals(self) -> None:
+        """Every existing caller is untouched, which is what makes this a mode and not a cost."""
+        assert build(no.capacity_threshold()).assumptions == {}
+
+    def test_a_pin_that_cannot_work_still_refuses_before_any_model(self) -> None:
+        """`build` names both sessions and the room, which no conflict set could improve on.
+
+        A core would say `room_not_double_booked` and leave the reader to find which two of
+        five hundred sessions. The better message wins and the explainer is never reached.
+        """
+        with pytest.raises(UnsatisfiableError, match="both pinned into room 1"):
+            build(no.two_pins_in_one_room(), relaxable=True)
+
+    def test_freezing_and_explaining_are_not_combined(self) -> None:
+        """A relaxable model explains a whole term; a frozen one is a round of the loop."""
+        term = no.capacity_threshold()
+        placement = next(iter(build(term).starts))
+
+        with pytest.raises(ValueError, match="does not freeze part of one"):
+            build(term, fixed={placement: None}, relaxable=True)  # type: ignore[dict-item]
