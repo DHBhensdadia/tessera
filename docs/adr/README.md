@@ -24,3 +24,4 @@ history of what was believed and why is the useful part.
 | [0013](0013-solver-formulation.md) | Model sessions as intervals, not a boolean placement cube |
 | [0014](0014-slot-granularity.md) | 30-minute slots by default, configurable per project |
 | [0015](0015-solo-git-workflow.md) | Direct commits to main; protection limited to force-push and deletion |
+| [0016](0016-explaining-infeasibility.md) | Explain an impossible term with two engines, and count before you search |

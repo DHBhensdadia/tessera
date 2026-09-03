@@ -1,26 +1,36 @@
 # Solving
 
-How a term becomes a timetable, and how that timetable becomes a good one. Four modules
-in `tessera/solver/` and one in `tessera/domain/validation/`, described here as the one
-system they are rather than as five parts, because their most important property is a
-relationship between two of them.
+How a term becomes a timetable, how that timetable becomes a good one, and what is said when
+there is no timetable at all. Six modules in `tessera/solver/` and one in
+`tessera/domain/validation/`, described here as the one system they are rather than as seven
+parts, because their most important properties are relationships between them.
 
 ## The shape of it
 
 ```
-Snapshot ──► model.build ──► objective.enforce ──► CP-SAT ──► a timetable
+Snapshot ──► preflight.check ──► a shortfall?  ──yes──► IMPOSSIBLE, counted
+   │              (arithmetic, no model, ~1 ms)               and explained
+   │                     │ no
+   ▼                     ▼
+   │         model.build ──► objective.enforce ──► CP-SAT ──► a timetable
+   │              │                                    │            │
+   │              │                              INFEASIBLE   search.improve ◄─┐
+   │              ▼                                    │            │          │
+   │       explain.conflict ◄──────────────────────────┘   freeze all but a    │
+   │       the rules that cannot hold together             window, re-solve,   │
+   │                                                       keep what is better─┘
    │                                                              │
-   │                                          search.improve ◄────┘
-   │                                                 │
-   │                     freeze all but a window, re-solve, keep what is better
-   │                                                 │
-   └──────────────► validation.validate ◄────────────┘
+   └──────────────► validation.validate ◄────────────────────────┘
                     the second reading, which agrees or the build is red
 ```
 
 Two phases, deliberately ([ADR-0002](../adr/0002-cpsat-fix-and-optimize.md)). Finding *a*
 valid timetable and finding a good one are different problems, and at department scale
 they are so different that doing them together does neither.
+
+A third thing runs before both and is not a phase but a refusal: counting what arithmetic
+already settles, so a term that cannot work is refused in a millisecond instead of after the
+budget (§7, [ADR-0016](../adr/0016-explaining-infeasibility.md)).
 
 ## 1. One rulebook, read twice
 
@@ -174,7 +184,97 @@ run, and on CI's slower hardware the setup consumed the budget, no round started
 valid, complete, correctly scored timetable — and the test was wrong. Wall-clock figures
 belong in the phase records, beside the hardware they were measured on.
 
-## 7. Where to look when something is wrong
+## 7. Saying why there is no timetable
+
+Two engines answer that, and they fail in opposite places. Everything here is bounded by one
+rule: **both can prove a term impossible and neither can prove one possible.** Each relaxes
+where a session actually goes, so silence means nothing was proven — not that all is well.
+
+### The count runs first
+
+`preflight.check` asks Hall's condition three times — sessions against room-periods, an
+instructor's teaching against the hours they are free, a group's classes against the week —
+and returns the *violating set* rather than a verdict.
+
+It exists because the obvious mechanism does not fire. On `comp01`, which has no timetable
+under Tessera's hard capacity, CP-SAT returns `out_of_time` at thirty seconds under every
+formulation this project has; the same fact counted takes about a millisecond:
+
+> 64 sessions needing a room that seats 31 or more need 64 hours, and the rooms that could
+> take them offer 60 — 4 short.
+
+Two algorithms, chosen by the shape of the term. Where a room's eligibility is decided by
+capacity alone the eligible sets are **nested** — anything that fits a room seating a hundred
+fits every larger one — so Hall's condition needs testing only at each distinct threshold,
+which is a sorted sweep. Required features order as a lattice rather than a chain, and those
+fall to a transportation problem over room classes. A test asserts the two agree; the flow is
+the definition and the sweep is the fast case.
+
+**A false positive is the failure to fear.** Reporting a shortage that is not there refuses a
+term somebody could have run, in milliseconds, with an authoritative number attached. So every
+count under-states demand and over-states supply: a session demands its duration and not the
+room's turnaround, and a room supplies every teaching slot it is not closed in even though a
+session could not start in the last of them.
+
+Two things that look like details and are not:
+
+| | |
+|---|---|
+| **Thresholds are session headcounts, not room capacities** | `comp01`'s binding threshold is 31 and no room seats exactly 31. Keyed on capacities the same argument proves nothing |
+| **Sessions in alternating weeks are counted apart** | Sixteen hours for one group in an eight-hour week is feasible when half of them are fortnightly, and counting them together would invent an impossibility |
+
+### The conflict set runs second, and only after a proof
+
+`explain.conflict` builds the same term with every hard rule behind an assumption literal,
+asserts them all, and reads back the subset that cannot hold. It answers what no count can
+see — two rooms, two hours of teaching, a week of eight, and one instructor pinned into both
+at nine o'clock. Nothing is short of anything; the arrangement is simply impossible.
+
+**Why it cannot go first.** A constraint behind a literal keeps its meaning and loses its
+propagation. The same redundant cumulative refutes a 120-session pigeonhole in **0.001 s**
+stated unconditionally and does not refute it at all in **ten seconds** from behind a literal.
+So the relaxing model is strictly worse at refuting than the model that just refuted the term,
+and asking it first would trade a proof for a sentence and often get neither.
+
+**Why the model is a mode of `build` and not a second builder.** Four of the seven invariants
+are enforced by leaving values out of a domain, and a missing value cannot be blamed — there
+is no constraint to attach a literal to. So the relaxable model widens the domains and writes
+the rules back as constraints. Doing that in a second builder would be a *third* reading of
+the rules, and §1's argument applies: the symptom would be an explanation naming a rule the
+solver does not enforce. The break rule is derived from `TimeGrid.can_hold` for the same
+reason — the starts that fit the day and that `can_hold` still refuses are exactly the ones a
+break blocks.
+
+One literal per **rule per subject**. Per rule alone gives seven and a set that says
+"instructors clash" while naming nobody; per session gives thousands. Per subject is the
+granularity somebody can act on, and hard distribution rules are per constraint *row* rather
+than per kind, because an institution with four `SAME_DAY` rules needs to be told which one.
+
+### What the answer is allowed to claim
+
+`Solution.explanation` is attached to `IMPOSSIBLE` and to nothing else. `OUT_OF_TIME` means
+the search ran out, which says nothing about whether a timetable exists, and rules to blame
+beside it would read as a reason to change data that may be fine.
+
+The conflict set is **minimal but not unique**. Every member is necessary — `explain`'s own
+deletion filter re-solves with each relaxed in turn, and the tests run it on every conflict
+they check — but where several independent contradictions exist CP-SAT names one and never
+mentions the others. So the report says every requirement listed is needed, and says outright
+that relaxing one is not a promise that a timetable appears.
+
+The sentences are looked up rather than written: `INVARIANTS` carries a statement for each of
+the seven and `ConstraintSpec` a summary per kind, both already shown on the rules screen. The
+only new prose is the quantity, because it exists nowhere else.
+
+### What neither can prove
+
+Sessions too long to tile a day. Twenty-six three-hour sessions into five rooms across
+four-hour days needs 78 slot-units against a nominal 100, and can only ever place 25 — one per
+room per day. The count relaxes *where*, so it sees 78 against 100 and stays quiet; CP-SAT
+returns nothing in fifteen seconds. It is in the backlog, and it is the honest edge of what
+this subsystem does.
+
+## 8. Where to look when something is wrong
 
 | Symptom | Look at |
 |---|---|
@@ -187,5 +287,9 @@ belong in the phase records, beside the hardware they were measured on.
 | A sub-problem is rejected outright | `search.py` → `_run` raises on `MODEL_INVALID`; usually a variable hinted twice |
 | A moved session lands somewhere impossible | `model.py` — start domains and candidate rooms |
 | `NotScorableError` | a constraint kind with no term in `objective.TERMS` |
+| A term is refused that could really be solved | `preflight.py` — every count must under-state demand and over-state supply |
+| A solve says "impossible" and explains nothing | `Budget.explain_seconds` ran out, or the relaxable model is weaker than what refuted the term |
+| A conflict names rules that are not really in conflict | `explain.py` → `necessary_one_at_a_time`, which the tests run on every conflict |
+| A hard rule can never be blamed | it was written without a literal — `build(relaxable=True)` and `objective.enforce(relaxable=True)` |
 
 `MAP.md` in the planning workspace carries the same table for the whole codebase.
