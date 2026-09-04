@@ -8,7 +8,9 @@ the thing most likely to be wrong (4.7 D9).
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -201,6 +203,44 @@ class TestWhatIsRemembered:
             registry._jobs[job.id] = job
 
         assert len(registry._jobs) <= REMEMBERED
+
+
+@pytest.mark.slow
+class TestNothingIsLeftRunning:
+    def test_solving_repeatedly_does_not_accumulate_threads(
+        self, solving_client: TestClient, solvable: Term
+    ) -> None:
+        """P5's exit test asks for *no orphan threads*, and this is where that is checkable.
+
+        **Not "no thread survives a solve"** — the first version asserted that and failed, on a
+        thread named `AnyIO worker thread`. It is a *pooled* worker waiting for the next task,
+        which is the design rather than a leak, and a test that called it one would have been
+        demanding that the threadpool stop being a pool.
+
+        What a leak would actually look like is accumulation: a job whose thread never returned
+        would leave one behind every time. So six solves must not cost more threads than three.
+        """
+
+        def solve_once() -> None:
+            job = solving_client.post(
+                f"/api/v1/terms/{solvable.term_id}/solve", json={"time_budget_seconds": 20}
+            ).json()
+            settled(solving_client, job["job_id"])
+
+        for _ in range(3):
+            solve_once()
+        after_three = Counter(thread.name for thread in threading.enumerate())
+
+        for _ in range(3):
+            solve_once()
+        after_six = Counter(thread.name for thread in threading.enumerate())
+
+        grew = {
+            name: (after_three[name], count)
+            for name, count in after_six.items()
+            if count > after_three[name]
+        }
+        assert not grew, f"threads accumulated across solves: {grew}"
 
 
 @pytest.mark.slow
