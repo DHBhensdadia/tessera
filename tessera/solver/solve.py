@@ -104,16 +104,19 @@ def solve(
     if budget.deterministic_seconds is not None:
         solver.parameters.max_deterministic_time = budget.deterministic_seconds
 
-    searched = True
+    searched, broke = True, ""
     if stop is None:
-        status = solver.solve(model.cp)
+        status, broke = search.attempted(solver, model.cp)
     else:
         with stop.running(solver) as too_late:
             # `UNKNOWN` rather than searching: a cancel that landed while the model was being
             # built has already been answered, and starting a solve to abandon it would be a
             # whole budget of searching for a question nobody is waiting on.
             searched = not too_late
-            status = solver.solve(model.cp) if searched else cp_model.UNKNOWN
+            if searched:
+                status, broke = search.attempted(solver, model.cp)
+            else:
+                status = cp_model.UNKNOWN
     elapsed = time.perf_counter() - started
     sessions, candidates = build_model.size(model)
 
@@ -125,9 +128,11 @@ def solve(
             seconds=elapsed,
             sessions=sessions,
             candidates=candidates,
-            # A search that never started did no work, and asking CP-SAT how much it did
-            # raises rather than answering zero — there is no response to read.
-            work=solver.deterministic_time if searched else 0.0,
+            # A search that never started, or that fell over inside CP-SAT, did no work
+            # anybody can read: asking raises rather than answering zero, because there is no
+            # response behind it.
+            work=solver.deterministic_time if searched and not broke else 0.0,
+            search_failed=broke,
             # Only once something has proved there is no timetable. Running out of time says
             # nothing about whether one exists, and a set of rules attached to that would read
             # as a reason to change the data when the honest answer is "we did not find one".

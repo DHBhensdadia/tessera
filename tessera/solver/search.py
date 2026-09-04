@@ -212,13 +212,16 @@ def improve(
 
     trajectory: list[Step] = []
     bound, proven = 0, False
+    # The first one only. A second failure from the same cause says nothing the first did not,
+    # and the field is a sentence somebody reads rather than a log.
+    failure = ""
 
     whole = build_model.build(snapshot, formulation)
     objective = costs.add(whole)
     assert objective is not None  # `_what_it_costs` already established that something is
 
     if len(whole.cp.proto.variables) <= budget.whole_model_ceiling and not _cancelled(stop):
-        attempt, spent, burnt = _run(
+        attempt, spent, burnt, broke = _run(
             whole,
             objective,
             incumbent=best.placements,
@@ -230,6 +233,7 @@ def improve(
             stop=stop,
         )
         work += burnt
+        failure = failure or broke
         if attempt is not None:
             improved = attempt.penalty < best.penalty
             trajectory.append(
@@ -260,6 +264,7 @@ def improve(
                     work=work,
                     snapshot=snapshot,
                     stopped=_cancelled(stop),
+                    search_failed=failure,
                 )
 
     # Bound to *this* cost model's reading of what a session costs. With the validator's
@@ -279,7 +284,7 @@ def improve(
         priced = costs.add(sub)
         assert priced is not None
 
-        attempt, spent, burnt = _run(
+        attempt, spent, burnt, broke = _run(
             sub,
             priced,
             incumbent=best.placements,
@@ -291,6 +296,7 @@ def improve(
             stop=stop,
         )
         work += burnt
+        failure = failure or broke
         improved = attempt is not None and attempt.penalty < best.penalty
         trajectory.append(
             Step(
@@ -319,6 +325,7 @@ def improve(
         work=work,
         snapshot=snapshot,
         stopped=_cancelled(stop),
+        search_failed=failure,
     )
 
 
@@ -345,7 +352,7 @@ def _what_it_costs(
     objective = costs.add(model)
     if objective is None:
         return None
-    attempt, _, _ = _run(
+    attempt, _, _, _ = _run(
         model,
         objective,
         incumbent=placed,
@@ -368,8 +375,10 @@ def _run(
     deterministic: float | None,
     report: _Reporter | None = None,
     stop: Stop | None = None,
-) -> tuple[Attempt | None, float, float]:
-    """Minimise, optionally from the timetable in hand. Returns the attempt, seconds and work.
+) -> tuple[Attempt | None, float, float, str]:
+    """Minimise, from the timetable in hand where there is one.
+
+    Returns the attempt, the seconds, the work, and whatever CP-SAT raised if it raised.
 
     **`warm` is false for the unrestricted attempt, and that is not a detail.** Handing CP-SAT
     the feasibility answer as a starting point for a *fresh* optimisation makes it markedly
@@ -404,9 +413,9 @@ def _run(
         solver.parameters.max_deterministic_time = deterministic
 
     began = time.perf_counter()
-    searched = True
+    searched, broke = True, ""
     if stop is None:
-        status = _solved(solver, model, objective, report)
+        status, broke = _solved(solver, model, objective, report)
     else:
         # Registered for as long as it is searching, so `Stop.request()` from another thread
         # reaches CP-SAT rather than waiting for this call to return on its own — which on an
@@ -414,12 +423,16 @@ def _run(
         # while this round's model was being built is answered by not searching at all.
         with stop.running(solver) as too_late:
             searched = not too_late
-            status = _solved(solver, model, objective, report) if searched else cp_model.UNKNOWN
+            if searched:
+                status, broke = _solved(solver, model, objective, report)
+            else:
+                status = cp_model.UNKNOWN
     elapsed = time.perf_counter() - began
-    # A search that never started did no work. `deterministic_time` raises rather than
-    # answering zero when there is no response behind it, which is the right behaviour for a
-    # number nobody should be reading and a crash for anybody who does.
-    burnt = solver.deterministic_time if searched else 0.0
+    # A search that never started, or that fell over inside CP-SAT, did no work anybody can
+    # read: `deterministic_time` raises rather than answering zero when there is no response
+    # behind it, which is right for a number nobody should be reading and a crash for anybody
+    # who does.
+    burnt = solver.deterministic_time if searched and not broke else 0.0
 
     # A model CP-SAT will not read is a bug in this file, not an unlucky round, and the two
     # are one enum apart. Treating them alike hid a duplicated solution hint behind forty-one
@@ -428,7 +441,7 @@ def _run(
     if status == cp_model.MODEL_INVALID:
         raise AssertionError(f"the sub-problem is not a valid model: {model.cp.validate()[:400]}")
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return None, elapsed, burnt
+        return None, elapsed, burnt, broke
 
     found = Attempt(
         placements={
@@ -447,7 +460,45 @@ def _run(
         seconds=elapsed,
         work=burnt,
     )
-    return found, elapsed, burnt
+    return found, elapsed, burnt, broke
+
+
+#: What OR-Tools raises when its presolve falls over on a model it has itself validated.
+#:
+#: Caught by name rather than as `Exception`, and the narrowness is the point: a solve that
+#: fails for a reason we could fix must still be loud. #239 raises `AssertionError` on a
+#: `MODEL_INVALID` status for exactly that reason, and this must not quietly widen it — a
+#: `MODEL_INVALID` is a *status*, so it is unaffected either way, and every other exception
+#: still propagates.
+CPSAT_BROKE = IndexError
+
+
+def attempted(
+    solver: cp_model.CpSolver,
+    model: cp_model.CpModel,
+    callback: cp_model.CpSolverSolutionCallback | None = None,
+) -> tuple[cp_model.CpSolverStatus, str]:
+    """Run CP-SAT, and turn a failure inside it into an answer of *nothing* rather than a crash.
+
+    **The invariant this exists for is that solving never raises.** 4.7 found a term — five
+    two-slot sessions into a two-day week with one room, under a hard `balance_daily_load` —
+    where `solve()` throws `IndexError` from inside its own presolve. `CpModel.validate()`
+    returns empty on that model and disabling presolve solves it correctly, so the model is
+    good and the library is not; and it is a knife-edge, since one session more, one slot
+    shorter, one day longer or one extra room all make it go away. There is nothing principled
+    to change on our side, and no newer OR-Tools to move to.
+
+    So the engine reports what it knows — that it did not find a timetable — instead of dying
+    with the library. The reason travels with it in `Solution.search_failed`, because a solve
+    that failed and a solve that ran out of time are not the same thing to whoever reads it.
+
+    It lives in this module because both halves of a solve run through here: `solve` uses it
+    for the feasibility pass and the loop for every attempt after it.
+    """
+    try:
+        return (solver.solve(model, callback) if callback else solver.solve(model)), ""
+    except CPSAT_BROKE as broke:
+        return cp_model.UNKNOWN, f"{type(broke).__name__}: {broke}"
 
 
 def _solved(
@@ -455,11 +506,11 @@ def _solved(
     model: build_model.Model,
     objective: Objective,
     report: _Reporter | None,
-) -> cp_model.CpSolverStatus:
+) -> tuple[cp_model.CpSolverStatus, str]:
     """One CP-SAT solve, with a listener attached where anybody is listening."""
     if report is None or report.listener is None:
-        return solver.solve(model.cp)
-    return solver.solve(model.cp, _Watcher(objective, report))
+        return attempted(solver, model.cp)
+    return attempted(solver, model.cp, _Watcher(objective, report))
 
 
 def _cancelled(stop: Stop | None) -> bool:
@@ -528,11 +579,13 @@ def _answer(
     work: float,
     snapshot: Snapshot,
     stopped: bool = False,
+    search_failed: str = "",
 ) -> Solution:
     sessions, candidates = len(snapshot.sessions), 0
     return Solution(
         outcome=Outcome.SOLVED,
         stopped=stopped,
+        search_failed=search_failed,
         placements=tuple(
             Placed(session=s, start_slot=p.start_slot, room=p.room_id, is_pinned=p.is_pinned)
             for s, p in sorted(placed.items())

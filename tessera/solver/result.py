@@ -303,6 +303,20 @@ class Solution:
     trajectory: tuple[Step, ...] = ()
     """Every round of the outer search, in order. Empty when there was no outer search."""
 
+    search_failed: str = ""
+    """What CP-SAT raised, on the occasions it raises instead of answering.
+
+    **Empty is the ordinary case and means nothing went wrong.** OR-Tools 9.15.6755 can throw
+    `IndexError` out of its own presolve on a model it has just validated — 4.7 found one, and
+    with presolve disabled the identical model answers `INFEASIBLE` in milliseconds. A library
+    that dies on a valid model is not a reason for the engine to die with it.
+
+    The outcome is `OUT_OF_TIME`, which already means *we did not find one, and that says
+    nothing about whether one exists* (#205). This says **why** the looking ended, the way
+    `stopped` does for a cancellation — and it is a sentence rather than a flag because the
+    next such failure will not be this one, and whoever reads it will want to know what broke.
+    """
+
     stopped: bool = False
     """A cancellation was asked for before this answer was returned.
 
