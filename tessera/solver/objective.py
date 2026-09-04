@@ -67,6 +67,15 @@ class NotScorableError(NotImplementedError):
     """
 
 
+#: Anything able to read a variable's value out of a finished search.
+#:
+#: `CpSolver` after `solve()` returns, and `CpSolverSolutionCallback` *during* one — the two
+#: have the same `value()` and are unrelated classes. 4.7's stream reads the score from inside
+#: the callback, which is the only place the score exists while an unrestricted attempt is
+#: still running, and annotating that as `CpSolver` would have been false.
+type Values = cp_model.CpSolver | cp_model.CpSolverSolutionCallback
+
+
 @dataclass(frozen=True)
 class Objective:
     """What the model minimises, and how to read the result back out.
@@ -94,10 +103,10 @@ class Objective:
         """The lowest value each violation count may take. Every one of them is zero."""
         return tuple(bounds(unit)[0] for unit in self.units)
 
-    def penalty(self, solver: cp_model.CpSolver) -> int:
+    def penalty(self, solver: Values) -> int:
         return int(solver.value(self.total))
 
-    def breakdown(self, solver: cp_model.CpSolver) -> dict[str, int]:
+    def breakdown(self, solver: Values) -> dict[str, int]:
         """The penalty by rule, largest first — `Report.penalty_breakdown`'s shape exactly.
 
         Zero-cost kinds are dropped for the same reason the validator drops them: a rule an

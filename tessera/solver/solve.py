@@ -29,10 +29,11 @@ from tessera.domain.validation.snapshot import Placement
 from tessera.solver import explain, preflight, search
 from tessera.solver import model as build_model
 from tessera.solver.budget import Budget
+from tessera.solver.cancel import Stop
 from tessera.solver.cost import CostModel, Preferences
-from tessera.solver.result import Explanation, Outcome, Solution
+from tessera.solver.result import Explanation, Outcome, Progress, Solution
 
-__all__ = ["Budget", "solve"]
+__all__ = ["Budget", "Stop", "solve"]
 
 
 def solve(
@@ -41,6 +42,8 @@ def solve(
     formulation: build_model.Formulation | None = None,
     on_improvement: Callable[[Solution], None] | None = None,
     costs: CostModel | None = None,
+    on_progress: Callable[[Progress], None] | None = None,
+    stop: Stop | None = None,
 ) -> Solution:
     """Find a timetable for this term, make it as good as the budget allows, or say why not.
 
@@ -48,6 +51,18 @@ def solve(
     every caller in the product wants and what this did before there was anything else to
     want; 4.5's benchmark passes CB-CTT's four soft constraints instead, so the published
     metric is computed by the search that ships rather than by a copy of it.
+
+    **`on_progress` and `on_improvement` are not the same promise.** `on_improvement` fires
+    once per *accepted round* and its scores strictly decrease, which is what 4.4 asserts and
+    what makes it the right thing to hand a listener that stores timetables. `on_progress`
+    fires whenever anything is known — the feasibility pass finishing, CP-SAT's own solutions
+    during an unrestricted attempt, a round being accepted — and carries a score rather than a
+    timetable. 4.7 measured why both exist: on two real terms out of three, an accepted round
+    happens **once or never** inside thirty seconds, so a progress panel fed by the first of
+    these watches nothing at all.
+
+    `stop` lets another thread end the search. It is honoured between rounds *and* inside a
+    running solve; a flag alone is answered up to a whole budget late (`cancel.Stop`).
     """
     budget = budget or Budget()
     formulation = formulation or build_model.Formulation()
@@ -89,7 +104,16 @@ def solve(
     if budget.deterministic_seconds is not None:
         solver.parameters.max_deterministic_time = budget.deterministic_seconds
 
-    status = solver.solve(model.cp)
+    searched = True
+    if stop is None:
+        status = solver.solve(model.cp)
+    else:
+        with stop.running(solver) as too_late:
+            # `UNKNOWN` rather than searching: a cancel that landed while the model was being
+            # built has already been answered, and starting a solve to abandon it would be a
+            # whole budget of searching for a question nobody is waiting on.
+            searched = not too_late
+            status = solver.solve(model.cp) if searched else cp_model.UNKNOWN
     elapsed = time.perf_counter() - started
     sessions, candidates = build_model.size(model)
 
@@ -97,10 +121,13 @@ def solve(
         proven = status == cp_model.INFEASIBLE
         return Solution(
             outcome=Outcome.IMPOSSIBLE if proven else Outcome.OUT_OF_TIME,
+            stopped=stop is not None and stop.requested,
             seconds=elapsed,
             sessions=sessions,
             candidates=candidates,
-            work=solver.deterministic_time,
+            # A search that never started did no work, and asking CP-SAT how much it did
+            # raises rather than answering zero — there is no response to read.
+            work=solver.deterministic_time if searched else 0.0,
             # Only once something has proved there is no timetable. Running out of time says
             # nothing about whether one exists, and a set of rules attached to that would read
             # as a reason to change the data when the honest answer is "we did not find one".
@@ -119,6 +146,15 @@ def solve(
         for session_id in sorted(model.starts)
     }
 
+    if on_progress is not None:
+        # The moment P7 draws as its own line — *"Feasible solution found in 6s"* — and it is
+        # genuinely earlier than any score: what this timetable costs is not known until
+        # `improve` prices it, which is a whole model build later. 5.10 s against 7.93 s at
+        # department scale, measured, and the person waiting should hear the first one.
+        on_progress(
+            Progress(phase="feasibility", seconds=time.perf_counter() - started, solutions=0)
+        )
+
     found = search.improve(
         snapshot,
         budget=budget,
@@ -128,6 +164,8 @@ def solve(
         costs=costs,
         already=solver.deterministic_time,
         on_improvement=on_improvement,
+        on_progress=on_progress,
+        stop=stop,
     )
     return replace(found, sessions=sessions, candidates=candidates)
 

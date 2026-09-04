@@ -41,9 +41,72 @@ from tessera.domain.validation.snapshot import Placement
 from tessera.solver import model as build_model
 from tessera.solver import neighbourhood
 from tessera.solver.budget import Budget
+from tessera.solver.cancel import Stop
 from tessera.solver.cost import CostModel
 from tessera.solver.objective import Objective
-from tessera.solver.result import Outcome, Placed, Solution, Step
+from tessera.solver.result import Outcome, Placed, Progress, Solution, Step
+
+
+@dataclass
+class _Reporter:
+    """Everything that happens during a solve, as one monotone stream.
+
+    Three things can improve a timetable and they arrive on different schedules: the
+    feasibility pass produces the first one, CP-SAT reports its own during an unrestricted
+    attempt, and a round produces one at its end. 4.7 §1a measured what using only the last
+    of those looks like from outside — on `comp02` under the default preferences, **nothing at
+    all in thirty seconds** while the solver works and returns a good timetable.
+
+    **Only an improvement is reported.** A round is handed the incumbent as a hint, and
+    CP-SAT's first solution inside it can be worse than what went in before it gets better; a
+    stream that forwarded those would show the score rising, which is the one thing a panel
+    promising *"watch it get better"* must never do. `best` is what makes the stream monotone
+    whatever produced the number, and it is the same argument `_the_descent_makes_sense`
+    makes about the trajectory.
+    """
+
+    listener: Callable[[Progress], None] | None
+    started: float
+    phase: str = "optimising"
+    round: int = 0
+    bound: int | None = None
+    best: int | None = None
+    solutions: int = 0
+
+    def improved(self, penalty: int, breakdown: Mapping[str, int]) -> None:
+        if self.listener is None or (self.best is not None and penalty >= self.best):
+            return
+        self.best = penalty
+        self.solutions += 1
+        self.listener(
+            Progress(
+                phase=self.phase,
+                seconds=time.perf_counter() - self.started,
+                penalty=penalty,
+                penalty_breakdown=dict(breakdown),
+                lower_bound=self.bound,
+                solutions=self.solutions,
+                round=self.round,
+            )
+        )
+
+
+class _Watcher(cp_model.CpSolverSolutionCallback):
+    """CP-SAT's own improving solutions, forwarded as they happen.
+
+    The unrestricted attempt can hold the thread for the whole clock — 29.5 s of a 30 s budget
+    on a 150-session term — and this is the only thing that knows anything during it. Reading
+    the objective and its sixteen parts from inside the callback costs 0.01 to 0.05 ms, measured,
+    which is why it can be attached to every solve rather than to a chosen one.
+    """
+
+    def __init__(self, objective: Objective, report: _Reporter) -> None:
+        super().__init__()
+        self.objective = objective
+        self.report = report
+
+    def on_solution_callback(self) -> None:
+        self.report.improved(self.objective.penalty(self), self.objective.breakdown(self))
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +132,8 @@ def improve(
     costs: CostModel,
     already: float = 0.0,
     on_improvement: Callable[[Solution], None] | None = None,
+    on_progress: Callable[[Progress], None] | None = None,
+    stop: Stop | None = None,
 ) -> Solution:
     """Make a timetable better until the budget runs out, never returning a worse one.
 
@@ -82,6 +147,7 @@ def improve(
     the same either way, which is the whole point of the split.
     """
     rng = random.Random(budget.seed)
+    report = _Reporter(listener=on_progress, started=started)
     # The loop supplies its own warm start, from the incumbent rather than from the term. A
     # `Formulation` that also hints would hint the same variables a second time, and CP-SAT
     # answers that with MODEL_INVALID — which cost a full suite run to find, because a round
@@ -99,6 +165,10 @@ def improve(
     if best is None:
         # Nothing is priced, so every timetable is as good as every other and there is no
         # search to run. Not an error: a term may carry no preferences at all.
+        #
+        # Still worth saying out loud: a stream that went quiet here would be reporting the
+        # one case where the answer is already final as though nothing had happened.
+        report.improved(0, {})
         return _answer(
             incumbent,
             penalty=0,
@@ -109,20 +179,45 @@ def improve(
             seconds=time.perf_counter() - started,
             work=already,
             snapshot=snapshot,
+            stopped=stop is not None and stop.requested,
         )
 
-    trajectory: list[Step] = []
-    bound, proven = 0, False
+    # What the term already costs, said out loud. It is the number P7's panel draws first and
+    # the one every later event is read against, and until now nothing emitted it: it is the
+    # incumbent rather than an improvement, so `on_improvement` is silent about it by design.
+    report.improved(best.penalty, best.breakdown)
+
     # Work accumulates across every phase. Reporting only the feasibility pass would say a
     # thirty-second optimisation cost whatever the first four seconds cost, and #231's whole
     # point is that this number is the one a benchmark can compare.
     work = already + best.work
 
+    if _cancelled(stop):
+        # Before the whole model is built, not after. Constructing it is 2.15 s at department
+        # scale and nothing can interrupt Python doing it, so a cancel arriving here and
+        # checked one line later would be answered two seconds late — which is most of the
+        # budget the exit test allows for cancelling altogether.
+        return _answer(
+            best.placements,
+            penalty=best.penalty,
+            breakdown=best.breakdown,
+            bound=0,
+            proven=False,
+            trajectory=(),
+            seconds=time.perf_counter() - started,
+            work=work,
+            snapshot=snapshot,
+            stopped=True,
+        )
+
+    trajectory: list[Step] = []
+    bound, proven = 0, False
+
     whole = build_model.build(snapshot, formulation)
     objective = costs.add(whole)
     assert objective is not None  # `_what_it_costs` already established that something is
 
-    if len(whole.cp.proto.variables) <= budget.whole_model_ceiling:
+    if len(whole.cp.proto.variables) <= budget.whole_model_ceiling and not _cancelled(stop):
         attempt, spent, burnt = _run(
             whole,
             objective,
@@ -131,6 +226,8 @@ def improve(
             budget=budget,
             seconds=_share(budget, started),
             deterministic=budget.deterministic_seconds,
+            report=report,
+            stop=stop,
         )
         work += burnt
         if attempt is not None:
@@ -146,8 +243,10 @@ def improve(
                 )
             )
             bound, proven = attempt.bound, True
+            report.bound = bound
             if improved:
                 best = attempt
+                report.improved(best.penalty, best.breakdown)
                 _tell(on_improvement, snapshot, best, bound, proven, trajectory, started, work)
             if attempt.proven and best.penalty == bound:
                 return _answer(
@@ -160,6 +259,7 @@ def improve(
                     seconds=time.perf_counter() - started,
                     work=work,
                     snapshot=snapshot,
+                    stopped=_cancelled(stop),
                 )
 
     # Bound to *this* cost model's reading of what a session costs. With the validator's
@@ -169,7 +269,8 @@ def improve(
     strategies = neighbourhood.with_blame(costs.blame)
     rotation = budget.strategies or tuple(strategies)
     turn = len(trajectory)
-    while _keep_going(budget, started, turn, best.penalty):
+    while _keep_going(budget, started, turn, best.penalty, stop):
+        report.round = turn
         named = rotation[turn % len(rotation)]
         window = budget.windows[turn % len(budget.windows)]
         free = strategies[named](snapshot, best.placements, rng, window)
@@ -186,6 +287,8 @@ def improve(
             budget=budget,
             seconds=min(budget.round_seconds, _left(budget, started)),
             deterministic=budget.round_deterministic_seconds,
+            report=report,
+            stop=stop,
         )
         work += burnt
         improved = attempt is not None and attempt.penalty < best.penalty
@@ -201,6 +304,7 @@ def improve(
         )
         if improved and attempt is not None:
             best = attempt
+            report.improved(best.penalty, best.breakdown)
             _tell(on_improvement, snapshot, best, bound, proven, trajectory, started, work)
         turn += 1
 
@@ -214,6 +318,7 @@ def improve(
         seconds=time.perf_counter() - started,
         work=work,
         snapshot=snapshot,
+        stopped=_cancelled(stop),
     )
 
 
@@ -261,6 +366,8 @@ def _run(
     budget: Budget,
     seconds: float,
     deterministic: float | None,
+    report: _Reporter | None = None,
+    stop: Stop | None = None,
 ) -> tuple[Attempt | None, float, float]:
     """Minimise, optionally from the timetable in hand. Returns the attempt, seconds and work.
 
@@ -297,8 +404,22 @@ def _run(
         solver.parameters.max_deterministic_time = deterministic
 
     began = time.perf_counter()
-    status = solver.solve(model.cp)
+    searched = True
+    if stop is None:
+        status = _solved(solver, model, objective, report)
+    else:
+        # Registered for as long as it is searching, so `Stop.request()` from another thread
+        # reaches CP-SAT rather than waiting for this call to return on its own — which on an
+        # unrestricted attempt can be the whole budget away (4.7 §1b). A request that arrived
+        # while this round's model was being built is answered by not searching at all.
+        with stop.running(solver) as too_late:
+            searched = not too_late
+            status = _solved(solver, model, objective, report) if searched else cp_model.UNKNOWN
     elapsed = time.perf_counter() - began
+    # A search that never started did no work. `deterministic_time` raises rather than
+    # answering zero when there is no response behind it, which is the right behaviour for a
+    # number nobody should be reading and a crash for anybody who does.
+    burnt = solver.deterministic_time if searched else 0.0
 
     # A model CP-SAT will not read is a bug in this file, not an unlucky round, and the two
     # are one enum apart. Treating them alike hid a duplicated solution hint behind forty-one
@@ -307,7 +428,7 @@ def _run(
     if status == cp_model.MODEL_INVALID:
         raise AssertionError(f"the sub-problem is not a valid model: {model.cp.validate()[:400]}")
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return None, elapsed, solver.deterministic_time
+        return None, elapsed, burnt
 
     found = Attempt(
         placements={
@@ -324,9 +445,25 @@ def _run(
         bound=math.ceil(solver.best_objective_bound - 1e-6),
         proven=status == cp_model.OPTIMAL,
         seconds=elapsed,
-        work=solver.deterministic_time,
+        work=burnt,
     )
-    return found, elapsed, solver.deterministic_time
+    return found, elapsed, burnt
+
+
+def _solved(
+    solver: cp_model.CpSolver,
+    model: build_model.Model,
+    objective: Objective,
+    report: _Reporter | None,
+) -> cp_model.CpSolverStatus:
+    """One CP-SAT solve, with a listener attached where anybody is listening."""
+    if report is None or report.listener is None:
+        return solver.solve(model.cp)
+    return solver.solve(model.cp, _Watcher(objective, report))
+
+
+def _cancelled(stop: Stop | None) -> bool:
+    return stop is not None and stop.requested
 
 
 #: Held back from the wall-clock budget so a solve finishes *inside* it rather than around it.
@@ -350,8 +487,14 @@ def _share(budget: Budget, started: float) -> float:
     return left if budget.whole_seconds is None else min(left, budget.whole_seconds)
 
 
-def _keep_going(budget: Budget, started: float, turn: int, penalty: int) -> bool:
+def _keep_going(
+    budget: Budget, started: float, turn: int, penalty: int, stop: Stop | None = None
+) -> bool:
     """Whether there is another round worth running.
+
+    **A cancellation ends it first.** `Stop` also reaches inside the round that is running, so
+    this is not what makes cancelling quick — it is what stops the *next* round starting, and
+    without it a cancel would be answered by one more full round of searching.
 
     **Nothing is worth running once the penalty is zero.** Every term is a sum of
     non-negative units, so a timetable that costs nothing is optimal and no rearrangement can
@@ -364,6 +507,8 @@ def _keep_going(budget: Budget, started: float, turn: int, penalty: int) -> bool
     reproducibility the count was asked for. `seconds` is still a ceiling, and a test asserts
     a round-budgeted run does not reach it.
     """
+    if _cancelled(stop):
+        return False
     if penalty == 0:
         return False
     if budget.rounds is not None:
@@ -382,10 +527,12 @@ def _answer(
     seconds: float,
     work: float,
     snapshot: Snapshot,
+    stopped: bool = False,
 ) -> Solution:
     sessions, candidates = len(snapshot.sessions), 0
     return Solution(
         outcome=Outcome.SOLVED,
+        stopped=stopped,
         placements=tuple(
             Placed(session=s, start_slot=p.start_slot, room=p.room_id, is_pinned=p.is_pinned)
             for s, p in sorted(placed.items())

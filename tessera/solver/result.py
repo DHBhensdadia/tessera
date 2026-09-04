@@ -195,6 +195,43 @@ class Step:
 
 
 @dataclass(frozen=True, slots=True)
+class Progress:
+    """Where a solve has got to, while it is still going.
+
+    Deliberately lighter than `Solution`: 4.7's stream ticks four times a second and CP-SAT
+    can report twenty-four improving solutions in one, so an event that had to read five
+    hundred placements out of the solver to be built would cost more than the search it is
+    reporting on. Reading the objective and its sixteen parts costs 0.01 to 0.05 ms.
+
+    It carries no timetable for the same reason, and because there is nowhere useful to put
+    one: the answer is written once, at the end (4.7 D5), and what a person watching wants in
+    between is the score falling.
+    """
+
+    phase: str
+    """`feasibility` while there is no timetable yet, `optimising` once there is."""
+
+    seconds: float
+
+    penalty: int | None = None
+    """`None` until a timetable exists *and* has been scored, which are two moments — the
+    feasibility pass produces a timetable and the loop is what prices it."""
+
+    penalty_breakdown: dict[str, int] = field(default_factory=dict)
+
+    lower_bound: int | None = None
+    """Only ever from an unrestricted attempt. A round bounds its own window (D6 of 4.4), and
+    `None` and zero must not look alike."""
+
+    solutions: int = 0
+    """How many improving answers have been seen, counting both kinds — CP-SAT's own during an
+    unrestricted attempt, and the loop's accepted rounds."""
+
+    round: int = 0
+    """Which Fix-and-Optimize round this came from, or zero for anything before the first."""
+
+
+@dataclass(frozen=True, slots=True)
 class Placed:
     """One session, and where the solver put it."""
 
@@ -265,6 +302,15 @@ class Solution:
 
     trajectory: tuple[Step, ...] = ()
     """Every round of the outer search, in order. Empty when there was no outer search."""
+
+    stopped: bool = False
+    """A cancellation was asked for before this answer was returned.
+
+    So the answer is what the search had reached when somebody pressed stop, rather than what
+    the budget would have bought — which is a different thing from `OUT_OF_TIME` and from a
+    completed solve, and neither of those two words says it. `Outcome` stays at three values
+    (it is about *whether a timetable exists*, and stopping early says nothing about that);
+    this says why the looking ended."""
 
     explanation: Explanation | None = None
     """Why there is no timetable, when something proved there is none.
