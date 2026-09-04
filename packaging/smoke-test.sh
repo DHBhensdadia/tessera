@@ -126,6 +126,51 @@ if [ -n "$DIRECT_PORT" ]; then
         -H "x-tessera-token: $DIRECT_TOKEN" \
         -F "file=@-;filename=rooms.csv;type=text/csv" \
         "http://127.0.0.1:$DIRECT_PORT/api/v1/imports/spreadsheet?term_id=1" || true)
+    # OR-Tools is now reachable from the engine's entry point, which is what took the disk
+    # image from 47 to 68 MB. A frozen build that cannot solve is a build that does nothing a
+    # person downloaded it for, and the failure would be a ModuleNotFoundError nobody sees
+    # until the first Generate. sse-starlette rides along: were it missing, the stream would
+    # fail rather than reach `done`.
+    #
+    # The term is seeded with the repository's own Python rather than through the API, which
+    # would be a dozen curl calls. That is fair here — this script runs from the repo, right
+    # after `build.sh`, and what is under test is the *frozen engine*, not the seeding.
+    check "a term with teaching in it could be seeded" "yes" \
+        "$(cd "$ROOT" && uv run python packaging/seed_for_smoke.py "$STAGE/solve.tessera" \
+            >/dev/null 2>&1 && echo yes || echo no)"
+
+    SOLVE_HANDSHAKE="$STAGE/solve-handshake.txt"
+    "$ENGINE_BIN" --project "$STAGE/solve.tessera" > "$SOLVE_HANDSHAKE" 2>/dev/null &
+    SOLVE_PID=$!
+    for _ in $(seq 1 120); do [ -s "$SOLVE_HANDSHAKE" ] && break; sleep 0.25; done
+    SOLVE_PORT=$(sed -n '1p' "$SOLVE_HANDSHAKE" | sed -E 's/.*"port": *([0-9]+).*/\1/')
+    SOLVE_TOKEN=$(sed -n '1p' "$SOLVE_HANDSHAKE" | sed -E 's/.*"token": *"([^"]+)".*/\1/')
+
+    if [ -n "$SOLVE_PORT" ]; then
+        SOLVE_API="http://127.0.0.1:$SOLVE_PORT/api/v1"
+        check "the pre-flight answers from the shipped bundle (OR-Tools was frozen in)" "200" \
+            "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+                -H "x-tessera-token: $SOLVE_TOKEN" "$SOLVE_API/terms/1/preflight" || true)"
+
+        SOLVE_JOB=$(curl -s -X POST -H "x-tessera-token: $SOLVE_TOKEN" \
+            -H 'content-type: application/json' -d '{"time_budget_seconds": 20}' \
+            "$SOLVE_API/terms/1/solve" | grep -o '"job_id":"[^"]*"' | cut -d'"' -f4)
+        check "a solve starts in the shipped bundle" "yes" \
+            "$([ -n "$SOLVE_JOB" ] && echo yes || echo no)"
+
+        if [ -n "$SOLVE_JOB" ]; then
+            check "the progress stream runs to done (sse-starlette was frozen in)" "event: done" \
+                "$(curl -sN --max-time 40 -H "x-tessera-token: $SOLVE_TOKEN" \
+                    "$SOLVE_API/solve/$SOLVE_JOB/stream" \
+                    | tr -d '\r' | grep -m 1 '^event: done' || true)"
+            check "the solve produced a timetable" "1" \
+                "$(curl -s -H "x-tessera-token: $SOLVE_TOKEN" \
+                    "$SOLVE_API/terms/1/timetables" | grep -o '"total":[0-9]*' | cut -d: -f2)"
+        fi
+    fi
+    kill "$SOLVE_PID" 2>/dev/null || true
+    wait "$SOLVE_PID" 2>/dev/null || true
+
     check "a spreadsheet can be read from the shipped bundle" "rooms" \
         "$(echo "$IMPORTED" | sed -n 's/.*"detected_kind": *"\([a-z]*\)".*/\1/p')"
 
