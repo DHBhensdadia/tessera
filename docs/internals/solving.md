@@ -274,7 +274,82 @@ room per day. The count relaxes *where*, so it sees 78 against 100 and stays qui
 returns nothing in fifteen seconds. It is in the backlog, and it is the honest edge of what
 this subsystem does.
 
-## 8. Where to look when something is wrong
+## 8. Watching a solve, and stopping one
+
+Two things reach in from outside while a search is running, and both are optional parameters on
+`solve()` rather than a second entry point — there is one solver, and nothing downstream gets to
+choose between a good one and a fast one.
+
+### Two callbacks, because there are two promises
+
+`on_improvement` fires once per **accepted Fix-and-Optimize round** and its scores strictly
+decrease. That is what a listener storing timetables wants, and `Solution._the_descent_makes_sense`
+enforces it.
+
+It is not a progress stream, and the difference was measured rather than argued. At a
+thirty-second budget under the default preferences:
+
+| term | events from `on_improvement` |
+|---|---|
+| 150 sessions, 12 rooms | **1**, at 29.51 s |
+| 500 sessions, 40 rooms | 11, the first at 7.93 s |
+| `comp02` + Tessera's defaults | **none at all** |
+
+On two of those three a panel drawing only accepted rounds shows nothing while the solver works
+and returns a perfectly good timetable. The reason is structural: on a term whose model fits
+under `Budget.whole_model_ceiling` the one unrestricted attempt takes the whole clock, and the
+loop never reaches a round to accept.
+
+So `on_progress` carries a light `Progress` record — a score, not a timetable — and three things
+feed it:
+
+| source | what it says |
+|---|---|
+| the feasibility pass finishing | a valid timetable exists; **no score yet**, because pricing it is a whole model build later |
+| `CpSolverSolutionCallback` | CP-SAT found a better solution inside a solve. 0.01 to 0.05 ms a call, and up to twenty-four a second on a small term |
+| an accepted round | the same moment `on_improvement` fires |
+
+**The stream is made monotone at the source.** A round is handed the incumbent as a hint and
+CP-SAT's first solution inside it can be worse than what went in; `search._Reporter` reports only
+an improvement on the best seen, so *watch it get better* holds whatever produced the number and
+a consumer never has to know which phase it came from.
+
+Attaching a callback costs nothing when nobody is listening: with `on_progress` unset no
+`CpSolverSolutionCallback` is constructed, so the benchmark runs the code it always did.
+
+### Cancelling is two mechanisms, and neither is enough alone
+
+[ADR-0008](../adr/0008-in-process-jobs.md) called it *"a flag the solver checks"*. A flag is read
+at loop boundaries — `search._keep_going` between rounds, and before the unrestricted attempt —
+and on a term that never reaches a round boundary it is read once, at the end. `Stop` is
+therefore both halves:
+
+* **the flag**, checked before each round, before the unrestricted attempt, and before the model
+  for it is built. Building that model is 2.15 s of Python at department scale and nothing can
+  interrupt it, so the check sits in front of it rather than behind;
+* **`CpSolver.stop_search()`**, called from the cancelling thread, which ends a search already
+  running in 0.206 to 0.267 s. Measured in CP-SAT's own machine-independent unit instead — which
+  is what the tests assert on, because how many seconds something takes is a fact about the
+  machine — a job shop left alone burns 0.781 units of work and reports 63 improving solutions,
+  and the same search interrupted at the first of them burns 0.001 and reports one.
+
+`Stop.running()` is what keeps them in step. It registers the solver for as long as it is
+searching, and **reports whether a request already arrived** — because `stop_search()` before a
+solve does nothing at all: the wrapper it reaches is created inside `solve()` and cleared when
+that returns. A request landing while a model is being built would otherwise be answered by
+starting a search and then noticing. The caller declines to search instead.
+
+What remains open is a window of a few microseconds between `running()` reporting *not
+cancelled* and CP-SAT creating that wrapper. The cost is one slice — bounded by
+`Budget.round_seconds` for a round and `Budget.whole_seconds` for the attempt — and then the
+loop reads the flag and stops.
+
+**Stopping is not discarding.** A cancelled solve returns what it had: `Outcome.SOLVED` with the
+best timetable found, or `OUT_OF_TIME` when the cancel arrived before there was one.
+`Solution.stopped` says the looking ended early — `Outcome` stays three-valued because it answers
+*does a timetable exist*, and stopping early says nothing about that.
+
+## 9. Where to look when something is wrong
 
 | Symptom | Look at |
 |---|---|
@@ -291,5 +366,9 @@ this subsystem does.
 | A solve says "impossible" and explains nothing | `Budget.explain_seconds` ran out, or the relaxable model is weaker than what refuted the term |
 | A conflict names rules that are not really in conflict | `explain.py` → `necessary_one_at_a_time`, which the tests run on every conflict |
 | A hard rule can never be blamed | it was written without a literal — `build(relaxable=True)` and `objective.enforce(relaxable=True)` |
+| A cancel is answered seconds late | `cancel.py` → `Stop.running`; a flag alone waits for the running solve to end |
+| A progress panel shows nothing for half a minute | it is reading `on_improvement`, which fires only on accepted rounds — §8 |
+| The score on the stream goes up | `search._Reporter` reports only improvements; something is forwarding a raw CP-SAT solution |
+| `solve() has not been called` from OR-Tools | a skipped search is being asked how much work it did — `searched` in `solve.py` and `search.py` |
 
 `MAP.md` in the planning workspace carries the same table for the whole codebase.
