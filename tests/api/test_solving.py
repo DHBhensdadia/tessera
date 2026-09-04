@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session as DbSession
 
+from tessera.repository import calendar as calendar_repo
 from tessera.repository import models as m
 from tessera.repository import structure as structure_repo
 from tests.api.conftest import settled
@@ -77,6 +78,36 @@ class TestSolvingATerm:
 
         solving_client.post(f"/api/v1/solve/{first['job_id']}/cancel")
         settled(solving_client, first["job_id"])
+
+    def test_a_term_with_nothing_in_it_is_refused_rather_than_attempted(
+        self,
+        solving_client: TestClient,
+        project_db: DbSession,
+        campus: tuple[m.Institution, m.TimeGrid],
+    ) -> None:
+        """Pressing Generate on a term nobody has filled in yet.
+
+        `Solution` refuses a solved timetable with no placements on purpose — 4.1's D6 keeps
+        completeness a separate question so a solver cannot pass by leaving sessions out — so an
+        empty term reached that invariant from the wrong side and raised `ValueError`. With the
+        job registry that surfaced as a `failed` job and a traceback in the log, for something
+        that is an ordinary state on the first day of a term.
+        """
+        institution, grid = campus
+        empty = calendar_repo.create_term(
+            project_db,
+            institution_id=institution.id,
+            time_grid_id=grid.id,
+            academic_year="2026-27",
+            name="Empty",
+        )
+        project_db.commit()
+        assert empty.id is not None
+
+        refused = solving_client.post(f"/api/v1/terms/{empty.id}/solve", json={})
+
+        assert refused.status_code == 409
+        assert "no sessions" in refused.json()["detail"]
 
     def test_a_term_that_is_not_there(self, solving_client: TestClient) -> None:
         assert solving_client.post("/api/v1/terms/404/solve", json={}).status_code == 404

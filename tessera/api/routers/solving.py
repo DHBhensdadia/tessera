@@ -90,6 +90,18 @@ async def start_solve(term_id: int, payload: SolveRequest, db: Db, jobs: Jobs) -
             respect_pins=payload.respect_pins,
         )
     )
+    if not term.sessions:
+        # Caught here rather than in the solver, because `Solution` refuses a solved timetable
+        # with no placements on purpose (4.1's D6: a solver must not pass by leaving sessions
+        # out) and an empty term would trip that invariant from the wrong side. A term nobody
+        # has put anything in yet is an ordinary state on the first day, not a failure.
+        raise ProblemError(
+            status_code=status.HTTP_409_CONFLICT,
+            title="Nothing to schedule",
+            detail=f"Term {term_id} has no sessions yet. Add teaching before generating.",
+            error_type=f"{ERROR_BASE}/nothing-to-schedule",
+        )
+
     try:
         job = jobs.start(term, term_id=term_id, wanted=payload)
     except AlreadySolvingError as busy:
