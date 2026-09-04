@@ -10301,6 +10301,7 @@
     },
     "/api/v1/terms/{term_id}/timetables": {
       "get": {
+        "description": "A term's candidates, newest first \u2014 which is almost always the one just generated.",
         "operationId": "listTimetables",
         "parameters": [
           {
@@ -10387,6 +10388,7 @@
         ]
       },
       "post": {
+        "description": "An empty candidate, to be filled in by hand. A solve makes its own.",
         "operationId": "createTimetable",
         "parameters": [
           {
@@ -11109,6 +11111,7 @@
     },
     "/api/v1/timetables/{timetable_id}": {
       "delete": {
+        "description": "Throw a candidate away, with its placements and its history.\n\nRefused while it is published: that is what an institution is running, and 6.5 owns the\nway back to draft.",
         "operationId": "deleteTimetable",
         "parameters": [
           {
@@ -11250,6 +11253,7 @@
         ]
       },
       "patch": {
+        "description": "Rename it, or move it between draft, published and archived.",
         "operationId": "updateTimetable",
         "parameters": [
           {

@@ -12,6 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, status
 from fastapi.responses import StreamingResponse
 
+from tessera.api.deps import Db
 from tessera.api.errors import problem_responses
 from tessera.api.routers._stubs import pending
 from tessera.api.schemas import (
@@ -31,6 +32,8 @@ from tessera.api.schemas import (
     ViewportVerdict,
     ViolationReport,
 )
+from tessera.domain.timetable import Timetable, TimetableStatus
+from tessera.repository import timetables as timetables_repo
 
 router = APIRouter(prefix="/api/v1", tags=["timetables"])
 ERRORS = problem_responses(404, 409, 422, 501)
@@ -40,8 +43,14 @@ ERRORS = problem_responses(404, 409, 422, 501)
 
 
 @router.get("/terms/{term_id}/timetables", response_model=Page[TimetableRead], responses=ERRORS)
-def list_timetables(term_id: int, status_filter: str | None = None) -> Page[TimetableRead]:
-    pending("4.7")
+def list_timetables(term_id: int, db: Db, status_filter: str | None = None) -> Page[TimetableRead]:
+    """A term's candidates, newest first — which is almost always the one just generated."""
+    wanted = TimetableStatus(status_filter) if status_filter else None
+    items = [
+        _read(db, timetable)
+        for timetable in timetables_repo.list_timetables(db, term_id=term_id, status=wanted)
+    ]
+    return Page(items=items, total=len(items))
 
 
 @router.post(
@@ -50,25 +59,56 @@ def list_timetables(term_id: int, status_filter: str | None = None) -> Page[Time
     status_code=status.HTTP_201_CREATED,
     responses=ERRORS,
 )
-def create_timetable(term_id: int, payload: TimetableCreate) -> TimetableRead:
-    pending("4.7")
+def create_timetable(term_id: int, payload: TimetableCreate, db: Db) -> TimetableRead:
+    """An empty candidate, to be filled in by hand. A solve makes its own."""
+    return _read(
+        db,
+        timetables_repo.create_timetable(
+            db, term_id=term_id, name=payload.name, parent_id=payload.parent_id
+        ),
+    )
 
 
 @router.get("/timetables/{timetable_id}", response_model=TimetableRead, responses=ERRORS)
-def get_timetable(timetable_id: int) -> TimetableRead:
-    pending("4.7")
+def get_timetable(timetable_id: int, db: Db) -> TimetableRead:
+    return _read(db, timetables_repo.get_timetable(db, timetable_id))
 
 
 @router.patch("/timetables/{timetable_id}", response_model=TimetableRead, responses=ERRORS)
-def update_timetable(timetable_id: int, payload: TimetableUpdate) -> TimetableRead:
-    pending("4.7")
+def update_timetable(timetable_id: int, payload: TimetableUpdate, db: Db) -> TimetableRead:
+    """Rename it, or move it between draft, published and archived."""
+    changes = payload.model_dump(exclude_unset=True)
+    return _read(db, timetables_repo.update_timetable(db, timetable_id, changes=changes))
 
 
 @router.delete(
     "/timetables/{timetable_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS
 )
-def delete_timetable(timetable_id: int) -> None:
-    pending("4.7")
+def delete_timetable(timetable_id: int, db: Db) -> None:
+    """Throw a candidate away, with its placements and its history.
+
+    Refused while it is published: that is what an institution is running, and 6.5 owns the
+    way back to draft.
+    """
+    timetables_repo.delete_timetable(db, timetable_id)
+
+
+def _read(db: Db, timetable: Timetable) -> TimetableRead:
+    """One timetable, with the count a list view needs and would otherwise fetch rows for."""
+    assert timetable.id is not None
+    return TimetableRead(
+        id=timetable.id,
+        term_id=timetable.term_id or 0,
+        name=timetable.name,
+        status=timetable.status,
+        parent_id=timetable.parent_id,
+        penalty=timetable.penalty,
+        penalty_breakdown=timetable.penalty_breakdown,
+        created_at=timetable.created_at,
+        published_at=timetable.published_at,
+        is_editable=timetable.is_editable,
+        assignment_count=timetables_repo.assignment_count(db, timetable.id),
+    )
 
 
 @router.post(
