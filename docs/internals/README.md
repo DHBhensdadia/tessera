@@ -20,6 +20,7 @@ document links to the ADRs that constrain it.
 | [Importing a spreadsheet](import.md) | The two-step import, why pandas is fenced off from interpreting anything, and what "no partial write" means |
 | [The browser console](console.md) | The HTML UI, how a browser gets past the engine token, and why it calls the repository directly |
 | [Packaging and the sidecar](packaging.md) | How the engine and client become one `.dmg`, and how they find each other |
+| [Solve jobs](solve-jobs.md) | Reading a term out of a project, running the solve as a job, and what a person watching is told |
 | [Solving](solving.md) | How a term becomes a timetable and then a good one — the model, the objective, the outer search, and the one rulebook read twice |
 | [Benchmarking](benchmarking.md) | How the solver is measured against numbers it did not choose — CB-CTT's objective, the second reading that checks it, the budget policy, and what the table does not claim |
 
