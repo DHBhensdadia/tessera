@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Request, status
 from sqlalchemy import Engine
@@ -19,6 +19,9 @@ from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import sessionmaker
 
 from tessera.api.errors import ERROR_BASE, ProblemError
+
+if TYPE_CHECKING:
+    from tessera.api.jobs import Registry
 
 
 @dataclass
@@ -66,5 +69,24 @@ def get_db(
         session.close()
 
 
+def get_jobs(request: Request) -> Registry:
+    """The solve registry for the open project.
+
+    Application state rather than a per-request object, because a job outlives the request
+    that started it — that is the whole point of a job — and because there is one engine, one
+    project and therefore one thing that can be solving at a time.
+    """
+    jobs: Registry | None = getattr(request.app.state, "jobs", None)
+    if jobs is None:
+        raise ProblemError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            title="No project open",
+            detail="The engine started without a project file.",
+            error_type=f"{ERROR_BASE}/no-project",
+        )
+    return jobs
+
+
 Project = Annotated[ProjectState, Depends(get_project)]
 Db = Annotated[DbSession, Depends(get_db)]
+Jobs = Annotated["Registry", Depends(get_jobs)]

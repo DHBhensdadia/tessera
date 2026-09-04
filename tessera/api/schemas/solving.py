@@ -101,7 +101,14 @@ class PreflightReport(Wire):
     is the behaviour this exists to prevent (Decision #29).
     """
 
-    can_solve: bool
+    can_solve: bool = Field(
+        description="**Nothing here proves this term impossible** — which is weaker than a "
+        "promise that it can be solved, and deliberately so. The checks behind this are "
+        "counting arguments: each asks whether some set of sessions could fit in the resource "
+        "that must hold them, ignoring every rule about where. One that fails proves the real "
+        "problem cannot be satisfied either; none failing proves nothing at all. `Outcome` "
+        "draws the same line between *we did not find one* and *there is not one*."
+    )
     problems: list[PreflightProblem] = Field(default_factory=list)
     session_count: int = 0
     unplaceable_session_ids: list[int] = Field(default_factory=list)

@@ -2235,6 +2235,7 @@
         "description": "Structural problems detectable without solving.\n\nRuns in milliseconds. Failing after two minutes for a reason findable in fifty\nis the behaviour this exists to prevent (Decision #29).",
         "properties": {
           "can_solve": {
+            "description": "**Nothing here proves this term impossible** \u2014 which is weaker than a promise that it can be solved, and deliberately so. The checks behind this are counting arguments: each asks whether some set of sessions could fit in the resource that must hold them, ignoring every rule about where. One that fails proves the real problem cannot be satisfied either; none failing proves nothing at all. `Outcome` draws the same line between *we did not find one* and *there is not one*.",
             "title": "Can Solve",
             "type": "boolean"
           },
@@ -8283,6 +8284,7 @@
     },
     "/api/v1/solve/{job_id}/cancel": {
       "post": {
+        "description": "Stop searching and keep whatever was found.\n\nIdempotent, including on a job that has already finished: pressing *Stop* a moment after\nthe answer arrived is not a mistake worth an error about.",
         "operationId": "cancelSolve",
         "parameters": [
           {
@@ -8428,7 +8430,7 @@
     },
     "/api/v1/solve/{job_id}/stream": {
       "get": {
-        "description": "Emits an event per improved solution, carrying score and elapsed time.\n\nA native property of the solver rather than a simulated progress bar: CP-SAT calls\nback on every improvement, and those callbacks are what this forwards.",
+        "description": "Where the solve has got to, four times a second, until it settles.\n\n**Not a simulated progress bar, and not only the improvements either.** The score comes\nfrom three places \u2014 the feasibility pass finishing, CP-SAT's own solutions during an\nunrestricted attempt, and each accepted Fix-and-Optimize round \u2014 because on two real\nterms out of three the last of those fires once or never in thirty seconds.\n\nThe first event carries the whole current status, so attaching late costs nothing.",
         "operationId": "solveStream",
         "parameters": [
           {
@@ -8443,7 +8445,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SolveStatus"
+                }
+              }
+            },
+            "description": "An event every 250 ms until the job settles. `status` carries the current `SolveStatus`, `phase` the name of a phase the solve has just entered, and `done` the final status, after which the stream closes."
           },
           "404": {
             "content": {
@@ -10215,6 +10224,7 @@
     },
     "/api/v1/terms/{term_id}/solve": {
       "post": {
+        "description": "Begin a solve and answer with the job that is running it.\n\n202 rather than 201: nothing has been created yet, and whether anything will be is the\nquestion the job exists to answer.\n\n**`async` because the job outlives the request.** A sync handler runs in Starlette's\nthreadpool, where there is no running loop to attach a task to; the reading of the term\ngoes to a thread of its own instead, so the 27 to 37 ms it costs at department scale is\nnot spent on the loop.",
         "operationId": "startSolve",
         "parameters": [
           {

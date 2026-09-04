@@ -24,6 +24,7 @@ import tessera
 from tessera.api import console
 from tessera.api.deps import ProjectState
 from tessera.api.errors import ERROR_BASE, Problem, problem_response, register_error_handlers
+from tessera.api.jobs import Registry
 from tessera.api.logging import bind_request, configure_logging
 from tessera.api.routers import (
     groups,
@@ -177,6 +178,7 @@ def create_app(
                 path=project_path,
                 sessions=session_factory(active),
             )
+            app.state.jobs = Registry(app.state.project)
             logger.info("engine_ready", project=app.state.project.name)
         yield
         # Only dispose what we opened. An engine handed in belongs to the caller, and

@@ -26,8 +26,11 @@ from tessera.api.schemas.groups import (
     StudentGroupUpdate,
 )
 from tessera.api.schemas.solving import (
+    ConflictingRequirement,
     InfeasibilityReport,
+    PreflightProblem,
     PreflightReport,
+    SolvePhase,
     SolveRequest,
     SolveStatus,
 )
@@ -101,6 +104,7 @@ __all__ = [
     "BuildingUpdate",
     "CommandRead",
     "ComparisonReport",
+    "ConflictingRequirement",
     "ConstraintCatalogue",
     "ConstraintCreate",
     "ConstraintKindRead",
@@ -128,6 +132,7 @@ __all__ = [
     "OfferingCreate",
     "OfferingRead",
     "Page",
+    "PreflightProblem",
     "PreflightReport",
     "ProgramCreate",
     "ProgramRead",
@@ -141,6 +146,7 @@ __all__ = [
     "SessionTemplateRead",
     "SessionTemplateUpdate",
     "SessionUpdate",
+    "SolvePhase",
     "SolveRequest",
     "SolveStatus",
     "StudentGroupCreate",
