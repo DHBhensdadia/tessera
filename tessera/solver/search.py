@@ -387,7 +387,7 @@ def _answer(
     return Solution(
         outcome=Outcome.SOLVED,
         placements=tuple(
-            Placed(session=s, start_slot=p.start_slot, room=p.room_id)
+            Placed(session=s, start_slot=p.start_slot, room=p.room_id, is_pinned=p.is_pinned)
             for s, p in sorted(placed.items())
         ),
         seconds=seconds,

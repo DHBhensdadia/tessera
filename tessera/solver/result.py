@@ -202,6 +202,14 @@ class Placed:
     start_slot: Slot
     room: RoomId
 
+    is_pinned: bool = False
+    """Somebody put this here by hand and the solver was told not to move it.
+
+    Carried through rather than recomputed by the caller: `search` already knows it — a round
+    copies it onto every `Placement` it reads back — and dropping it here meant a timetable
+    produced by re-optimising lost every pin it had been asked to respect. Pin, re-optimise,
+    and the second re-optimise is free to move what the first was told to keep."""
+
 
 @dataclass(frozen=True)
 class Solution:

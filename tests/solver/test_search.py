@@ -372,29 +372,57 @@ class TestTheBoundHasProvenance:
             )
 
 
+#: The session held fixed by the two tests below.
+PINNED = SessionId(3)
+
+
+def re_optimised_around_a_pin() -> tuple[Placed, Solution]:
+    """Solve a term, pin one session where it landed, and solve it again.
+
+    Returns where the pin was put and what came back, so the two claims about it — that it did
+    not move, and that the answer still says it is one — are separate assertions on one run.
+    """
+    term = department(24, 6)
+    first = solve(term, Budget(seconds=30))
+    held = next(p for p in first.placements if p.session == PINNED)
+
+    again = with_timetable(term, first.placements)
+    again.placements[PINNED] = type(again.placements[PINNED])(
+        session_id=PINNED,
+        start_slot=held.start_slot,
+        room_id=held.room,
+        is_pinned=True,
+    )
+    again._index(again.placements[PINNED])
+
+    return held, solve(again, LOOPED)
+
+
 class TestTheLoopRespectsAPin:
     def test_a_pinned_session_is_never_freed(self) -> None:
         """Decision #10 put `is_pinned` in the schema on the first day so that re-optimising
         around manual edits would not need a solver rewrite. A window that moved one would
         turn that into a lie in the one place nobody looks — the timetable came back better."""
-        term = department(24, 6)
-        first = solve(term, Budget(seconds=30))
-        pinned = SessionId(3)
-        held = next(p for p in first.placements if p.session == pinned)
-
-        again = with_timetable(term, first.placements)
-        again.placements[pinned] = type(again.placements[pinned])(
-            session_id=pinned,
-            start_slot=held.start_slot,
-            room_id=held.room,
-            is_pinned=True,
-        )
-        again._index(again.placements[pinned])
-
-        found = solve(again, LOOPED)
-        landed = next(p for p in found.placements if p.session == pinned)
+        held, found = re_optimised_around_a_pin()
+        landed = next(p for p in found.placements if p.session == PINNED)
 
         assert (landed.start_slot, landed.room) == (held.start_slot, held.room)
+
+    def test_and_the_answer_still_says_it_is_one(self) -> None:
+        """Otherwise pin-and-re-optimise works exactly once.
+
+        The loop already knows which sessions are pinned — `_run` copies `is_pinned` onto every
+        placement it reads back — and `_answer` threw it away on the way out. So the timetable
+        written down afterwards had no pins in it, and the **next** re-optimisation was free to
+        move what this one had been told to keep.
+        """
+        _held, found = re_optimised_around_a_pin()
+        landed = next(p for p in found.placements if p.session == PINNED)
+
+        assert landed.is_pinned is True
+        assert [p.is_pinned for p in found.placements].count(True) == 1, (
+            "only the pinned session is pinned; the rest of the timetable is the solver's"
+        )
 
 
 class TestFreezingByNarrowingTheDomain:
