@@ -84,13 +84,34 @@ class TestTheCountReadsAsASentence:
                 no.the_only_room_is_shut_all_week(),
                 "1 session could only go in rooms that are closed all week.",
             ),
+            (
+                no.instructor_away_all_week(),
+                "1 session could only be taught by instructor 1, who is unavailable all week.",
+            ),
         ],
-        ids=["threshold", "pigeonhole", "away", "group", "features", "closed"],
+        ids=["threshold", "pigeonhole", "away", "group", "features", "closed", "nobody free"],
     )
     def test_the_numbers_are_read_out_in_hours(self, term: object, expected: str) -> None:
         (found,) = preflight.check(term)  # type: ignore[arg-type]
 
         assert found.statement == expected
+
+    def test_a_supply_of_zero_names_the_resource_that_ran_out(self) -> None:
+        """The guard for the pair above, and the third time this defect has been found.
+
+        Two terms with identical arithmetic — a supply of zero against a demand of one — and
+        two different resources. The sentence was keyed on the rule alone, so both read as
+        being about rooms, and the one whose rooms were open all week sent its reader to the
+        screen that was fine. #283 named the wrong rule; #287 put a seats clause where nothing
+        had narrowed anything; this is the same mistake in the resource.
+        """
+        (shut,) = preflight.check(no.the_only_room_is_shut_all_week())
+        (nobody,) = preflight.check(no.instructor_away_all_week())
+
+        assert (shut.needed, shut.available) == (nobody.needed, nobody.available)
+        assert shut.rule == nobody.rule
+        assert "room" in shut.statement and "instructor" not in shut.statement
+        assert "instructor" in nobody.statement and "room" not in nobody.statement
 
     def test_a_seats_clause_appears_only_where_seats_narrowed_the_estate(self) -> None:
         """`room_not_double_booked` is the week being small, not the big rooms being few.

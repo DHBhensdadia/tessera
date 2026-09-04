@@ -170,6 +170,23 @@ def instructor_away_most_of_the_week() -> Snapshot:
     )
 
 
+def instructor_away_all_week() -> Snapshot:
+    """The same person, marked unavailable for every hour there is.
+
+    Ordinary data entry: somebody is blocked out for a semester and never unblocked. The
+    arithmetic is the same as a room shut all week — a supply of zero — and the *sentence* is
+    not, which is what this term exists to catch. The rooms here are open every hour.
+    """
+    return term(
+        sessions=[lecture(1, group=1, instructor=1)],
+        rooms=[room(1, seats=100)],
+        sizes={1: 10},
+        unavailability=[
+            Unavailability(instructor_id=InstructorId(1), slot=slot) for slot in range(WEEK)
+        ],
+    )
+
+
 def instructor_teaching_more_than_the_week() -> Snapshot:
     """Nine hours of teaching for one person, in a week eight hours long.
 

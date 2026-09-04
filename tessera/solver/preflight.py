@@ -142,7 +142,20 @@ class Shortfall:
 
     @property
     def _nowhere(self) -> str:
-        """A session with no room at all, which is not a shortage but an absence."""
+        """A session with nothing at all to put it in, which is an absence and not a shortage.
+
+        **Keyed by the subject as well as by the rule**, which the shortage branch below has
+        always been and this had not. `availability_respected` belongs to two different
+        subjects: a room shut all week and an instructor away all week are the same
+        arithmetic and not the same sentence, and the room's was printed for both — so a term
+        where one person is marked unavailable read *"could only go in rooms that are closed
+        all week"* about rooms that were open every hour. #283 and #287 one layer further out
+        again, and this one reaches a person through 4.7's pre-flight route.
+        """
+        if self.rule == "availability_respected" and self.subject_kind == "instructor":
+            return (
+                f"could only be taught by instructor {self.subject_id}, who is unavailable all week"
+            )
         return {
             "room_fits_group": f"cannot fit in any room here — the largest seats fewer than "
             f"{self.threshold}",
