@@ -119,17 +119,24 @@ def events(job: Job) -> AsyncIterator[dict[str, str]]:
     """
 
     async def stream() -> AsyncIterator[dict[str, str]]:
-        yield {"event": "status", "data": job.reading().model_dump_json()}
-        phase = job.status.phase
+        # One reading per tick, and every event on that tick is built from it. The status is
+        # replaced whole so a single load is always coherent — taking four per iteration gave
+        # that away, and could announce a phase from one moment beside numbers from another.
+        # Latent here, because no client reads the `phase` event; the same pattern on the
+        # console's page was not, and turned `main` red.
+        reading = job.reading()
+        phase = reading.phase
+        yield {"event": "status", "data": reading.model_dump_json()}
 
-        while not job.settled:
+        while reading.phase not in SETTLED:
             await asyncio.sleep(TICK_SECONDS)
-            if job.status.phase is not phase:
-                phase = job.status.phase
+            reading = job.reading()
+            if reading.phase is not phase:
+                phase = reading.phase
                 yield {"event": "phase", "data": phase.value}
-            yield {"event": "status", "data": job.reading().model_dump_json()}
+            yield {"event": "status", "data": reading.model_dump_json()}
 
-        yield {"event": "done", "data": job.reading().model_dump_json()}
+        yield {"event": "done", "data": reading.model_dump_json()}
 
     return stream()
 

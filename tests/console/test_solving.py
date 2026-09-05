@@ -9,13 +9,24 @@ from __future__ import annotations
 
 import time
 
+from fastapi import Request
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine
 
-from tessera.api.console.solving import PHASES, wording
+from tessera.api.console.solving import PHASES, _watching, wording
 from tessera.api.jobs import Job
 from tessera.api.schemas import SolvePhase, SolveStatus
+from tessera.repository import session_factory
 from tessera.solver import Stop
 from tests.repository.authored import Term
+
+
+def _a_request() -> Request:
+    """The minimum a template render needs. `_watching` is called directly because the
+    interleaving it guards against cannot be produced through the client."""
+    return Request(
+        {"type": "http", "method": "GET", "path": "/console/solve/j", "headers": [], "app": None}
+    )
 
 
 def watch_until_settled(client: TestClient, job_id: str, timeout: float = 60.0) -> str:
@@ -261,6 +272,67 @@ class TestWhenTheJobIsGone:
         assert "no longer running" in response.text
 
 
+class TestThePageIsOneReadingOfTheJob:
+    """The defect that turned `main` red, as a test.
+
+    `job.status` is replaced by the worker thread. `_watching` loaded it three times — for the
+    numbers, for the sentences, and for whether the solve had finished — so a solve that
+    settled between the first load and the third produced a page that was **settled by one
+    reading and unfinished by another**: no Stop button, and no link to the timetable it had
+    just written. The log line beside it said `timetable=1`.
+
+    It passed locally twelve times running and on the phase branch's CI, and failed on
+    `main`'s run of the same commit. Nothing about it is about how fast the machine is — it is
+    about how many times the page looks. #303 made one look coherent; the fix is to take one.
+    """
+
+    def _interleaved(self, before: SolveStatus, after: SolveStatus) -> tuple[Job, list[int]]:
+        """A job whose worker lands exactly once, right after the first read of `status`.
+
+        Returns the reads counter too, because *how many times the render looked* is the rule
+        and the missing link is only one shape of getting it wrong.
+        """
+        reads: list[int] = []
+
+        class Interleaved(Job):
+            @property
+            def status(self) -> SolveStatus:
+                reads.append(1)
+                return before if len(reads) == 1 else after
+
+            @status.setter
+            def status(self, value: SolveStatus) -> None:
+                pass
+
+        return Interleaved(id="j", term_id=1, started=0.0, stop=Stop(), status=before), reads
+
+    def test_a_solve_that_settles_mid_render_still_shows_its_timetable(
+        self, solvable: Term, project: Engine
+    ) -> None:
+        running = SolveStatus(job_id="j", phase=SolvePhase.OPTIMISING, penalty=12)
+        finished = SolveStatus(job_id="j", phase=SolvePhase.DONE, penalty=12, timetable_id=7)
+        job, _ = self._interleaved(running, finished)
+
+        with session_factory(project)() as db:
+            rendered = bytes(_watching(_a_request(), db, job).body).decode()
+
+        assert "Stop and keep" in rendered or "/console/timetables/7" in rendered, (
+            "the page said the solve had finished and offered no way to reach its result — "
+            "it was assembled from two different readings of the job"
+        )
+
+    def test_it_takes_exactly_one_reading(self, solvable: Term, project: Engine) -> None:
+        """The rule rather than one of its symptoms. Anything that loads the status twice can
+        describe two moments, and this is the cheapest way to say so."""
+        status = SolveStatus(job_id="j", phase=SolvePhase.OPTIMISING, penalty=12)
+        job, reads = self._interleaved(status, status)
+
+        with session_factory(project)() as db:
+            _watching(_a_request(), db, job)
+
+        assert len(reads) == 1, f"the render loaded `job.status` {len(reads)} times"
+
+
 class TestWhatEachEndingSays:
     """The two endings whose meaning depends on whether anything was found.
 
@@ -268,40 +340,34 @@ class TestWhatEachEndingSays:
     search reaches is a fact about seconds and #244 forbids a test being about those.
     """
 
-    def _job(
+    def _reading(
         self,
         phase: SolvePhase,
         timetable_id: int | None,
         penalty: int | None = None,
         lower_bound: int | None = None,
-    ) -> Job:
-        return Job(
-            id="j",
-            term_id=1,
-            started=0.0,
-            stop=Stop(),
-            status=SolveStatus(
-                job_id="j",
-                phase=phase,
-                timetable_id=timetable_id,
-                penalty=penalty,
-                lower_bound=lower_bound,
-            ),
+    ) -> SolveStatus:
+        return SolveStatus(
+            job_id="j",
+            phase=phase,
+            timetable_id=timetable_id,
+            penalty=penalty,
+            lower_bound=lower_bound,
         )
 
     def test_running_out_of_time_does_not_claim_the_term_is_impossible(self) -> None:
-        headline, explanation = wording(self._job(SolvePhase.DONE, None))
+        headline, explanation = wording(self._reading(SolvePhase.DONE, None))
 
         assert "Nothing was found" in headline
         assert "says nothing about whether a timetable exists" in explanation
 
     def test_finishing_with_a_result_says_so(self) -> None:
-        headline, _ = wording(self._job(SolvePhase.DONE, 3, penalty=140))
+        headline, _ = wording(self._reading(SolvePhase.DONE, 3, penalty=140))
 
         assert headline == "Finished"
 
     def test_running_out_of_time_offers_a_longer_budget(self) -> None:
-        _, explanation = wording(self._job(SolvePhase.DONE, 3, penalty=140))
+        _, explanation = wording(self._reading(SolvePhase.DONE, 3, penalty=140))
 
         assert "longer budget" in explanation
 
@@ -309,24 +375,24 @@ class TestWhatEachEndingSays:
         """Found by watching a real solve: 120 sessions reached zero in 14 seconds of a
         sixty-second budget, under the sentence *the budget ran out*. Offering to try again
         for longer is advice to re-derive a provably optimal answer."""
-        _, explanation = wording(self._job(SolvePhase.DONE, 3, penalty=0))
+        _, explanation = wording(self._reading(SolvePhase.DONE, 3, penalty=0))
 
         assert "longer budget" not in explanation
         assert "Nothing about this timetable can be improved" in explanation
 
     def test_reaching_the_lower_bound_says_it_is_proven(self) -> None:
-        _, explanation = wording(self._job(SolvePhase.DONE, 3, penalty=140, lower_bound=140))
+        _, explanation = wording(self._reading(SolvePhase.DONE, 3, penalty=140, lower_bound=140))
 
         assert "provably the best" in explanation
 
     def test_stopping_after_a_result_keeps_it(self) -> None:
-        headline, explanation = wording(self._job(SolvePhase.CANCELLED, 3))
+        headline, explanation = wording(self._reading(SolvePhase.CANCELLED, 3))
 
         assert headline == "Stopped"
         assert "saved" in explanation
 
     def test_stopping_before_one_says_there_is_nothing(self) -> None:
-        headline, _ = wording(self._job(SolvePhase.CANCELLED, None))
+        headline, _ = wording(self._reading(SolvePhase.CANCELLED, None))
 
         assert "before anything was found" in headline
 

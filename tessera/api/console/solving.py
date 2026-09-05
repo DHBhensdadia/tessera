@@ -29,9 +29,9 @@ from tessera.api import targets
 from tessera.api.console import timetables as timetables_console
 from tessera.api.console.base import describe, page, redirect, router
 from tessera.api.deps import Db, Jobs
-from tessera.api.jobs import AlreadySolvingError, Job
+from tessera.api.jobs import SETTLED, AlreadySolvingError, Job
 from tessera.api.routers.solving import infeasibility_report, preflight_report
-from tessera.api.schemas import SolvePhase, SolveRequest
+from tessera.api.schemas import SolvePhase, SolveRequest, SolveStatus
 from tessera.domain.constraints import TargetKind
 from tessera.repository import calendar as calendar_repo
 from tessera.repository import snapshot as snapshot_repo
@@ -206,15 +206,26 @@ def _naming(db: Db, term_id: int) -> dict[str, dict[int, str]]:
 
 
 def _watching(request: Request, db: Db, job: Job, problem: str | None = None) -> HTMLResponse:
+    """One page, from **one** reading of the job.
+
+    `job.status` is replaced by the worker thread, and loading it three times — once for the
+    numbers, once for the sentences, once for whether it has finished — builds a page out of
+    two different moments. That is not hypothetical: it turned `main` red. A solve settled
+    between the first load and the third, so the page dropped the Stop button *and* the link
+    to the timetable it had just written, while the log line beside it said `timetable=1`.
+
+    #303 made the status safe to read concurrently by replacing it whole rather than editing
+    it, so **one** load is always coherent. Taking several throws that away.
+    """
     status = job.reading()
-    headline, explanation = wording(job)
+    headline, explanation = wording(status)
     return page(
         request,
         "solve/watch.html",
         term=calendar_repo.get_term(db, job.term_id),
         sessions=calendar_repo.term_session_count(db, job.term_id),
         status=status,
-        settled=job.settled,
+        settled=status.phase in SETTLED,
         impossible=status.phase is SolvePhase.INFEASIBLE,
         headline=headline,
         explanation=explanation,
@@ -222,7 +233,7 @@ def _watching(request: Request, db: Db, job: Job, problem: str | None = None) ->
     )
 
 
-def _how_it_finished(job: Job) -> str:
+def _how_it_finished(status: SolveStatus) -> str:
     """Why a completed solve stopped, which is not always because the clock ran out.
 
     Found by watching a real one: 120 sessions reached **penalty 0 in 14 seconds** of a
@@ -234,12 +245,12 @@ def _how_it_finished(job: Job) -> str:
     solver also reports a bound, a score equal to it is optimal for the same reason with the
     arithmetic done by CP-SAT rather than by inspection.
     """
-    if job.status.penalty == 0:
+    if status.penalty == 0:
         return (
             "Every preference this term states is satisfied. Nothing about this timetable can "
             "be improved by searching longer."
         )
-    if job.status.lower_bound is not None and job.status.penalty == job.status.lower_bound:
+    if status.lower_bound is not None and status.penalty == status.lower_bound:
         return (
             "This is provably the best arrangement the rules allow — the solver reached its "
             "own lower bound. A longer budget cannot beat it."
@@ -250,8 +261,12 @@ def _how_it_finished(job: Job) -> str:
     )
 
 
-def wording(job: Job) -> tuple[str, str]:
-    """The heading and the sentence under it, for the phase this job is in.
+def wording(status: SolveStatus) -> tuple[str, str]:
+    """The heading and the sentence under it, for the phase this reading is in.
+
+    Takes a `SolveStatus` rather than a `Job` so a caller cannot accidentally load the job a
+    second time: the worker replaces `job.status` mid-render, and a page assembled from two
+    loads of it is what turned `main` red.
 
     Public because it is the one thing on this page worth asserting directly: *which* ending a
     search reaches is a fact about seconds, and #244 forbids a test being about those — so the
@@ -261,19 +276,19 @@ def wording(job: Job) -> tuple[str, str]:
     timetable was found, and saying *finished* over an empty result would be the worst kind of
     wrong: a search that ran out of time has proved nothing about the term.
     """
-    if job.status.phase is SolvePhase.DONE:
-        if job.status.timetable_id:
-            return ("Finished", _how_it_finished(job))
+    if status.phase is SolvePhase.DONE:
+        if status.timetable_id:
+            return ("Finished", _how_it_finished(status))
         return (
             "Nothing was found in the time it had",
             "Which says nothing about whether a timetable exists — only that this search did "
             "not reach one. Try a longer budget before changing the data.",
         )
-    if job.status.phase is SolvePhase.CANCELLED:
-        if job.status.timetable_id:
+    if status.phase is SolvePhase.CANCELLED:
+        if status.timetable_id:
             return ("Stopped", "The best arrangement found before you stopped is saved.")
         return (
             "Stopped before anything was found",
             "No valid arrangement had been reached yet, so there is nothing to save.",
         )
-    return PHASES[job.status.phase]
+    return PHASES[status.phase]
