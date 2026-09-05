@@ -3981,7 +3981,7 @@
   "info": {
     "description": "The Tessera engine: timetable data, constraint solving, and export.\n\nOne engine serves exactly one project, because a project *is* a file. There is\ntherefore no project identifier in any path.\n\nEndpoints answering **501** are declared but not yet implemented. The contract is fixed\nahead of the handlers so that later work plugs into a known shape and clients can be\nbuilt against it; the response names the phase that implements each one.\n\nErrors follow RFC 9457 Problem Details, on every route including framework failures.",
     "title": "Tessera",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "openapi": "3.1.0",
   "paths": {
