@@ -202,33 +202,49 @@ class TestBeingRefused:
         assert "Nothing was proven impossible" in response.text
 
 
-class TestTheRefresh:
-    """Clause 4. Part 1 has no script at all, so this is how the page moves — for everybody.
+class TestHowThePageMoves:
+    """Clause 4. Two mechanisms, and the second is a fallback rather than a second design.
 
-    Unconditional rather than inside `<noscript>`, because `<noscript>` content is ignored by
-    a browser that *has* scripting enabled, and a page that only updated for people who had
-    turned JavaScript off would be a strange thing to ship. Part 2 wraps it and lets an
-    `EventSource` do the same job without discarding the page.
+    The page is complete without a script — the server renders the current status and, where
+    scripting is off, a meta refresh brings the next one. `watch.js` replaces that with a
+    stream, which is smaller and does not discard the page: 357 KiB of SSE frames over a
+    five-minute solve against ~1.5 MB of full re-renders (4.8 §2.5).
     """
 
-    def test_a_running_solve_refreshes_itself(
+    def test_a_running_solve_carries_both(
         self, solving_console: TestClient, solvable: Term
     ) -> None:
         where = generate(solving_console, solvable.term_id, time_budget_seconds="30")
 
         page = solving_console.get(where)
 
-        assert 'http-equiv="refresh"' in page.text
+        assert '<noscript><meta http-equiv="refresh"' in page.text
+        assert "EventSource" in page.text
         solving_console.post(f"{where}/stop")
 
-    def test_a_settled_one_stops_refreshing(
+    def test_the_refresh_is_only_for_a_browser_that_cannot_stream(
         self, solving_console: TestClient, solvable: Term
     ) -> None:
-        """A finished page that kept reloading would poll a settled job for ever."""
+        """Outside `<noscript>` it would fire for everybody, including the browsers already
+        being updated by the stream — two mechanisms racing to redraw one page."""
+        where = generate(solving_console, solvable.term_id, time_budget_seconds="30")
+
+        page = solving_console.get(where)
+        stray = page.text.replace(
+            '<noscript><meta http-equiv="refresh" content="2"></noscript>', ""
+        )
+
+        assert 'http-equiv="refresh"' not in stray
+        solving_console.post(f"{where}/stop")
+
+    def test_a_settled_one_does_neither(self, solving_console: TestClient, solvable: Term) -> None:
+        """A finished page that kept reloading would poll a settled job for ever, and a
+        stream opened against one reconnects every three seconds until the tab closes."""
         where = generate(solving_console, solvable.term_id)
         settled = watch_until_settled(solving_console, where.rsplit("/", 1)[-1])
 
         assert 'http-equiv="refresh"' not in settled
+        assert "EventSource" not in settled
 
 
 class TestStopping:

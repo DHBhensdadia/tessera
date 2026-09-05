@@ -2,51 +2,79 @@
 {% block title %}Solving {{ term.name }} · Tessera console{% endblock %}
 {% block head %}
 {% if not settled %}
-{# Part 1 has no script on this page, so the refresh is unconditional: `<noscript>` content is
-   ignored by a browser that has scripting enabled, and a page that only moved for people who
-   had turned JavaScript off would be a strange thing to ship. Part 2 wraps this and lets an
-   `EventSource` do the same job without discarding the page each time. #}
-<meta http-equiv="refresh" content="2">
+{# Two ways for this page to move, and the second is the fallback rather than the design.
+   `<noscript>` content is ignored by a browser that has scripting enabled, so this refresh
+   runs only where `watch.js` cannot — where it costs a full render and a database read every
+   two seconds, and discards the page with them. #}
+<noscript><meta http-equiv="refresh" content="2"></noscript>
 {% endif %}
 {% endblock %}
 {% block body %}
-<h1>{{ headline }}</h1>
+<h1 id="headline">{{ headline }}</h1>
 <p class="lede">{{ term.name }} {{ term.academic_year }} · {{ sessions }} sessions</p>
 
-<div class="figure">
-  <div>
-    <span class="value">{{ status.phase }}</span>
-    <span class="caption">phase</span>
+{# Everything `watch.js` needs, on the element rather than in the script: an include is not
+   autoescaped and an attribute is. #}
+<div id="solve"
+     data-job="{{ status.job_id }}"
+     data-stream="/api/v1/solve/{{ status.job_id }}/stream"
+     data-settled="{{ 'yes' if settled else 'no' }}">
+  <div class="figure">
+    <div>
+      <span class="value" id="phase">{{ status.phase }}</span>
+      <span class="caption">phase</span>
+    </div>
+    <div>
+      <span class="value" id="elapsed">{{ '%.1f' % status.elapsed_seconds }}s</span>
+      <span class="caption">elapsed</span>
+    </div>
+    <div>
+      <span class="value" id="penalty">{{ status.penalty if status.penalty is not none else '—' }}</span>
+      <span class="caption">penalty</span>
+    </div>
+    <div>
+      <span class="value" id="bound">{{ status.lower_bound if status.lower_bound is not none else '—' }}</span>
+      <span class="caption">lower bound</span>
+    </div>
+    <div>
+      <span class="value" id="solutions">{{ status.solutions_found }}</span>
+      <span class="caption">solutions</span>
+    </div>
   </div>
-  <div>
-    <span class="value">{{ '%.1f' % status.elapsed_seconds }}s</span>
-    <span class="caption">elapsed</span>
-  </div>
-  <div>
-    <span class="value">{{ status.penalty if status.penalty is not none else '—' }}</span>
-    <span class="caption">penalty</span>
-  </div>
-  <div>
-    <span class="value">{{ status.lower_bound if status.lower_bound is not none else '—' }}</span>
-    <span class="caption">lower bound</span>
-  </div>
-  <div>
-    <span class="value">{{ status.solutions_found }}</span>
-    <span class="caption">solutions</span>
-  </div>
+
+  {# Hidden until there are two points to join. It is drawn from what this page has seen since
+     it connected, not from the whole solve: `SolveStatus` carries no trajectory (#306), and
+     the caption says so rather than implying a history the client does not have. #}
+  <figure id="curve" class="curve" hidden>
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none" role="img"
+         aria-label="Penalty since this page connected">
+      <polyline id="curve-line" points="" />
+    </svg>
+    <figcaption>Penalty, since this page connected</figcaption>
+  </figure>
+
+  <table id="breakdown" {{ '' if status.penalty_breakdown else 'hidden' }}>
+    {% if status.penalty_breakdown %}
+    <tr><th>Rule</th><th>Cost</th></tr>
+    {% for rule, cost in status.penalty_breakdown.items() %}
+    <tr><td>{{ rule | replace('_', ' ') | capitalize }}</td><td>{{ cost }}</td></tr>
+    {% endfor %}
+    {% endif %}
+  </table>
 </div>
 
-{% if status.penalty_breakdown %}
-<table style="margin-bottom:1.5rem">
-  <tr><th>Rule</th><th>Cost</th></tr>
-  {% for rule, cost in status.penalty_breakdown.items() %}
-  <tr><td>{{ rule | replace('_', ' ') | capitalize }}</td><td>{{ cost }}</td></tr>
-  {% endfor %}
-</table>
-{% endif %}
-
 <div class="note {{ 'settled' if settled else '' }}">
-  <p style="margin:0">{{ explanation }}</p>
+  <p style="margin:0" id="explanation">{{ explanation }}</p>
+</div>
+
+{# Every phase's sentences, so the script can swap the heading without carrying a second copy
+   of prose that lives in `console.solving.PHASES`. It selects; it does not write. #}
+<div id="phrasing" hidden>
+  {% for phase, said in phrasing.items() %}
+  <div data-phase="{{ phase }}">
+    <b>{{ said[0] }}</b><span>{{ said[1] }}</span>
+  </div>
+  {% endfor %}
 </div>
 
 <p>
@@ -63,4 +91,9 @@
   {% endif %}
   <a href="/console/terms/{{ term.id }}/timetables">All timetables for this term</a>
 </p>
+{% endblock %}
+{% block script %}
+{% if not settled %}
+<script>{% include "solve/watch.js" %}</script>
+{% endif %}
 {% endblock %}

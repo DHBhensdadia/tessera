@@ -229,6 +229,12 @@ def _watching(request: Request, db: Db, job: Job, problem: str | None = None) ->
         impossible=status.phase is SolvePhase.INFEASIBLE,
         headline=headline,
         explanation=explanation,
+        # Every phase's sentences, rendered into the page so the script can swap them without
+        # holding a second copy of the prose. Found by watching a real solve: the heading is
+        # the largest text on the page and it was the server's reading from *load time*, so a
+        # term that reached feasibility in under a second sat under "Looking for any valid
+        # timetable" while the phase beneath it already said `optimising`. #305's family.
+        phrasing={phase.value: PHASES[phase] for phase in PHASES},
         problem=problem,
     )
 

@@ -65,6 +65,14 @@
     .note { border: 1px solid var(--line); background: #fff; padding: .6rem .8rem;
             margin: 0 0 1.25rem; }
     .settled { border-left: 3px solid #6d8ea8; }
+
+    /* The descent, drawn from what the page has seen rather than from the whole solve.
+       `vector-effect` keeps the stroke one pixel wide under a non-uniform viewBox. */
+    .curve { margin: 0 0 1.25rem; }
+    .curve svg { width: 100%; height: 4.5rem; background: #fff; border: 1px solid var(--line); }
+    .curve polyline { fill: none; stroke: #6d8ea8; stroke-width: 1.5;
+                      vector-effect: non-scaling-stroke; }
+    .curve figcaption { color: var(--muted); font-size: .8rem; margin-top: .25rem; }
   </style>
   {% block head %}{% endblock %}
 </head>
