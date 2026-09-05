@@ -23,7 +23,9 @@ from tessera.api.console import (
     places,
     rooms,
     rules,
+    solving,
     teaching,
+    timetables,
 )
 from tessera.api.console.base import (
     CONSOLE_COOKIE,
@@ -52,5 +54,7 @@ __all__ = [
     "rooms",
     "router",
     "rules",
+    "solving",
     "teaching",
+    "timetables",
 ]

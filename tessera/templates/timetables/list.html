@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Timetables · {{ term.name }} · Tessera console{% endblock %}
+{% block body %}
+<h1>{{ term.name }} {{ term.academic_year }}</h1>
+<p class="lede">
+  {{ sessions }} sessions to place ·
+  <a href="/console/terms/{{ term.id }}/offerings">what is taught this term</a>
+</p>
+
+<form method="post" action="/console/terms/{{ term.id }}/generate">
+  <fieldset>
+    <legend>Generate</legend>
+    <label for="time_budget_seconds">Time budget (seconds)</label>
+    <input id="time_budget_seconds" name="time_budget_seconds" type="number"
+           min="1" max="3600" value="{{ budget }}">
+    <label for="seed_timetable_id">Start from</label>
+    {# A warm start, and the only way to reach one without writing HTTP by hand. Pinning is
+       not offered because nothing in the console can pin an assignment — 5.4 owns that — so
+       `respect_pins` keeps its default rather than being a control that does nothing. #}
+    <select id="seed_timetable_id" name="seed_timetable_id">
+      <option value="">nothing — solve from scratch</option>
+      {% for candidate in timetables %}
+      <option value="{{ candidate.id }}">{{ candidate.name }} ({{ candidate.penalty if candidate.penalty is not none else 'unscored' }})</option>
+      {% endfor %}
+    </select>
+    <p><button type="submit">Generate a timetable</button></p>
+    {% if not sessions %}
+    <p class="empty">This term has no sessions yet. Offer a course and expand its pattern
+      first — there is nothing to place.</p>
+    {% endif %}
+  </fieldset>
+</form>
+
+<table>
+  <tr><th>Timetable</th><th>Penalty</th><th>Placed</th><th>Status</th><th></th></tr>
+  {% for row in timetables %}
+  <tr>
+    <td><a href="/console/timetables/{{ row.id }}">{{ row.name }}</a></td>
+    <td>{{ row.penalty if row.penalty is not none else '—' }}</td>
+    <td>{{ row.placed }}</td>
+    <td>{{ row.status }}</td>
+    <td>
+      <form class="inline" method="post" action="/console/timetables/{{ row.id }}/delete">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="empty">No timetable has been generated for this term.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

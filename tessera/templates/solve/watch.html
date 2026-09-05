@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Solving {{ term.name }} · Tessera console{% endblock %}
+{% block head %}
+{% if not settled %}
+{# Part 1 has no script on this page, so the refresh is unconditional: `<noscript>` content is
+   ignored by a browser that has scripting enabled, and a page that only moved for people who
+   had turned JavaScript off would be a strange thing to ship. Part 2 wraps this and lets an
+   `EventSource` do the same job without discarding the page each time. #}
+<meta http-equiv="refresh" content="2">
+{% endif %}
+{% endblock %}
+{% block body %}
+<h1>{{ headline }}</h1>
+<p class="lede">{{ term.name }} {{ term.academic_year }} · {{ sessions }} sessions</p>
+
+<div class="figure">
+  <div>
+    <span class="value">{{ status.phase }}</span>
+    <span class="caption">phase</span>
+  </div>
+  <div>
+    <span class="value">{{ '%.1f' % status.elapsed_seconds }}s</span>
+    <span class="caption">elapsed</span>
+  </div>
+  <div>
+    <span class="value">{{ status.penalty if status.penalty is not none else '—' }}</span>
+    <span class="caption">penalty</span>
+  </div>
+  <div>
+    <span class="value">{{ status.lower_bound if status.lower_bound is not none else '—' }}</span>
+    <span class="caption">lower bound</span>
+  </div>
+  <div>
+    <span class="value">{{ status.solutions_found }}</span>
+    <span class="caption">solutions</span>
+  </div>
+</div>
+
+{% if status.penalty_breakdown %}
+<table style="margin-bottom:1.5rem">
+  <tr><th>Rule</th><th>Cost</th></tr>
+  {% for rule, cost in status.penalty_breakdown.items() %}
+  <tr><td>{{ rule | replace('_', ' ') | capitalize }}</td><td>{{ cost }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<div class="note {{ 'settled' if settled else '' }}">
+  <p style="margin:0">{{ explanation }}</p>
+</div>
+
+<p>
+  {% if not settled %}
+  <form class="inline" method="post" action="/console/solve/{{ status.job_id }}/stop">
+    <button type="submit">Stop and keep what was found</button>
+  </form>
+  {% endif %}
+  {% if status.timetable_id %}
+  <a href="/console/timetables/{{ status.timetable_id }}">Open the timetable</a> ·
+  {% endif %}
+  {% if impossible %}
+  <a href="/console/solve/{{ status.job_id }}/impossible">Why there is no timetable</a> ·
+  {% endif %}
+  <a href="/console/terms/{{ term.id }}/timetables">All timetables for this term</a>
+</p>
+{% endblock %}

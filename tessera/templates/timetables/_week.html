@@ -1,0 +1,42 @@
+{# One subject's week, from `tessera.export.grid.Week`.
+
+   A macro rather than a page because three things draw this grid: the console's timetable
+   page, and — in 6.2 — the static HTML export, which has no engine behind it. It reads a
+   `Week` and nothing else, so it renders identically wherever the projection came from.
+
+   `covered` is the second half of drawing a two-hour lab: the cell it starts in spans two
+   rows and the slot beneath it is skipped. Omitting the skip draws the lab twice. #}
+{% macro week(subject_week) %}
+<table class="week">
+  <tr>
+    <th></th>
+    {% for day in subject_week.days %}<th>{{ day }}</th>{% endfor %}
+  </tr>
+  {% for row in subject_week.rows %}
+  <tr>
+    <td class="clock">{{ row.clock }}</td>
+    {% for cell in row.cells %}
+      {% if not cell.covered %}
+        {% if cell.block %}
+    <td class="{{ 'clash' if cell.block.is_broken else 'taught' }}"
+        rowspan="{{ cell.span }}">
+      <span class="block">
+        <span class="what">{{ cell.block.course }}</span>
+        <span class="where">{{ cell.block.room }}{% if cell.block.is_pinned %} · pinned{% endif %}</span>
+        <span class="who">{{ cell.block.instructors | join(', ') }}</span>
+        {% if cell.block.is_broken %}
+        <span class="danger">{{ cell.block.broken_rules | join(', ') | replace('_', ' ') }}</span>
+        {% endif %}
+      </span>
+    </td>
+        {% elif cell.is_break %}
+    <td class="rest"></td>
+        {% else %}
+    <td class="free"></td>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+{% endmacro %}

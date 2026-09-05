@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}No valid timetable exists · Tessera console{% endblock %}
+{% block body %}
+<h1>No valid timetable exists</h1>
+<p class="lede">{{ term.name }} {{ term.academic_year }}</p>
+
+<div class="note">
+  <p style="margin:0">{{ report.summary }}</p>
+</div>
+
+<p>The problem is not the search. These requirements contradict each other:</p>
+
+<table>
+  <tr><th>#</th><th>Requirement</th><th>About</th></tr>
+  {% for requirement in report.requirements %}
+  <tr>
+    <td>{{ loop.index }}</td>
+    <td>
+      <strong>{{ requirement.summary }}</strong>
+      {% if requirement.detail %}<br><span class="empty">{{ requirement.detail }}</span>{% endif %}
+    </td>
+    {# The engine holds ids and says so: `ConflictingRequirement.subject_kind` exists for a
+       client to turn "instructor 4" into a name. This is the first client to do it. #}
+    <td>
+      {% if requirement.subject_kind %}
+      {{ named.get(requirement.subject_kind, {}).get(requirement.subject_id) or requirement.subject_kind }}
+      {% else %}—{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+{% if report.suggestion %}
+{# 4.6 §6 and Decision #286: this says what was proven and no more. It used to promise that
+   relaxing any one member made a timetable possible, and the mechanism cannot support that. #}
+<div class="note" style="margin-top:1.25rem">
+  <p style="margin:0">{{ report.suggestion }}</p>
+</div>
+{% endif %}
+
+<p style="margin-top:1rem">
+  <a href="/console/instructors">Instructors</a> ·
+  <a href="/console/rooms">Rooms</a> ·
+  <a href="/console/constraints">Rules</a> ·
+  <a href="/console/terms/{{ term.id }}/timetables">Back to the term</a>
+</p>
+{% endblock %}

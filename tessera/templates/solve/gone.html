@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}That solve is over · Tessera console{% endblock %}
+{% block body %}
+<h1>That solve is no longer running</h1>
+<p class="lede">Job {{ job_id }}</p>
+
+<div class="note">
+  {# Deliberately not a bare 404. Both reasons are ordinary — a tab left open across a
+     restart is the common one — and the timetable the job produced outlives the job. #}
+  <p style="margin:0">
+    Solves are not remembered across an engine restart, and only the most recent few are kept
+    after they finish. Whatever this one produced is still here.
+  </p>
+</div>
+
+<p><a href="/console/terms">Pick a term</a> and open its timetables.</p>
+{% endblock %}

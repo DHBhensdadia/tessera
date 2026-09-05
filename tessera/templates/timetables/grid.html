@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% import "timetables/_week.html" as grid %}
+{% block title %}{{ timetable.name }} · {{ term.name }} · Tessera console{% endblock %}
+{% block body %}
+<h1>{{ timetable.name }}</h1>
+<p class="lede">
+  {{ term.name }} {{ term.academic_year }} ·
+  <a href="/console/terms/{{ term.id }}/timetables">all timetables for this term</a>
+</p>
+
+<div class="figure">
+  <div>
+    <span class="value">{{ timetable.penalty if timetable.penalty is not none else '—' }}</span>
+    <span class="caption">penalty</span>
+  </div>
+  <div>
+    <span class="value">{{ placed }}</span>
+    <span class="caption">placed</span>
+  </div>
+  <div>
+    {# The validator's count, not the solver's claim. Two readings of one timetable is the
+       point of having written the validator separately — see the violations route. #}
+    <span class="value {{ 'danger' if report.hard else '' }}">{{ report.hard | length }}</span>
+    <span class="caption">hard violations</span>
+  </div>
+  {% if unplaced %}
+  <div>
+    <span class="value danger">{{ unplaced }}</span>
+    <span class="caption">unplaced</span>
+  </div>
+  {% endif %}
+</div>
+
+{% if report.penalty_breakdown %}
+<table style="margin-bottom:1.5rem">
+  <tr><th>Rule</th><th>Cost</th></tr>
+  {% for rule, cost in report.penalty_breakdown.items() %}
+  <tr><td>{{ rule | replace('_', ' ') | capitalize }}</td><td>{{ cost }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<form method="get" action="/console/timetables/{{ timetable.id }}">
+  <fieldset>
+    <legend>Read it</legend>
+    <label for="pivot">By</label>
+    <select id="pivot" name="pivot">
+      {% for option in pivots %}
+      <option value="{{ option }}" {{ 'selected' if option == pivot else '' }}>{{ option }}</option>
+      {% endfor %}
+    </select>
+    <label for="subject">Whose</label>
+    {# One subject at a time, and that is a measurement rather than a preference: every room
+       of a 500-room institution in one page is 1.7 MiB of HTML. #}
+    <select id="subject" name="subject">
+      {% for option in subjects %}
+      <option value="{{ option.id }}" {{ 'selected' if subject and option.id == subject.id else '' }}>{{ option.name }}</option>
+      {% endfor %}
+    </select>
+    <p><button type="submit">Show</button></p>
+  </fieldset>
+</form>
+
+{% if week %}
+<h1 style="margin-top:1.5rem">{{ week.subject.name }}</h1>
+{% if week.is_empty %}
+<p class="empty">Nothing is scheduled here.</p>
+{% endif %}
+{{ grid.week(week) }}
+{% else %}
+<p class="empty">This timetable has nothing in it to read.</p>
+{% endif %}
+{% endblock %}

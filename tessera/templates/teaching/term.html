@@ -2,7 +2,10 @@
 {% block title %}{{ term.name }} · Tessera console{% endblock %}
 {% block body %}
 <h1>{{ term.name }} {{ term.academic_year }}</h1>
-<p class="lede">Courses offered this term. Open one to describe its week.</p>
+<p class="lede">
+  Courses offered this term. Open one to describe its week ·
+  <a href="/console/terms/{{ term.id }}/timetables">generate a timetable</a>
+</p>
 
 <table>
   <tr><th>Course</th><th>Sessions</th><th></th></tr>

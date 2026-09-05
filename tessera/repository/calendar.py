@@ -358,3 +358,18 @@ def session_count(session: DbSession, offering_id: int) -> int:
         )
         or 0
     )
+
+
+def term_session_count(session: DbSession, term_id: int) -> int:
+    """How many sessions a whole term has to place.
+
+    Counted rather than loaded: the solve page wants the number beside the button, and reading
+    a term to find it out costs 27 to 37 ms at department scale — which is the right price for
+    a solve and the wrong one for a heading.
+    """
+    return int(
+        session.scalar(
+            select(func.count()).select_from(m.Session).where(m.Session.term_id == term_id)
+        )
+        or 0
+    )

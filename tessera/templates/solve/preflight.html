@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Nothing to solve yet · Tessera console{% endblock %}
+{% block body %}
+<h1>{{ report.problems | length }} problem{{ '' if report.problems | length == 1 else 's' }}
+    will prevent a valid timetable</h1>
+<p class="lede">
+  {{ term.name }} {{ term.academic_year }} · found in milliseconds, before any search started.
+</p>
+
+{% for problem in report.problems %}
+<div class="problem">
+  <strong>{{ problem.summary }}</strong>
+  {% set subject = named.get(problem.subject_kind, {}).get(problem.subject_id) %}
+  {% if subject %}<p style="margin:.3rem 0 0">{{ problem.subject_kind | capitalize }}: {{ subject }}</p>{% endif %}
+  <p style="margin:.3rem 0 0">{{ problem.detail }}</p>
+  {% if problem.fix_hint %}<p style="margin:.3rem 0 0">{{ problem.fix_hint }}</p>{% endif %}
+  {% if problem.affected_session_ids %}
+  <p style="margin:.3rem 0 0">Sessions: {{ problem.affected_session_ids | join(', ') }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="note">
+  <p style="margin:0">
+    Each of these is a counting argument: some set of sessions needs more of a resource than
+    exists, whatever order they are put in. <strong>Searching cannot fix one.</strong>
+  </p>
+  <p style="margin:.5rem 0 0">
+    You can still run the solve. It will end <em>impossible</em> rather than <em>out of
+    time</em>, and the report it produces names the requirements that contradict each other
+    — which is usually more use than the arithmetic above.
+  </p>
+</div>
+
+<form method="post" action="/console/terms/{{ term.id }}/generate">
+  <input type="hidden" name="time_budget_seconds" value="{{ budget }}">
+  <input type="hidden" name="anyway" value="1">
+  <button type="submit">Solve it anyway</button>
+</form>
+<p style="margin-top:1rem">
+  <a href="/console/terms/{{ term.id }}/timetables">Back</a> ·
+  <a href="/console/rooms">Rooms</a> ·
+  <a href="/console/instructors">Instructors</a> ·
+  <a href="/console/constraints">Rules</a>
+</p>
+{% endblock %}
