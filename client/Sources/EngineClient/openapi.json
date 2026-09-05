@@ -2220,6 +2220,20 @@
             "title": "Fix Hint",
             "type": "string"
           },
+          "subject_id": {
+            "description": "Null where the argument is about the room estate as a whole rather than about one room.",
+            "title": "Subject Id",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "subject_kind": {
+            "default": "",
+            "description": "instructor, room or group \u2014 what the shortage is about, so a client can name it and link to the screen that changes it. `ConflictingRequirement` has carried this since 1.4 and this model did not, so nothing reading a pre-flight could say *which* instructor was over-committed.",
+            "title": "Subject Kind",
+            "type": "string"
+          },
           "summary": {
             "title": "Summary",
             "type": "string"
@@ -3897,6 +3911,14 @@
             "description": "Which rule. An invariant key such as 'room_not_double_booked', or a constraint kind such as 'same_room'. Stable across releases: the interface looks the explanation up by it.",
             "title": "Rule",
             "type": "string"
+          },
+          "session_id": {
+            "description": "Which placement is in trouble. Redundant where the request named a session \u2014 a move verdict is about the session that moved \u2014 and load-bearing in `ViolationReport`, which describes a whole timetable and until 4.8 sent a list nothing could attribute to a cell.",
+            "title": "Session Id",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -11790,7 +11812,7 @@
     },
     "/api/v1/timetables/{timetable_id}/grid": {
       "get": {
-        "description": "The same timetable read by group, by instructor, or by room.\n\nThree pivots because those are the three documents a timetabling committee actually\nproduces and hands out.",
+        "description": "The same timetable read by group, by instructor, or by room.\n\nThree pivots because those are the three documents a timetabling committee actually\nproduces and hands out.\n\n**The projection is `tessera.export.grid`, which the console renders from too** \u2014 one\nreading of *whose week is this*, not two that agree by convention. It is in `export`\nrather than here because 6.2 writes the same grid to a file and may not import anything\nthat touches SQLAlchemy.\n\n**`subject_ids` is a convenience here and a necessity in a browser.** This response\ncarries placements, so its size follows the timetable \u2014 5,000 sessions, whichever pivot.\nA rendered page carries *cells*, most of them empty, and 4.8 measured every room of a\n500-room institution at 1.7 MiB of HTML. The wire can afford the whole grid; the page\nasks for one subject.",
         "operationId": "gridView",
         "parameters": [
           {
@@ -12293,6 +12315,7 @@
     },
     "/api/v1/timetables/{timetable_id}/violations": {
       "get": {
+        "description": "Everything currently wrong with this timetable, read by the 4.1 validator.\n\n**A second reading, not a stored one.** `Timetable.penalty` is what the solver said its own\nanswer cost; this is what an independently written validator says it costs now. Reporting\nthe stored number here would make the two indistinguishable, and the whole reason 4.1 was\nbuilt separately from the solver is that agreement between two readings is evidence and a\nsingle reading is not.\n\n5.8 owns showing these to somebody in the application. 4.8 needs the count, because a\ntimetable you cannot check is one you have to trust.",
         "operationId": "listViolations",
         "parameters": [
           {

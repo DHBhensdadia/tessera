@@ -28,6 +28,7 @@ from tessera.api.schemas import (
     SolveStatus,
 )
 from tessera.domain.constraints import INVARIANT_BY_KEY
+from tessera.domain.validation import Snapshot
 from tessera.repository import snapshot as snapshot_repo
 from tessera.solver import Shortfall
 from tessera.solver.preflight import check
@@ -44,7 +45,16 @@ def preflight(term_id: int, db: Db) -> PreflightReport:
     Failing after two minutes for a reason detectable in fifty milliseconds is the
     behaviour this exists to prevent.
     """
-    term = snapshot_repo.load(db, term_id)
+    return preflight_report(snapshot_repo.load(db, term_id))
+
+
+def preflight_report(term: Snapshot) -> PreflightReport:
+    """The counting checks on a loaded term.
+
+    A function rather than only a handler because the console runs the same check before it
+    starts a job (4.8 D7) and must say the same thing about it. Two readings of *what is
+    structurally wrong with this term* is the drift #168 was written about.
+    """
     shortfalls = check(term)
     return PreflightReport(
         can_solve=not shortfalls,
@@ -141,7 +151,7 @@ def solve_result(job_id: str, jobs: Jobs) -> InfeasibilityReport:
             ),
             error_type=f"{ERROR_BASE}/not-infeasible",
         )
-    return _report(job.explanation)
+    return infeasibility_report(job.explanation)
 
 
 #: What the stream sends, declared so a generated client can see it.
@@ -220,11 +230,13 @@ def _problem(shortfall: Shortfall) -> PreflightProblem:
         detail=shortfall.statement,
         affected_session_ids=[int(session_id) for session_id in shortfall.sessions],
         fix_hint=invariant.because if invariant else "",
+        subject_kind=shortfall.subject_kind,
+        subject_id=shortfall.subject_id,
     )
 
 
-def _report(explanation: Explanation) -> InfeasibilityReport:
-    """`Explanation` on the wire.
+def infeasibility_report(explanation: Explanation) -> InfeasibilityReport:
+    """`Explanation` on the wire, and on the console's page for it.
 
     A count and a conflict are different strengths of evidence and stay different lines: the
     count carries its arithmetic, the conflict carries the rule and what it is about. Both

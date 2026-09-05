@@ -19,6 +19,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session as DbSession
 
 from tessera.domain.constraints import Constraint, TargetKind
+from tessera.export import grid
 from tessera.repository import calendar as calendar_repo
 from tessera.repository import groups as groups_repo
 from tessera.repository import people as people_repo
@@ -75,3 +76,20 @@ def sentence(item: Constraint, names: Names) -> str:
         for target in sorted(item.targets, key=lambda t: (t.kind.value, t.id))
     ]
     return item.describe(", ".join(named))
+
+
+def labels(db: DbSession, *, term_id: int | None = None) -> grid.Labels:
+    """The four name maps a timetable grid needs, from the resolver that already had them.
+
+    `tessera.export.grid` cannot look a name up — it is forbidden SQLAlchemy so that 6.2 can
+    import it — so the caller supplies them, and this is where they already live. Sessions
+    are not among them: a grid names the *course* a block teaches, which is what appears on a
+    printed timetable, and nobody recognises "session 41".
+    """
+    names = target_names(db, term_id=term_id)
+    return grid.Labels(
+        rooms=names[TargetKind.ROOM],
+        instructors=names[TargetKind.INSTRUCTOR],
+        groups=names[TargetKind.GROUP],
+        courses=names[TargetKind.COURSE],
+    )

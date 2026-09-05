@@ -92,6 +92,18 @@ class PreflightProblem(Wire):
     detail: str = ""
     affected_session_ids: list[int] = Field(default_factory=list)
     fix_hint: str = ""
+    subject_kind: str = Field(
+        default="",
+        description="instructor, room or group — what the shortage is about, so a client can "
+        "name it and link to the screen that changes it. `ConflictingRequirement` has carried "
+        "this since 1.4 and this model did not, so nothing reading a pre-flight could say "
+        "*which* instructor was over-committed.",
+    )
+    subject_id: int | None = Field(
+        default=None,
+        description="Null where the argument is about the room estate as a whole rather than "
+        "about one room.",
+    )
 
 
 class PreflightReport(Wire):

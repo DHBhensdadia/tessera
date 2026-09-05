@@ -95,6 +95,13 @@ class Violation(Wire):
         )
     )
     message: str = Field(description="Plain language, shown directly to the user.")
+    session_id: int | None = Field(
+        default=None,
+        description="Which placement is in trouble. Redundant where the request named a "
+        "session — a move verdict is about the session that moved — and load-bearing in "
+        "`ViolationReport`, which describes a whole timetable and until 4.8 sent a list "
+        "nothing could attribute to a cell.",
+    )
     conflicting_session_id: int | None = None
     conflicting_assignment_id: int | None = None
 

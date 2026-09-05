@@ -84,6 +84,8 @@ from tessera.api.schemas.timetables import (
     AssignmentUpdate,
     CommandRead,
     ComparisonReport,
+    GridCell,
+    GridColumn,
     GridView,
     MoveCheck,
     MoveVerdict,
@@ -92,6 +94,7 @@ from tessera.api.schemas.timetables import (
     TimetableUpdate,
     ViewportCheck,
     ViewportVerdict,
+    Violation,
     ViolationReport,
 )
 
@@ -119,6 +122,8 @@ __all__ = [
     "FeatureCreate",
     "FeatureRead",
     "FeatureUpdate",
+    "GridCell",
+    "GridColumn",
     "GridView",
     "InfeasibilityReport",
     "InstitutionCreate",
@@ -168,5 +173,6 @@ __all__ = [
     "UnavailabilityRead",
     "ViewportCheck",
     "ViewportVerdict",
+    "Violation",
     "ViolationReport",
 ]

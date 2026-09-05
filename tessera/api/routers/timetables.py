@@ -12,6 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, status
 from fastapi.responses import StreamingResponse
 
+from tessera.api import targets
 from tessera.api.deps import Db
 from tessera.api.errors import problem_responses
 from tessera.api.routers._stubs import pending
@@ -21,18 +22,26 @@ from tessera.api.schemas import (
     AssignmentUpdate,
     CommandRead,
     ComparisonReport,
+    GridCell,
+    GridColumn,
     GridView,
     MoveCheck,
     MoveVerdict,
     Page,
+    Reference,
     TimetableCreate,
     TimetableRead,
     TimetableUpdate,
     ViewportCheck,
     ViewportVerdict,
+    Violation,
     ViolationReport,
 )
 from tessera.domain.timetable import Timetable, TimetableStatus
+from tessera.domain.validation import validate
+from tessera.domain.validation.violation import Violation as DomainViolation
+from tessera.export import grid
+from tessera.repository import snapshot as snapshot_repo
 from tessera.repository import timetables as timetables_repo
 
 router = APIRouter(prefix="/api/v1", tags=["timetables"])
@@ -204,8 +213,42 @@ def validate_viewport(timetable_id: int, payload: ViewportCheck) -> ViewportVerd
 @router.get(
     "/timetables/{timetable_id}/violations", response_model=ViolationReport, responses=ERRORS
 )
-def list_violations(timetable_id: int) -> ViolationReport:
-    pending("5.8")
+def list_violations(timetable_id: int, db: Db) -> ViolationReport:
+    """Everything currently wrong with this timetable, read by the 4.1 validator.
+
+    **A second reading, not a stored one.** `Timetable.penalty` is what the solver said its own
+    answer cost; this is what an independently written validator says it costs now. Reporting
+    the stored number here would make the two indistinguishable, and the whole reason 4.1 was
+    built separately from the solver is that agreement between two readings is evidence and a
+    single reading is not.
+
+    5.8 owns showing these to somebody in the application. 4.8 needs the count, because a
+    timetable you cannot check is one you have to trust.
+    """
+    timetable = timetables_repo.get_timetable(db, timetable_id)
+    term = snapshot_repo.load(db, int(timetable.term_id or 0), seed_timetable_id=timetable_id)
+    found = validate(term)
+    return ViolationReport(
+        timetable_id=timetable_id,
+        is_feasible=found.is_feasible,
+        hard_violations=[_violation(one) for one in found.hard],
+        penalty=found.penalty,
+        penalty_breakdown=found.penalty_breakdown,
+    )
+
+
+def _violation(found: DomainViolation) -> Violation:
+    return Violation(
+        rule=found.rule,
+        message=found.message,
+        session_id=int(found.session_id),
+        conflicting_session_id=(
+            int(found.conflicting_session_id) if found.conflicting_session_id else None
+        ),
+        conflicting_assignment_id=(
+            int(found.conflicting_assignment_id) if found.conflicting_assignment_id else None
+        ),
+    )
 
 
 # -- history -------------------------------------------------------------------
@@ -235,6 +278,7 @@ def redo(timetable_id: int) -> CommandRead:
 @router.get("/timetables/{timetable_id}/grid", response_model=GridView, responses=ERRORS)
 def grid_view(
     timetable_id: int,
+    db: Db,
     pivot: str = Query(default="group", pattern="^(group|instructor|room)$"),
     subject_ids: str = Query(default="", description="Comma-separated ids to include."),
 ) -> GridView:
@@ -242,8 +286,63 @@ def grid_view(
 
     Three pivots because those are the three documents a timetabling committee actually
     produces and hands out.
+
+    **The projection is `tessera.export.grid`, which the console renders from too** — one
+    reading of *whose week is this*, not two that agree by convention. It is in `export`
+    rather than here because 6.2 writes the same grid to a file and may not import anything
+    that touches SQLAlchemy.
+
+    **`subject_ids` is a convenience here and a necessity in a browser.** This response
+    carries placements, so its size follows the timetable — 5,000 sessions, whichever pivot.
+    A rendered page carries *cells*, most of them empty, and 4.8 measured every room of a
+    500-room institution at 1.7 MiB of HTML. The wire can afford the whole grid; the page
+    asks for one subject.
     """
-    pending("5.1")
+    timetable = timetables_repo.get_timetable(db, timetable_id)
+    term = snapshot_repo.load(db, int(timetable.term_id or 0), seed_timetable_id=timetable_id)
+    broken = grid.broken_by_session(term)
+    by = grid.Pivot(pivot)
+    wanted = {int(one) for one in subject_ids.split(",") if one.strip()}
+
+    labels = targets.labels(db, term_id=int(timetable.term_id or 0))
+    columns = [
+        GridColumn(
+            subject=Reference(id=subject.id, name=subject.name),
+            cells=[
+                GridCell(
+                    start_slot=block.start_slot,
+                    duration_slots=block.duration_slots,
+                    assignment_id=block.assignment_id or 0,
+                    session_id=block.session_id,
+                    label=block.course,
+                    room=Reference(id=block.room_id, name=block.room),
+                    is_pinned=block.is_pinned,
+                    has_violation=block.is_broken,
+                )
+                for block in _blocks(grid.week(term, labels, subject, broken))
+            ],
+        )
+        for subject in grid.subjects(term, labels, by)
+        if not wanted or subject.id in wanted
+    ]
+
+    return GridView(
+        timetable_id=timetable_id,
+        pivot=by.value,
+        days=term.grid.days,
+        slots_per_day=term.grid.slots_per_day,
+        break_slots=sorted(term.grid.break_slots),
+        columns=columns,
+    )
+
+
+def _blocks(week: grid.Week) -> list[grid.Block]:
+    """The placed sessions in a rendered week, read out of the cells that draw them.
+
+    Read from the rendering rather than alongside it, so this route and the console page
+    cannot disagree about what is in a cell — which is the thing the agreement test asserts.
+    """
+    return [cell.block for row in week.rows for cell in row.cells if cell.block is not None]
 
 
 @router.get("/timetables/compare", response_model=ComparisonReport, responses=ERRORS)
