@@ -145,6 +145,38 @@ if ! git push origin main; then
 fi
 
 echo
-echo "green on $(git rev-parse --short HEAD), and main is that commit"
+echo "green on $(git rev-parse --short HEAD) as $BRANCH, and main is that commit"
+
+# The branch being green is not main being green, and reading it as though it were is how
+# main sat red after 4.8 part 1 while the report said otherwise. Pushing to main starts a
+# *second* run of the same SHA, and a test that is not deterministic can fail on either one.
+# ship.sh cannot prevent that — it can refuse to let it go unnoticed.
+echo
+echo "==> main's own run of $SHA"
+for _ in $(seq 1 "$DEADLINE"); do
+    MAIN_RUN=$(gh run list --workflow=CI --branch main --limit 20 \
+                 --json databaseId,headSha,status,conclusion \
+                 --jq "[.[] | select(.headSha == \"$SHA\")] | first" 2>/dev/null)
+    [ -n "$MAIN_RUN" ] && [ "$(echo "$MAIN_RUN" | jq -r .status)" = "completed" ] && break
+    sleep 10
+done
+
+if [ -z "${MAIN_RUN:-}" ] || [ "$MAIN_RUN" = "null" ]; then
+    echo "  no run found on main for $SHA yet — main is pushed; watch it before claiming green"
+elif [ "$(echo "$MAIN_RUN" | jq -r .status)" != "completed" ]; then
+    echo "  still running after $((DEADLINE / 6)) minutes — main is pushed and NOT yet green"
+elif [ "$(echo "$MAIN_RUN" | jq -r .conclusion)" != "success" ]; then
+    gh run view "$(echo "$MAIN_RUN" | jq -r .databaseId)" \
+        --json jobs -q '.jobs[] | "  \(.name): \(.conclusion)"'
+    echo
+    echo "  MAIN IS RED on $SHA, even though $BRANCH was green on it."
+    echo "  The same commit ran twice and disagreed, which means something is not"
+    echo "  deterministic. Fix that before shipping anything else."
+    exit 1
+else
+    echo "  green on main too"
+fi
+
+echo
 echo "  the branch is still on the remote; delete it when you are done with it:"
 echo "    git push origin --delete $BRANCH"
