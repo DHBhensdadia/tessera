@@ -292,14 +292,18 @@ def create_app(
             # page; opening that path instead would mean a route that hands out cookies
             # without checking what it was given. Keeping it here leaves one place in the
             # application that decides whether a caller is authentic.
+            #
+            # **On that one path the query wins over the cookie**, and it did not until 4.8
+            # ran a browser against a restarted engine. A token is per launch, so the cookie
+            # from the previous one is stale — and being checked first it shadowed the fresh
+            # token in the link, answering 401 to the only URL that could have fixed it. The
+            # way out was to clear site data, which is not a thing the product can ask for.
+            entering = request.url.path == console.ENTRY_PATH
+            offered = request.query_params.get("token", "") if entering else ""
             supplied = (
                 request.headers.get("x-tessera-token", "")
+                or offered
                 or request.cookies.get(console.CONSOLE_COOKIE, "")
-                or (
-                    request.query_params.get("token", "")
-                    if request.url.path == console.ENTRY_PATH
-                    else ""
-                )
             )
             # Constant-time: a plain == returns as soon as it finds a difference, so how
             # long it takes leaks how much of the token was right. Overkill for a

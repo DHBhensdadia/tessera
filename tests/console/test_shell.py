@@ -98,6 +98,33 @@ class TestGettingIn:
         assert guarded.get(f"/console?token={TOKEN}", follow_redirects=False).status_code == 303
 
 
+class TestComingBackAfterARestart:
+    """A token is issued per engine launch, so yesterday's cookie is not today's token.
+
+    Found by running a browser against a restarted engine (4.8 ②d): the cookie was read
+    before the query string, so the stale one shadowed the fresh token in the entry link and
+    the console answered **401 to the only URL that could have fixed it**. The way out was to
+    clear site data, which is not something an application can ask somebody to do.
+    """
+
+    def test_a_fresh_token_gets_in_past_a_stale_cookie(self, guarded: TestClient) -> None:
+        guarded.cookies.set(CONSOLE_COOKIE, "the-token-from-a-previous-launch")
+
+        response = guarded.get(f"/console?token={TOKEN}", follow_redirects=False)
+
+        assert response.status_code == 303
+        assert response.cookies[CONSOLE_COOKIE] == TOKEN
+
+    def test_a_stale_cookie_alone_is_still_refused(self, guarded: TestClient) -> None:
+        """The fix widens what gets *in* on one path, not what counts as authentic."""
+        guarded.cookies.set(CONSOLE_COOKIE, "the-token-from-a-previous-launch")
+
+        assert guarded.get("/console/rooms").status_code == 401
+
+    def test_a_wrong_token_in_the_url_does_not_get_in_either(self, guarded: TestClient) -> None:
+        assert guarded.get("/console?token=not-the-token").status_code == 401
+
+
 class TestTheRebindingGuard:
     """`SameSite` cannot see the case where the attacker's own domain resolves to
     loopback — the browser considers that same-site, because it is. Only the `Host`
