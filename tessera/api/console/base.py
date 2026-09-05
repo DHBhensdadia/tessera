@@ -31,16 +31,16 @@ and the browser would attach the session.
 * **`SameSite=Strict`** means it is not attached to cross-site requests at all.
 * **A `Host` check** closes the gap `SameSite` cannot see: with DNS rebinding an
   attacker's own domain resolves to loopback, so the request genuinely *is* same-site.
-  Only `localhost` and `127.0.0.1` are served.
+  It lives in `api/app.py` and covers **every** path, which it did not until 4.8 —
+  see `refuse_foreign_host` for what that asymmetry was and was not.
 
-Neither costs anything. This is the one place in Tessera where data becomes reachable
-from outside a private process boundary, and it is worth being deliberate rather than
-lucky about it.
+Neither costs anything, and the second is worth having even though the token is what
+actually stops the attack: a browser rebound to an attacker's domain is sent the cookie
+jar for *that* domain, which does not hold this host-only cookie.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -67,16 +67,6 @@ CONSOLE_COOKIE = "tessera_session"
 ENTRY_PATH = "/console"
 
 templates = Jinja2Templates(directory=str(paths.templates_directory()))
-
-#: Hosts the console will answer on. Anything else is a rebinding attempt: an attacker's
-#: domain pointed at loopback looks same-site to the browser, so `SameSite` alone would
-#: let the request through.
-ALLOWED_HOSTS = frozenset({"localhost", "127.0.0.1", "[::1]", "::1"})
-
-
-def _host_is_local(request: Request) -> bool:
-    host = (request.headers.get("host") or "").rsplit(":", 1)[0]
-    return host in ALLOWED_HOSTS
 
 
 @dataclass(frozen=True)
@@ -149,19 +139,6 @@ def describe(error: Exception) -> str:
     if isinstance(error, NotFoundError):
         return "That record no longer exists."
     return str(error)
-
-
-async def guard_console(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
-    """Refuse console requests that did not come from a browser on this machine.
-
-    Registered as middleware rather than a dependency so it covers every console route
-    including ones added later, and so a mistake is a refusal rather than an omission.
-    """
-    if request.url.path.startswith("/console") and not _host_is_local(request):
-        return Response("Not available on this host.", status_code=status.HTTP_403_FORBIDDEN)
-    return await call_next(request)
 
 
 @router.get("", include_in_schema=False)

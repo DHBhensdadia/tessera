@@ -101,7 +101,17 @@ class TestGettingIn:
 class TestTheRebindingGuard:
     """`SameSite` cannot see the case where the attacker's own domain resolves to
     loopback — the browser considers that same-site, because it is. Only the `Host`
-    header distinguishes it."""
+    header distinguishes it.
+
+    **The guard covered `/console` alone until 4.8**, which measured what that was worth: with
+    the session cookie set and `Host: evil.example`, `/console/rooms` answered 403 and
+    `/api/v1/rooms` answered **200** — the same data on the same socket, one defence short,
+    while #65 recorded the console as the only place data left a private process. It was not.
+
+    Not a live hole, and the tests say which part is which: the cookie is host-only, so a
+    browser rebound to another domain sends that domain's jar and arrives with no token at
+    all. The token is what stops the attack. This is the second line, on both paths now.
+    """
 
     def test_a_foreign_host_is_refused(self, guarded: TestClient) -> None:
         guarded.get(f"/console?token={TOKEN}")
@@ -130,6 +140,30 @@ class TestTheRebindingGuard:
         response = guarded.get("/console/rooms", headers={"Host": "127.0.0.1:54321"})
 
         assert response.status_code == 200
+
+    def test_the_api_is_behind_the_same_guard(self, guarded: TestClient) -> None:
+        """4.8 puts a browser page in front of `/api/v1` for the first time, and the console
+        answering 403 where the API answered 200 was an asymmetry rather than a policy."""
+        guarded.get(f"/console?token={TOKEN}")
+
+        response = guarded.get("/api/v1/rooms", headers={"Host": "evil.example"})
+
+        assert response.status_code == 403
+
+    def test_a_legitimate_client_is_unaffected(self, guarded: TestClient) -> None:
+        """The Swift client and `curl` both send the loopback name they dialled, so widening
+        the guard costs nothing that exists. A deployment binding beyond loopback has to widen
+        `ALLOWED_HOSTS`, which is Stage 7's to do."""
+        guarded.get(f"/console?token={TOKEN}")
+
+        assert guarded.get("/api/v1/rooms").status_code == 200
+
+    def test_the_docs_are_behind_it_too(self, guarded: TestClient) -> None:
+        """`/openapi.json` needs no token — the surface is public knowledge — but it is still
+        served by this engine, and a guard with an exception is a guard with a way round it."""
+        response = guarded.get("/openapi.json", headers={"Host": "evil.example"})
+
+        assert response.status_code == 403
 
 
 class TestTemplatesTravel:

@@ -148,6 +148,42 @@ Errors follow RFC 9457 Problem Details, on every route including framework failu
 #: touches the project's data does.
 OPEN_PATHS = frozenset({"/docs", "/openapi.json", "/docs/oauth2-redirect"})
 
+#: Names this engine will answer to. Anything else is a rebinding attempt: an attacker's own
+#: domain pointed at loopback looks same-site to the browser, so `SameSite` alone would let
+#: the request through.
+ALLOWED_HOSTS = frozenset({"localhost", "127.0.0.1", "[::1]", "::1"})
+
+
+async def refuse_foreign_host(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Refuse anything that did not address this engine by a name it serves.
+
+    **This used to check only `/console`, and 4.8 measured what that was worth.** With the
+    session cookie set and `Host: evil.example`, `/console/rooms` answered 403 and
+    `/api/v1/rooms` answered **200** — the same data on the same socket with one fewer
+    defence, while Decision #65 recorded the console as *"the one place in Tessera where data
+    becomes reachable from outside a private process boundary"*. It was not.
+
+    It was also not a live hole, which is worth saying rather than dressing up: the console
+    cookie is host-only, so a browser rebound to an attacker's domain sends that domain's
+    cookie jar and the request arrives with no token at all. The token is what stops the
+    attack on both paths. This is the second line, and it now exists on both.
+
+    Costs a legitimate caller nothing — the Swift client and `curl` both send the loopback
+    name they dialled. **A deployment binding beyond loopback has to widen `ALLOWED_HOSTS`**,
+    which Stage 7's Docker image will have to do; `engine.main` already warns loudly when
+    `--host` is not `127.0.0.1`, and this is the second thing that has to change with it.
+
+    Middleware rather than a dependency so it covers routes added later, and so a mistake is
+    a refusal rather than an omission.
+    """
+    host = (request.headers.get("host") or "").rsplit(":", 1)[0]
+    if host not in ALLOWED_HOSTS:
+        logger.warning("rejected_foreign_host", host=host, path=request.url.path)
+        return Response("Not available on this host.", status_code=403)
+    return await call_next(request)
+
 
 def create_app(
     *,
@@ -283,7 +319,7 @@ def create_app(
 
     register_error_handlers(app)
 
-    app.middleware("http")(console.guard_console)
+    app.middleware("http")(refuse_foreign_host)
 
     for module in (
         health,
