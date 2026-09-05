@@ -266,9 +266,17 @@ class TestSilenceIsNotAVerdict:
     @settings(max_examples=200, deadline=None, suppress_health_check=[HealthCheck.too_slow])
     @given(instance=to_solve())
     def test_a_term_the_solver_solves_is_never_refuted(self, instance: Instance) -> None:
+        """A branch rather than an `assume`, and #249's reasoning rather than a new one.
+
+        How many generated terms the solver places inside the budget is a property of the
+        seed, so as an assumption this discards an amount that varies run to run — at seed
+        79178187328739688648173074366578488247 it kept 8 of 58 and Hypothesis refused to run
+        it at all. Suppressing the health check would leave a green test whose rigour nobody
+        could see. `test_generated_terms_do_get_solved` is what proves the branch is reached.
+        """
         snapshot = snapshot_of(instance)
-        found = solve(snapshot, BUDGET)
-        assume(found.outcome is Outcome.SOLVED)
+        if solve(snapshot, BUDGET).outcome is not Outcome.SOLVED:
+            return
 
         assert preflight.check(snapshot) == (), (
             "a timetable exists for this term — the solver just produced one — so every "
