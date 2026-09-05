@@ -19,8 +19,8 @@ from sqlalchemy import Engine
 from tessera.api.jobs import TICK_SECONDS, Job, events
 from tessera.api.schemas import SolvePhase, SolveStatus
 from tessera.solver import Stop
-from tests.api.conftest import settled
 from tests.repository.authored import Term
+from tests.solving import settled
 
 
 def frames(client: TestClient, job_id: str, most: int = 12) -> Iterator[tuple[str, str]]:

@@ -23,7 +23,9 @@ ROOMS = b"Room,Seats,Block,Equipment\nLH-201,150,Block A,projector\nLH-202,forty
 
 @pytest.fixture
 def client(engine: Engine) -> Iterator[TestClient]:
-    with TestClient(create_app(engine=engine, configure_logs=False)) as test_client:
+    with TestClient(
+        create_app(engine=engine, configure_logs=False), base_url="http://127.0.0.1"
+    ) as test_client:
         yield test_client
 
 

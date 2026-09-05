@@ -26,8 +26,8 @@ from tessera.domain.time_grid import TimeGrid
 from tessera.domain.validation import Snapshot
 from tessera.repository import session_factory
 from tessera.solver import Outcome, Placed, Progress, Solution, Stop
-from tests.api.conftest import settled
 from tests.repository.authored import Term
+from tests.solving import settled
 
 
 @pytest.fixture

@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session as DbSession
 from tessera.repository import calendar as calendar_repo
 from tessera.repository import models as m
 from tessera.repository import structure as structure_repo
-from tests.api.conftest import settled
 from tests.repository.authored import Term, term_with_sessions
+from tests.solving import settled
 
 
 class TestSolvingATerm:

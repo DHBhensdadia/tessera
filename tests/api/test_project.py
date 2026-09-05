@@ -36,7 +36,7 @@ def on_disk(tmp_path: Path) -> Iterator[tuple[TestClient, Path]]:
 
     app: FastAPI = create_app(engine=engine, project_path=path, configure_logs=False)
     try:
-        with TestClient(app) as client:
+        with TestClient(app, base_url="http://127.0.0.1") as client:
             yield client, tmp_path
     finally:
         engine.dispose()

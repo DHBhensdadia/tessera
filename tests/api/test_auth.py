@@ -20,7 +20,9 @@ TOKEN = "test-token-that-is-long-enough-to-be-realistic"
 
 @pytest.fixture
 def guarded(engine: Engine) -> Iterator[TestClient]:
-    with TestClient(create_app(engine=engine, token=TOKEN, configure_logs=False)) as client:
+    with TestClient(
+        create_app(engine=engine, token=TOKEN, configure_logs=False), base_url="http://127.0.0.1"
+    ) as client:
         yield client
 
 
