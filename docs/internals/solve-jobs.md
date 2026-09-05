@@ -137,7 +137,23 @@ with no placements on purpose (4.1's D6 keeps completeness a separate question),
 reached that invariant from the wrong side and raised. A term nobody has filled in yet is an
 ordinary state on the first day of one, not a failure.
 
-## 6. Where to look when something is wrong
+## 6. Who drives this
+
+Two clients, and each takes a different half.
+
+**The browser console** (4.8) starts and stops a solve through its own routes, because a form
+cannot post to a route that answers 202 with a JSON body — the console calls `Registry` directly
+and redirects. It reads progress from `GET /api/v1/solve/{id}/stream`, the same published
+endpoint the native panel will use, so the stream has one implementation rather than one per
+presentation. See [the console](console.md).
+
+**The native solve panel** (5.3) generates its client from the contract, including the stream —
+Decision #304 put `SolveStatus` on the SSE response for exactly that reason.
+
+Nothing else may hold a `Registry`. It is application state beside the open project, because a
+job outlives the request that started it and the engine serves one file.
+
+## 7. Where to look when something is wrong
 
 | Symptom | Look at |
 |---|---|
@@ -151,3 +167,5 @@ ordinary state on the first day of one, not a failure.
 | A cancel is answered late | `solver/cancel.py` → `Stop`; a flag alone waits for the running solve to end |
 | A job ends `failed` | something unexpected reached `Registry._run`; it is logged with a traceback |
 | A half-written timetable | `repository/timetables.py` → `record` writes the whole result or none of it |
+| The page says the budget ran out when it did not | `api/console/solving.py` → `_how_it_finished`; a penalty of zero cannot be improved |
+| The console is locked out after a restart | fixed in 4.8 — a fresh token beats a stale cookie on the entry path (#314) |
