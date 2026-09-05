@@ -25,3 +25,4 @@ history of what was believed and why is the useful part.
 | [0014](0014-slot-granularity.md) | 30-minute slots by default, configurable per project |
 | [0015](0015-solo-git-workflow.md) | Direct commits to main; protection limited to force-push and deletion |
 | [0016](0016-explaining-infeasibility.md) | Explain an impossible term with two engines, and count before you search |
+| [0017](0017-javascript-in-the-console.md) | One hand-written script in the console, and a written boundary around it |

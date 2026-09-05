@@ -150,9 +150,38 @@ either — so proceeding is offering to search for something already known not t
 offered because the search's refusal is more useful than the arithmetic: an `infeasible`
 ending carries the minimal conflicting set, and a shortfall carries one subtraction.
 
-**The page refreshes itself while a solve is running** and stops when it settles. That is 4.8
-part 1; part 2 replaces it with an `EventSource` against the stream above and keeps the refresh
-as the no-JavaScript path.
+### Watching one
+
+**The page is complete without a script**, and the script is what stops it being discarded four
+times a minute. Where scripting is off, a `<noscript>` meta refresh brings the next reading;
+where it is on, `templates/solve/watch.js` opens an `EventSource` on the stream above and
+writes into the markup already there. Measured over a 55-second solve: **two page loads** — the
+first, and the reload when it settled — against the 28 the refresh alone would have made.
+
+[ADR-0017](../adr/0017-javascript-in-the-console.md) is the decision and its boundary. Four
+things about the script are load-bearing:
+
+* **It carries no template expression.** Starlette's `select_autoescape()` escapes `.html` and
+  not `.js`, so a variable written into an included script comes out raw while the same value
+  in the page comes out escaped. Everything it needs arrives on `data-` attributes of `#solve`,
+  which are autoescaped because they live in the HTML. `tests/console/test_markup.py` asserts
+  the rule by looking for Jinja's delimiters in the file.
+* **The server keeps the prose.** Every phase's heading and sentence come from
+  `console.solving.PHASES`, rendered into a hidden block that the script *selects* from. A copy
+  in JavaScript would drift, and a heading left at what the server said on page load is worse
+  than either: a term that reaches feasibility in under a second sits under the wrong one.
+* **It reloads when the solve settles.** Which ending it was, and whether the budget or the
+  arithmetic stopped it, is written once in `wording` — the reload is how those sentences
+  arrive rather than a second copy of them living in the script.
+* **It closes the stream twice over.** `EventSource` reconnects for ever three seconds after a
+  server closes one, and an open stream holds one of the six connections a browser will make to
+  an origin over HTTP/1.1 — so it is closed on `done` and on `pagehide`.
+
+**The curve is drawn from what the page has seen, not from the whole solve.** `SolveStatus`
+carries no trajectory (#306) and widening it was refused, so a reload honestly starts again and
+the caption says so. It stays hidden until two *distinct* penalties exist: a term can hold one
+score for twenty seconds, and a flat line along the bottom of an empty box says less than no
+box while taking up more room.
 
 **Two 409s are pages rather than errors.** A second Generate redirects to the job that already
 holds the engine, because that is what somebody pressing it twice wants; a term with nothing in
@@ -259,6 +288,7 @@ the spec, rebuilding the `.dmg`, and watching it fail.
 | [`api/console/solving.py`](../../tessera/api/console/solving.py) | pre-flight, generate, watch, stop, the infeasibility report |
 | [`api/console/timetables.py`](../../tessera/api/console/timetables.py) | a term's candidates, and one read in three pivots |
 | [`export/grid.py`](../../tessera/export/grid.py) | the projection all three renderers share |
+| [`templates/solve/watch.js`](../../tessera/templates/solve/watch.js) | the console's only script — ADR-0017 |
 | [`tessera/templates/`](../../tessera/templates) | one layout, one stylesheet, no framework |
 
 ## See also
@@ -266,6 +296,7 @@ the spec, rebuilding the `.dmg`, and watching it fail.
 - [API contract](api-contract.md) — the other presentation of the same repository
 - [Teaching](teaching.md) — what the offering page is showing, and why expansion reconciles
 - [Student groups](student-groups.md) — the relation the tree page renders
+- [ADR-0017](../adr/0017-javascript-in-the-console.md) — why there is a script, and what a second one would have to answer
 - [Solve jobs](solve-jobs.md) — the registry and the stream the solve pages drive
 - [Solving](solving.md) — what the search is actually doing while the page counts
 - [Packaging and the sidecar](packaging.md) — how the engine reaches a user at all
