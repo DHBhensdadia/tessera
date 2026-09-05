@@ -81,6 +81,16 @@ This is also why `packaging/smoke-test.sh` exists. The unit suite spawns the eng
 Python and **passes whether or not a shipped bundle leaks a process** — the failure is
 only observable in the real thing.
 
+**Twenty-six checks, and the ones that grow fastest are about data that travels.** Anything
+read from disk at render time — the migrations, the sixteen templates, and since 4.8 one
+script — makes a spec that forgets it build cleanly, pass every unit test, and serve a stack
+trace to the first person who opens that page. So the script drives the whole of the
+console's route to a timetable on the installed bundle: the Generate form, pressing it, the
+watch page *carrying its script*, the solve settling, and the week grid with teaching drawn in
+it. Verified sensitive rather than assumed to be — take `templates/solve/watch.js` out of an
+installed `.app` and the script check fails; take `templates/timetables/` out and the form and
+the grid checks fail with it.
+
 ## Signing, inside out
 
 Nested Mach-O binaries first (85 of them), then the bundle. A signature seals the

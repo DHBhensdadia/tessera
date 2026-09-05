@@ -167,6 +167,52 @@ if [ -n "$DIRECT_PORT" ]; then
                 "$(curl -s -H "x-tessera-token: $SOLVE_TOKEN" \
                     "$SOLVE_API/terms/1/timetables" | grep -o '"total":[0-9]*' | cut -d: -f2)"
         fi
+
+        # The same journey through the console, which the API checks above cannot stand in
+        # for. Six templates and one script were added in 4.8 and every one of them is read
+        # from disk at render time — a spec that missed `solve/` or `timetables/` builds
+        # cleanly, passes every unit test, and serves a stack trace to the first person who
+        # presses Generate. #66's class of bug, in the places 4.8 put new ones.
+        echo "==> and the console's own way to a timetable"
+        SOLVE_CONSOLE="http://127.0.0.1:$SOLVE_PORT/console"
+        check "the generate form renders from the bundle" "yes" \
+            "$(curl -s -H "x-tessera-token: $SOLVE_TOKEN" "$SOLVE_CONSOLE/terms/1/timetables" \
+                | grep -q 'name="time_budget_seconds"' && echo yes || echo no)"
+
+        CONSOLE_JOB=$(curl -s -o /dev/null -w '%{redirect_url}' -X POST \
+            -H "x-tessera-token: $SOLVE_TOKEN" \
+            -d "time_budget_seconds=20&seed_timetable_id=" \
+            "$SOLVE_CONSOLE/terms/1/generate" | sed 's|.*/||')
+        check "pressing Generate starts a solve" "yes" \
+            "$([ -n "$CONSOLE_JOB" ] && echo yes || echo no)"
+
+        if [ -n "$CONSOLE_JOB" ]; then
+            WATCH=$(curl -s -H "x-tessera-token: $SOLVE_TOKEN" "$SOLVE_CONSOLE/solve/$CONSOLE_JOB")
+            # The one file in this project that is neither Python nor a template, and the one
+            # a spec is most likely to leave behind.
+            check "the watch page carries its script (watch.js travelled)" "yes" \
+                "$(echo "$WATCH" | grep -q "EventSource" && echo yes || echo no)"
+
+            for _ in $(seq 1 120); do
+                WATCH=$(curl -s -H "x-tessera-token: $SOLVE_TOKEN" \
+                    "$SOLVE_CONSOLE/solve/$CONSOLE_JOB")
+                echo "$WATCH" | grep -q "Stop and keep" || break
+                sleep 0.5
+            done
+            CONSOLE_TIMETABLE=$(echo "$WATCH" \
+                | sed -n 's|.*/console/timetables/\([0-9][0-9]*\)".*|\1|p' | head -1)
+            check "the solve settles and offers its timetable" "yes" \
+                "$([ -n "$CONSOLE_TIMETABLE" ] && echo yes || echo no)"
+
+            if [ -n "$CONSOLE_TIMETABLE" ]; then
+                GRID=$(curl -s -H "x-tessera-token: $SOLVE_TOKEN" \
+                    "$SOLVE_CONSOLE/timetables/$CONSOLE_TIMETABLE")
+                check "the timetable renders as a week grid" "yes" \
+                    "$(echo "$GRID" | grep -q 'class="week"' && echo yes || echo no)"
+                check "with teaching drawn in it" "yes" \
+                    "$(echo "$GRID" | grep -q 'class="taught"' && echo yes || echo no)"
+            fi
+        fi
     fi
     kill "$SOLVE_PID" 2>/dev/null || true
     wait "$SOLVE_PID" 2>/dev/null || true
