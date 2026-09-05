@@ -125,6 +125,62 @@ async def _listen(job: Job, *, wanted: int) -> list[tuple[str, str]]:
     return await asyncio.wait_for(_collect(job, wanted=wanted), timeout=wanted * TICK_SECONDS + 5)
 
 
+class TestOneTickIsOneReading:
+    """Every event on a tick is built from the same load of `job.status`.
+
+    The status is replaced whole by the worker thread precisely so that **one** load is
+    coherent (#303). The stream used to take four an iteration — for whether the job had
+    settled, twice for the phase, and once for the numbers — which can announce a phase from
+    one moment beside a score from another.
+
+    Latent, because no client reads the `phase` event: the console's page and 5.3 both read
+    `status.phase`. The same pattern on the page was **not** latent and turned `main` red
+    (#327), and this went out with that fix and without a guard until now.
+    """
+
+    def test_a_tick_loads_the_status_once(self, project: Engine) -> None:
+        reads: list[int] = []
+        moving = _a_job_that_runs()
+
+        class Counted(Job):
+            @property
+            def status(self) -> SolveStatus:
+                reads.append(1)
+                return moving.status
+
+            @status.setter
+            def status(self, value: SolveStatus) -> None:
+                pass
+
+        job = Counted(
+            id="j", term_id=1, started=time.perf_counter(), stop=Stop(), status=moving.status
+        )
+        ticks = 4
+        asyncio.run(_listen(job, wanted=ticks))
+
+        # One for the first event before the loop, then one per tick.
+        assert len(reads) == ticks, f"{len(reads)} loads across {ticks} events"
+
+    def test_the_phase_it_announces_is_the_phase_it_then_reports(self, project: Engine) -> None:
+        """The user-visible shape of the same rule, for whichever client reads that event
+        first — a `phase` event naming something the `status` beside it contradicts."""
+        job = _a_job_that_runs()
+
+        async def move_on() -> list[tuple[str, str]]:
+            listening = asyncio.create_task(_collect(job, wanted=6))
+            await asyncio.sleep(TICK_SECONDS * 1.5)
+            job.status = job.status.model_copy(update={"phase": SolvePhase.OPTIMISING})
+            return await listening
+
+        seen = asyncio.run(move_on())
+        announced = [data for event, data in seen if event == "phase"]
+        assert announced, "the phase change was never announced"
+
+        after = seen[[event for event, _ in seen].index("phase") + 1]
+        assert after[0] == "status"
+        assert json.loads(after[1])["phase"] == announced[-1]
+
+
 class TestWhatComesDownTheWire:
     def test_the_first_event_carries_the_whole_status(
         self, solving_client: TestClient, running: str
