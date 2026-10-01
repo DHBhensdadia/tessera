@@ -35,7 +35,7 @@ jobs:
 
       # Keyed on the checksums, so a re-issued instance misses the cache and is fetched and
       # re-verified rather than served stale from it.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .itc2007
           key: itc2007-${{ hashFiles('scripts/itc2007-instances.sha256') }}
